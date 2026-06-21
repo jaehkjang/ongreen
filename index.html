@@ -69,7 +69,7 @@
 <div class="page" id="pg-sc">
   <div class="top">
     <button class="back" onclick="scBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
-    <div style="text-align:center;flex:1;margin:0 6px"><div class="t-ttl" id="sc-t" style="font-size:17px"></div><div style="font-size:11px;color:var(--t2)" id="sc-s"></div></div>
+    <div class="sc-mid"><div class="t-ttl" id="sc-t" style="font-size:17px"></div><div style="font-size:11px;color:var(--t2)" id="sc-s"></div></div>
     <button class="sv" id="sv" onclick="saveRound()">저장</button>
   </div>
   <div style="padding:8px 14px 0;background:var(--bg2);border-bottom:.5px solid var(--bd);flex-shrink:0;display:flex;align-items:center;gap:8px">
@@ -83,7 +83,7 @@
     <div class="fi"><div class="fl">파대비</div><div class="fv" id="f-vs">-</div></div>
     <div class="fi"><div class="fl">GIR</div><div class="fv" id="f-g">-</div></div>
     <div class="fi"><div class="fl">퍼팅</div><div class="fv" id="f-p">-</div></div>
-    <div class="fi"><div class="fl">멀리건</div><div class="fv" id="f-m" style="color:var(--r)">-</div></div>
+    <div class="fi"><div class="fl">M/TP</div><div class="fv" id="f-m" style="color:var(--r)">-</div></div>
   </div>
 </div>
 
@@ -114,6 +114,8 @@
       <div id="p-msg" style="font-size:13px;min-height:18px;margin-bottom:10px"></div>
       <button class="mok" onclick="changePin()" style="width:100%">비밀번호 변경</button>
     </div>
+    <div class="lbl">📊 분석 기준</div>
+    <div class="sr"><div id="bench-box"></div></div>
     <!-- 관리자 패널 -->
     <div id="adm-panel" style="display:none">
       <div class="lbl" style="color:var(--a)">🔐 관리자 패널</div>

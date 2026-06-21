@@ -1,11 +1,14 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;font-family:-apple-system,"Helvetica Neue",sans-serif}
 :root{--bg:#0f1117;--bg2:#1c1c1e;--bg3:#2c2c2e;--bd:#3a3a3c;--t:#fff;--t2:#aeaeb2;--t3:#636366;--g:#34c759;--b:#0a84ff;--r:#ff453a;--a:#ff9f0a;--p:#bf5af2;--rd:14px}
-html,body{background:var(--bg);height:100%;overflow:hidden}
-.app{background:var(--bg);height:100vh;max-width:430px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden}
+html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;touch-action:manipulation}
+.app{background:var(--bg);height:100vh;max-width:430px;margin:0 auto;display:flex;flex-direction:column;overflow:hidden;overflow-x:hidden}
 .page{display:none;flex-direction:column;flex:1;overflow:hidden}.page.on{display:flex}
-.top{background:var(--bg);border-bottom:.5px solid #2c2c2e;padding:12px 16px;padding-top:max(env(safe-area-inset-top)+12px,16px);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px}
+.top{background:var(--bg);border-bottom:.5px solid #2c2c2e;padding:12px 16px;padding-top:max(env(safe-area-inset-top)+12px,16px);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;min-width:0;overflow:hidden}
 .t-col{display:flex;flex-direction:column;min-width:0}
-.t-ttl{font-size:20px;font-weight:700;color:var(--t);white-space:nowrap}
+.t-ttl{font-size:20px;font-weight:700;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.back,.add,.sv{flex-shrink:0}
+.sc-mid{flex:1;min-width:0;text-align:center;margin:0 6px}
+.sc-mid .t-ttl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .t-sub{font-size:11px;color:var(--t2);margin-top:2px}
 .t-acts{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .back{background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:22px;color:var(--t);font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;padding:8px 16px;min-height:44px;white-space:nowrap}
@@ -51,6 +54,7 @@ html,body{background:var(--bg);height:100%;overflow:hidden}
 .htg{height:38px;flex:1;border-radius:10px;font-size:12px;font-weight:700;border:1.5px solid #5a5a5e;background:var(--bg3);color:#c8c8c8;cursor:pointer;display:flex;align-items:center;justify-content:center}.htg:active{opacity:.7}
 .htg.og{background:#1e3a5f;border-color:#4aadff;color:#7dd4ff}.htg.of{background:#3a2a0a;border-color:#ffb830;color:#ffd060}
 .htg.op{background:#2d1a4a;border-color:#d580ff;color:#e0aaff}.htg.om{background:#3d1a1a;border-color:#ff6b6b;color:#ff8a80}
+.htg.otp{background:#3a2400;border-color:#ff9f0a;color:#ffbf5a}
 .seg{display:flex;background:var(--bg3);border-radius:10px;padding:3px;margin-bottom:8px}
 .sg{flex:1;text-align:center;padding:9px;font-size:14px;border-radius:8px;cursor:pointer;border:none;background:transparent;color:#aaa;font-weight:600;min-height:44px}
 .sg.on{background:var(--g);color:#000;font-weight:700}
@@ -74,6 +78,15 @@ html,body{background:var(--bg);height:100%;overflow:hidden}
 .bt{flex:1;height:16px;background:var(--bg3);border-radius:5px;overflow:hidden}
 .bf{height:100%;border-radius:5px;display:flex;align-items:center;padding-left:6px}
 .bf span{font-size:10px;font-weight:700;color:#fff}
+/* DIAGNOSIS (진단 신호등 카드) */
+.dgi{background:var(--bg2);border:.5px solid var(--bd);border-left:3px solid var(--t3);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.dgi.g{border-left-color:var(--g)}.dgi.y{border-left-color:var(--a)}.dgi.r{border-left-color:var(--r)}
+.dgi-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:3px}
+.dgi-t{font-size:13px;font-weight:700;color:var(--t);min-width:0}
+.dgi-v{font-size:12px;font-weight:700;text-align:right;flex-shrink:0}
+.dgi-v.g{color:var(--g)}.dgi-v.y{color:var(--a)}.dgi-v.r{color:var(--r)}
+.dgi-m{font-size:12px;color:var(--t2);line-height:1.5}
+.dgi-n{font-size:10px;color:var(--t3);line-height:1.5;margin-top:6px;padding-top:6px;border-top:.5px solid var(--bd)}
 /* SETTINGS */
 .sr{background:var(--bg2);border-radius:var(--rd);padding:16px;margin-bottom:10px;border:.5px solid var(--bd)}
 .sl2{font-size:15px;font-weight:600;color:var(--t);margin-bottom:8px}

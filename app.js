@@ -17,8 +17,13 @@ let A = {
   allCourses() { return this.official; },                 // 코스는 공식 목록 하나뿐
   sc: { course: null, li: [0, 1], ro: false, eid: null, half: 0,
         scores: Array(18).fill(0), putts: Array(18).fill(2),
-        gir: Array(18).fill(false), fir: Array(18).fill(false), mulli: Array(18).fill(0),
+        gir: Array(18).fill(false), fir: Array(18).fill(false),
+        mulli: Array(18).fill(0), tp: Array(18).fill(0),
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
+
+// ── 분석 기준값(신호등) · 관리자가 설정에서 수정 → 서버 공유. 서버 없으면 이 기본값 ──
+let BENCH = { survGood: 70, survOk: 60, tpDemote: 3, puttGood: 32, puttBad: 36, girGood: 50, girBad: 28 };
+function nf(x) { return Number.isInteger(+x) ? String(+x) : (+x).toFixed(1); }
 let _sid = 0, _delId = null, _editOldName = '';
 
 // ── 작은 도우미 ──
@@ -83,10 +88,11 @@ async function changePin() {
 // ════════════════════════════════════════
 async function loadAll() {
   load('데이터 불러오는 중...');
-  const [rr, cr] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()) ]);
+  const [rr, cr, br] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()), callAPI(() => API.getBench()) ]);
 
   if (rr && rr.err === '인증실패') { hide(); logoutSilent(); return; }  // 토큰 만료(초기화 등)
 
+  if (br && br.ok && br.bench && typeof br.bench === 'object') Object.assign(BENCH, br.bench);  // 서버 기준값 반영(없으면 기본값 유지)
   A.rounds = (rr && rr.rounds) || [];
   A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(c => ({ ...c, status: 'official' })) : [...DEF];
 
@@ -120,7 +126,40 @@ async function refreshNotes() {
 // ════════════════════════════════════════
 function goHome() { showPg('home'); renderHome(); document.querySelector('.tab .tb:first-child')?.classList.add('on'); document.querySelector('.tab .tb:last-child')?.classList.remove('on'); }
 function goStat() { showPg('stat'); renderStat(0); document.querySelector('.tab .tb:last-child')?.classList.add('on'); document.querySelector('.tab .tb:first-child')?.classList.remove('on'); }
-function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; }
+function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); }
+
+// ── 설정 → 📊 분석 기준 : 모두 설명 보기 / 관리자만 수정 ──
+function renderBenchSettings() {
+  const b = BENCH, box = Q('bench-box'); if (!box) return;
+  const expl = `<div style="font-size:13px;color:var(--t2);line-height:1.7">
+    신호등은 <b style="color:var(--g)">🟢 좋음</b> / <b style="color:var(--a)">🟡 양호</b> / <b style="color:var(--r)">🔴 부족</b> 3단계입니다.<br><br>
+    <b style="color:var(--t)">🚗 드라이버 — 티샷 생존율</b><br>생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀. 🟢 ${b.survGood}%↑ · 🟡 ${b.survOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀↑이면 한 단계 강등.<br><br>
+    <b style="color:var(--t)">🎱 퍼팅 — 라운드 총 퍼팅</b><br>🟢 ${b.puttGood}개↓ · 🟡 ${b.puttBad}개↓ · 🔴 그 초과.<br><br>
+    <b style="color:var(--t)">🎯 아이언 — GIR(그린 적중률)</b><br>🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.</div>`;
+  let html = expl;
+  if (A.isAdm) {
+    const f = (id, label, val) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0"><label style="font-size:13px;color:var(--t2);flex:1">${label}</label><input id="bn-${id}" type="number" inputmode="numeric" value="${val}" style="width:84px;text-align:center;padding:8px;border-radius:8px;border:1.5px solid var(--bd);background:var(--bg3);color:var(--t);font-size:15px;font-weight:700"></div>`;
+    html += `<div class="msep"></div><div style="font-size:12px;color:var(--a);font-weight:700;margin-bottom:6px">🔧 관리자 — 기준값 수정 (전체 적용)</div>`
+      + f('survGood', '드라이버 생존율 좋음(%)', b.survGood)
+      + f('survOk', '드라이버 생존율 양호(%)', b.survOk)
+      + f('tpDemote', 'OB/해저드 강등 기준(M+TP, 라운드당 홀)', b.tpDemote)
+      + f('puttGood', '퍼팅 좋음(개 이하)', b.puttGood)
+      + f('puttBad', '퍼팅 부족(개 초과)', b.puttBad)
+      + f('girGood', '아이언 GIR 좋음(%)', b.girGood)
+      + f('girBad', '아이언 GIR 부족(%)', b.girBad)
+      + `<div id="bench-msg" style="font-size:12px;min-height:16px;margin:8px 0"></div>`
+      + `<button class="btn btn-g" onclick="saveBench()" style="width:100%">기준 저장 (전체 반영)</button>`;
+  }
+  box.innerHTML = html;
+}
+async function saveBench() {
+  const ids = ['survGood', 'survOk', 'tpDemote', 'puttGood', 'puttBad', 'girGood', 'girBad'];
+  const nb = {}; for (const id of ids) { const v = parseFloat(Q('bn-' + id).value); if (!isNaN(v)) nb[id] = v; }
+  const msg = Q('bench-msg'); msg.style.color = 'var(--t2)'; msg.textContent = '저장 중...';
+  const r = await callAPI(() => API.setBench(nb));
+  if (r && r.ok) { Object.assign(BENCH, r.bench || nb); msg.style.color = 'var(--g)'; msg.textContent = '✅ 저장됨 — 전체 분석에 반영됩니다'; renderBenchSettings(); }
+  else { Object.assign(BENCH, nb); msg.style.color = 'var(--a)'; msg.textContent = '⚠️ 이 기기에만 적용됨 (서버 미연결 — 배포 후 전체 공유)'; renderBenchSettings(); }
+}
 
 // ════════════════════════════════════════
 // 홈 (라운드 목록)
@@ -145,7 +184,7 @@ function renderHome() {
         <div class="rc-sub">${r.date || ''} · ${r.weather || ''}${r.partner ? ' · ' + r.partner : ''}${r.memo ? ' · ' + r.memo : ''}</div>
       </div>${draft ? `<span style="background:#3a2a0a;color:var(--a);font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;flex-shrink:0">✏️ 작성중</span>` : `<div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div>`}</div>
       ${draft ? `<div style="margin-top:10px;padding:8px 12px;background:#2a2a0a;border-radius:8px;font-size:12px;color:var(--a)">탭해서 이어서 입력 →</div>` :
-      `<div class="rc-meta"><span>🔵 ${r.putts}퍼팅</span><span>🎯 GIR ${r.gir}%</span><span>🚗 FIR ${r.fir}%</span>${r.mulligan ? `<span style="color:var(--r)">🔄 ${r.mulligan}</span>` : ''}</div>`}
+      `<div class="rc-meta"><span>🔵 ${r.putts}퍼팅</span><span>🎯 GIR ${r.gir}%</span><span>🚗 FIR ${r.fir}%</span>${(r.mulligan || r.tpCount) ? `<span style="color:var(--r)">🔄 M${r.mulligan || 0}·TP${r.tpCount || 0}</span>` : ''}</div>`}
     </div>`;
   });
   el.innerHTML = h;
@@ -159,7 +198,7 @@ function goSelectCourse() {
   A.sc.date = Q('nr-d').value.replaceAll('-', '.'); A.sc.wx = Q('nr-w').value;
   A.sc.partner = Q('nr-p').value; A.sc.memo = Q('nr-m').value;
   A.sc.eid = null; A.sc.ro = false; A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2);
-  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0);
+  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0);
   cm('m-nr'); renderCourses(); showPg('course');
 }
 
@@ -175,8 +214,10 @@ function buildRound(isDraft) {
     putts: A.sc.putts.reduce((a, b) => a + b, 0),
     gir: Math.round(A.sc.gir.filter(Boolean).length / 18 * 100),
     fir: Math.round(A.sc.fir.filter(Boolean).length / 18 * 100),
-    mulligan: A.sc.mulli.reduce((a, b) => a + (b || 0), 0),
-    scores: [...A.sc.scores], puttsArr: [...A.sc.putts], girArr: [...A.sc.gir], firArr: [...A.sc.fir], mulliArr: [...A.sc.mulli],
+    mulligan: A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0),
+    tpCount: (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0),
+    scores: [...A.sc.scores], puttsArr: [...A.sc.putts], girArr: [...A.sc.gir], firArr: [...A.sc.fir],
+    mulliArr: [...A.sc.mulli], tpArr: [...(A.sc.tp || Array(18).fill(0))],
     holePars: [...h]   // ★ 박제: 그날 홀별 파를 라운드에 함께 저장 → 나중에 골프장이 바뀌어도 안 흔들림
   };
 }
@@ -213,9 +254,11 @@ function openDet(id) {
       <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
       <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
       <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span></div>
-      <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span class="su">회</span></span><span class="sl">멀리건</span></div>
+      <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span style="font-size:14px;color:var(--t2)">/</span>${r.tpCount || 0}</span><span class="sl">M / TP</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
+    <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin-bottom:6px">🔍 이 라운드 분석</button>
+    <div id="rana-box" style="display:none;margin-bottom:8px"></div>
     <div class="cb"><div class="cbt">홀별 스코어</div>
       <div style="display:flex;flex-wrap:wrap;gap:5px">${(r.scores || []).map((s, i) => { const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff">${s > 0 ? s : '-'}</div>`; }).join('')}</div>
     </div>
@@ -239,7 +282,7 @@ function openSC(id, ro) {
   A.sc.course = c; A.sc.li = [0, 1]; A.sc.date = r.date; A.sc.wx = r.weather;
   A.sc.partner = r.partner; A.sc.memo = r.memo; A.sc.eid = id; A.sc.ro = ro; A.sc.half = 0;
   A.sc.scores = [...r.scores]; A.sc.putts = [...r.puttsArr];
-  A.sc.gir = [...r.girArr]; A.sc.fir = [...r.firArr]; A.sc.mulli = [...(r.mulliArr || Array(18).fill(0))];
+  A.sc.gir = [...r.girArr]; A.sc.fir = [...r.firArr]; A.sc.mulli = [...(r.mulliArr || Array(18).fill(0))]; A.sc.tp = [...(r.tpArr || Array(18).fill(0))];
   const par = pars.reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${r.date} · ${n0}+${n1} · 파${par}`;
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${n0} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${n1} (10-18)</button>`;
@@ -292,25 +335,37 @@ function getH() { const c = A.sc.course; const [l0, l1] = A.sc.li; return [...c.
 function renderSC() {
   const h = getH(); const s = A.sc.half * 9; const ro = A.sc.ro; let html = '';
   for (let i = s; i < s + 9; i++) {
-    const par = h[i], sc = A.sc.scores[i], gg = A.sc.gir[i], ff = A.sc.fir[i], pp = A.sc.putts[i], mm = A.sc.mulli[i] || 0;
+    const par = h[i], sc = A.sc.scores[i], gg = A.sc.gir[i], ff = A.sc.fir[i], pp = A.sc.putts[i], mm = A.sc.mulli[i] || 0, tpv = (A.sc.tp && A.sc.tp[i]) || 0;
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
-    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht"><span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${ff ? 'of' : ''}">FIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${mm ? 'om' : ''}">${mm ? mm + 'M' : 'M'}</span></div></div></div>`; }
-    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht"><button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button><button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button><button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${mm ? 'om' : ''}" onclick="tom(${i})">${mm ? mm + 'M' : 'M'}</button></div></div></div>`; }
+    const teeLbl = tpv ? 'TP' : 'M', teeCls = mm ? 'om' : tpv ? 'otp' : '';
+    const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
+    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht"><span class="htg ${gg ? 'og' : ''}">GIR</span>${firCell}<span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
+    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht"><button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button>${firCell}<button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
   }
   Q('sc-body').innerHTML = html; updFt();
   if (!ro) { const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false; }
 }
 function sp(i) { if (A.sc.ro) return; A.sc.scores[i] = getH()[i]; renderSC(); }
 function adj(i, d) { if (A.sc.ro) return; const h = getH(); if (!A.sc.scores[i]) A.sc.scores[i] = h[i]; A.sc.scores[i] = Math.max(1, Math.min(12, A.sc.scores[i] + d)); renderSC(); }
-function tog(i, t) { if (A.sc.ro) return; if (t === 'g') A.sc.gir[i] = !A.sc.gir[i]; else A.sc.fir[i] = !A.sc.fir[i]; renderSC(); }
+function tog(i, t) { if (A.sc.ro) return; if (t === 'f' && getH()[i] === 3) return; if (t === 'g') A.sc.gir[i] = !A.sc.gir[i]; else A.sc.fir[i] = !A.sc.fir[i]; renderSC(); }
 function cyp(i) { if (A.sc.ro) return; A.sc.putts[i] = (A.sc.putts[i] % 4) + 1; renderSC(); }
-function tom(i) { if (A.sc.ro) return; A.sc.mulli[i] = ((A.sc.mulli[i] || 0) + 1) % 4; renderSC(); }
+function tom(i) {                                 // 티샷 상태: off → M → TP → off (홀당 1개, M·TP 상호배타)
+  if (A.sc.ro) return;
+  if (!A.sc.tp) A.sc.tp = Array(18).fill(0);
+  const m = A.sc.mulli[i] || 0, t = A.sc.tp[i] || 0;
+  if (!m && !t) { A.sc.mulli[i] = 1; A.sc.tp[i] = 0; }       // off → M
+  else if (m)   { A.sc.mulli[i] = 0; A.sc.tp[i] = 1; }       // M → TP
+  else          { A.sc.mulli[i] = 0; A.sc.tp[i] = 0; }       // TP → off
+  renderSC();
+}
 function swHalf(n, el) { A.sc.half = n; document.querySelectorAll('#sc-seg .sg').forEach(b => b.classList.remove('on')); el.classList.add('on'); renderSC(); }
 function updFt() {
   const h = getH(); const pl = A.sc.scores.filter(x => x > 0);
   const tot = pl.reduce((a, b) => a + b, 0), ps = h.slice(0, pl.length).reduce((a, b) => a + b, 0), vs = tot - ps;
   Q('f-tot').textContent = tot || '-'; const ve = Q('f-vs'); ve.textContent = pl.length ? vsL(vs) : '-'; ve.className = 'fv ' + (vs > 0 ? 'r' : vs < 0 ? 'g' : '');
-  Q('f-g').textContent = A.sc.gir.filter(Boolean).length; Q('f-p').textContent = A.sc.putts.reduce((a, b) => a + b, 0); Q('f-m').textContent = A.sc.mulli.reduce((a, b) => a + (b || 0), 0) || '-';
+  Q('f-g').textContent = A.sc.gir.filter(Boolean).length; Q('f-p').textContent = A.sc.putts.reduce((a, b) => a + b, 0);
+  const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
+  Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
 }
 
 // ════════════════════════════════════════
@@ -322,7 +377,12 @@ function renderCourses() {
   const list = q ? all.filter(c => c.name.includes(q) || (c.addr || '').includes(q)) : all;
   Q('cs-lbl').textContent = q ? '검색 결과' : '골프장 목록';
   if (!list.length) { Q('cs-list').innerHTML = `<div class="empty" style="padding:30px 0"><div>🔍</div><small>없음</small></div>`; return; }
-  Q('cs-list').innerHTML = list.map(c => `<div class="cc">
+  // 최근 이용 골프장 순서(라운드 기록 최신순) → 그 외 가나다순
+  const recent = [], seen = new Set();
+  (A.rounds || []).filter(r => !r.isDraft).forEach(r => { const nm = r.courseName; if (nm && !seen.has(nm)) { seen.add(nm); recent.push(nm); } });
+  const rank = nm => { const i = recent.indexOf(nm); return i < 0 ? Infinity : i; };
+  const sorted = [...list].sort((a, b) => { const ra = rank(a.name), rb = rank(b.name); return ra !== rb ? ra - rb : a.name.localeCompare(b.name, 'ko'); });
+  const card = c => `<div class="cc">
     <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
       <div class="cc-name">${c.name}</div>
       <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
@@ -330,7 +390,14 @@ function renderCourses() {
     <span class="cbg off">✅ 공식</span>
     <button class="ib" style="background:#1a2e1a;border:1px solid var(--g);color:var(--g)" onclick="openEditCourse('${c.id || c.name}')" title="수정">✏️</button>
     ${A.isAdm ? `<button class="ib" style="background:#2d0f0f;border:1px solid #6a2020;color:var(--r)" onclick="delCourse('${c.name}')">🗑</button>` : ''}
-  </div>`).join('');
+  </div>`;
+  if (q) { Q('cs-list').innerHTML = sorted.map(card).join(''); return; }   // 검색 중엔 그냥 결과만
+  const recentList = sorted.filter(c => rank(c.name) !== Infinity);
+  const restList = sorted.filter(c => rank(c.name) === Infinity);
+  let html = '';
+  if (recentList.length) html += `<div class="lbl" style="margin:4px 0 8px">🕘 최근 이용</div>` + recentList.map(card).join('');
+  if (restList.length) html += `<div class="lbl" style="margin:14px 0 8px">가나다순</div>` + restList.map(card).join('');
+  Q('cs-list').innerHTML = html;
 }
 
 function selCourse(key) {
@@ -358,7 +425,7 @@ function startScoringFromPicker() {
   A.sc.course = clone; A.sc.li = [0, 1];
 
   A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2);
-  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0);
+  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0);
   A.sc.eid = null; A.sc.ro = false; A.sc.half = 0;
   const c = A.sc.course; const [l0, l1] = A.sc.li; const par = getH().reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${A.sc.date} · ${c.layouts[l0].name}+${c.layouts[l1].name} · 파${par}`;
@@ -488,6 +555,74 @@ async function delCourse(name) {                 // 관리자만 호출 (버튼�
 // ════════════════════════════════════════
 function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? `<span class="su">${u}</span>` : ''}</span><span class="sl">${l}</span></div>`; }
 
+// ── 🚦 진단 분석 (절대기준 신호등 3지표) ──
+function analyze(rounds) {
+  rounds = (rounds || []).filter(r => !r.isDraft);
+  const n = rounds.length;
+  let par45 = 0, cleanFir = 0, teeLost = 0, girHit = 0, girHoles = 0,
+      puttSum = 0, threePutt = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0,
+      scoreSum = 0, vsSum = 0, girPuttSum = 0, girPuttN = 0;
+  rounds.forEach(r => {
+    const hh = roundPars(r);
+    const sc = r.scores || [], pa = r.puttsArr || [], gi = r.girArr || [], fi = r.firArr || [], mu = r.mulliArr || [], tpa = r.tpArr || [];
+    scoreSum += r.score || 0; vsSum += r.vs || 0;
+    for (let i = 0; i < 18; i++) {
+      const s = sc[i]; if (!s || s <= 0) continue;        // 미입력 홀 스킵
+      const par = hh[i] || 4, mull = mu[i] || 0, tpv = tpa[i] || 0, putt = pa[i] || 0;
+      girHoles++; if (gi[i]) { girHit++; girPuttSum += putt; girPuttN++; }   // GIR홀 퍼팅(순수 퍼팅력)
+      puttSum += putt; if (putt >= 3) threePutt++;
+      if (putt <= 1) p1++; else if (putt === 2) p2++; else if (putt === 3) p3++; else p4++;
+      if (par > 3) {                                       // 드라이버는 파4·5만 (파3의 M/TP는 제외)
+        par45++;
+        if (mull || tpv) teeLost++;                        // 티샷 사망(OB/해저드) — M·TP 둘 다 사망
+        if (fi[i] && !mull && !tpv) cleanFir++;            // 보정 FIR(M·TP로 살린 홀 제외)
+      }
+    }
+  });
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0, f1 = (a, b) => b ? a / b : 0;
+  const survPct = pct(par45 - teeLost, par45), adjFir = pct(cleanFir, par45), girPct = pct(girHit, girHoles);
+  const teeLostPer = f1(teeLost, n), puttAvg = f1(puttSum, n), threeAvg = f1(threePutt, n), girPuttAvg = f1(girPuttSum, girPuttN);
+  // 드라이버 등급: 생존율 기준 + OB/해저드(M+TP) 잦으면 한 단계 강등
+  let dst = survPct >= BENCH.survGood ? 'g' : survPct >= BENCH.survOk ? 'y' : 'r';
+  if (teeLostPer >= BENCH.tpDemote) dst = dst === 'g' ? 'y' : 'r';
+  const S = (status, icon, area, value, msg, note) => ({ status, icon, area, value, msg, note });
+  const sig = [
+    S(dst, '🚗', '드라이버',
+      `생존 ${survPct}% (페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀)`,
+      dst === 'g' ? `티샷에서 공을 거의 잃지 않습니다. 드라이버 안정성이 좋아요. (페어웨이 ${adjFir}%)` :
+      dst === 'y' ? `대체로 살리지만 가끔 공을 잃습니다. 페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀.` :
+      `티샷에서 공을 자주 잃습니다(OB/해저드 ${nf(teeLostPer)}홀). 스코어 손실의 큰 원인입니다.`,
+      `생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀 · M=벌타 없이 다시 침, TP=벌타 받고 진행 · 둘 다 "공 잃음"으로 동일 처리`),
+    S(puttAvg <= BENCH.puttGood ? 'g' : puttAvg > BENCH.puttBad ? 'r' : 'y', '🎱', '퍼팅',
+      `${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}홀`,
+      puttAvg <= BENCH.puttGood ? `퍼팅 수가 적습니다. 그린에서 타수를 잘 지키고 있어요.` :
+      puttAvg > BENCH.puttBad ? `퍼팅 수가 많습니다. 쓰리퍼팅 ${nf(threeAvg)}홀 — 첫 퍼트 거리감이 주 원인일 가능성이 큽니다.` :
+      `퍼팅 보통. 쓰리퍼팅이 라운드당 ${nf(threeAvg)}홀 — 여기서 타수가 새고 있습니다.`,
+      `라운드 총 퍼팅 평균(적을수록 좋음). 참고: GIR홀 퍼팅 ${girPuttN ? nf(girPuttAvg) + '개' : '-'}가 순수 퍼팅력에 더 가깝습니다.`),
+    S(girPct >= BENCH.girGood ? 'g' : girPct < BENCH.girBad ? 'r' : 'y', '🎯', '아이언(GIR)',
+      `GIR ${girPct}%`,
+      girPct >= BENCH.girGood ? `그린 적중률이 높습니다. 아이언으로 기회를 잘 만들고 있어요.` :
+      girPct < BENCH.girBad ? `그린 적중률이 낮습니다. 대부분 그린을 놓쳐 어프로치·숏게임 부담이 커집니다.` :
+      `그린 적중 보통. 절반가량은 정규 타수에 그린을 못 올립니다.`,
+      `GIR = 정규타수(파−2) 안에 그린 올린 홀 비율. 파3 티샷 실수도 여기 반영됩니다.`)
+  ];
+  return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, sig };
+}
+function analysisHTML(a) {
+  if (!a.n) return `<div class="empty" style="padding:24px 0"><div>📊</div><p>분석할 라운드가 없습니다</p></div>`;
+  const dotc = { g: '🟢', y: '🟡', r: '🔴' };
+  const cards = a.sig.map(s => `<div class="dgi ${s.status}">
+    <div class="dgi-h"><span class="dgi-t">${dotc[s.status]} ${s.icon} ${s.area}</span><span class="dgi-v ${s.status}">${s.value}</span></div>
+    <div class="dgi-m">${s.msg}</div>${s.note ? `<div class="dgi-n">ℹ️ ${s.note}</div>` : ''}</div>`).join('');
+  return `${cards}<div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.5">※ ${a.n}개 라운드 기준 · 파3의 M·TP는 드라이버에서 빠지고 GIR(아이언)에 반영 · 기준값은 설정 → 분석 기준에서 조정</div>`;
+}
+function toggleRoundAna(id) {
+  const r = A.rounds.find(x => x.id === id); if (!r) return;
+  const box = Q('rana-box'), btn = Q('rana-btn'); if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; if (btn) btn.textContent = '🔍 이 라운드 분석'; }
+  else { box.innerHTML = analysisHTML(analyze([r])); box.style.display = 'block'; if (btn) btn.textContent = '🔍 분석 닫기'; }
+}
+
 // ── 신호등 기준: "내 평균 대비" ──
 function playerAvgs() {
   const rs = A.rounds.filter(r => !r.isDraft); const n = rs.length;
@@ -544,6 +679,8 @@ function renderStat(m) {
     const allD = rounds.flatMap(r => { const hh = roundPars(r); return (r.scores || []).map((s, i) => s > 0 ? s - (hh[i] || 4) : null).filter(x => x !== null); });
     const eagle = allD.filter(d => d <= -2).length, birdie = allD.filter(d => d === -1).length, par2 = allD.filter(d => d === 0).length, bogey = allD.filter(d => d === 1).length, dbl = allD.filter(d => d >= 2).length, mx = Math.max(eagle, birdie, par2, bogey, dbl) || 1;
     const td = [...rounds].reverse().slice(-10);
+
+    h += `<div class="lbl">🚦 진단 (전체 라운드)</div>${analysisHTML(analyze(rounds))}`;
 
     h += `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', '평균 스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', '평균 오버파')}${statCard(avg('putts').toFixed(1), '', '평균 퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${statCard(n, '', '라운드수')}</div>
 
@@ -608,19 +745,37 @@ async function admClearNotes() {
   else toast('❌ 실패');
 }
 
+let _admOffLoaded = false, _admOffOpen = false;
 async function admLoadOfficial() {
   const el = Q('adm-off'); el.innerHTML = '<div style="color:var(--t2);font-size:13px">불러오는 중...</div>';
   const r = await callAPI(() => API.getCourses());
   const list = (r && r.courses) || [];
   if (!list.length) { el.innerHTML = '<div style="color:var(--t2);font-size:13px">공식 코스 없음</div>'; return; }
   A.official = list.map(c => ({ ...c, status: 'official' }));
-  el.innerHTML = list.map(c => `<div style="padding:12px 0;border-bottom:.5px solid var(--bd)">
+  _admOffLoaded = true; _admOffOpen = false;
+  renderAdmOfficial();
+}
+function admOffToggle() { _admOffOpen = !_admOffOpen; renderAdmOfficial(); }
+function renderAdmOfficial() {
+  const el = Q('adm-off'); if (!el || !_admOffLoaded) return;
+  const q = (Q('adm-off-q')?.value || '').trim();
+  const all = A.official || [];
+  const head = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+    <div class="sbar" style="flex:1;margin:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--t2)" stroke-width="2"/><path d="M16.5 16.5L21 21" stroke="var(--t2)" stroke-width="2" stroke-linecap="round"/></svg><input id="adm-off-q" placeholder="골프장 검색..." value="${q}" oninput="renderAdmOfficial()"></div>
+    <button onclick="admOffToggle()" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:10px;color:var(--t);font-size:12px;font-weight:600;cursor:pointer;padding:10px 12px;white-space:nowrap">${_admOffOpen ? '접기' : `전체 ${all.length}`}</button></div>`;
+  let list;
+  if (q) list = all.filter(c => c.name.includes(q) || (c.addr || '').includes(q));
+  else if (_admOffOpen) list = all;
+  else { el.innerHTML = head + `<div style="color:var(--t3);font-size:12px;padding:8px 2px">검색하거나 "전체 ${all.length}"를 눌러 펼치세요</div>`; return; }
+  const rows = list.map(c => `<div style="padding:12px 0;border-bottom:.5px solid var(--bd)">
     <div style="font-size:14px;font-weight:700;color:var(--t);margin-bottom:4px">🗺️ ${c.name}</div>
     <div style="font-size:11px;color:var(--t2);margin-bottom:8px">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')}</div>
     <div style="display:flex;gap:6px">
       <button onclick="openEditCourse('${c.name}')" style="flex:1;background:#1a2e5a;border:1px solid var(--b);border-radius:8px;color:#7dd4ff;font-size:12px;font-weight:600;cursor:pointer;padding:7px">✏️ 수정</button>
       <button onclick="delCourse('${c.name}')" style="flex:1;background:#3d1a1a;border:1px solid #6a2020;border-radius:8px;color:var(--r);font-size:12px;font-weight:600;cursor:pointer;padding:7px">🗑 삭제</button>
-    </div></div>`).join('');
+    </div></div>`).join('') || `<div style="color:var(--t2);font-size:13px;padding:8px 2px">검색 결과 없음</div>`;
+  el.innerHTML = head + rows;
+  const inp = Q('adm-off-q'); if (inp && q) { inp.focus(); inp.setSelectionRange(q.length, q.length); }
 }
 
 async function admLoadUsers() {

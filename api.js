@@ -35,6 +35,10 @@ const API = {
   login(username, pin) { return this._post({ action: 'login', username, pin }); },
   getCourses()      { return this._get('getCourses'); },
 
+  // ── 분석 기준값(신호등) ──
+  getBench()        { return this._get('getBench'); },                 // 누구나 읽기 (서버 없으면 실패 → 앱이 기본값 사용)
+  setBench(bench)   { return this._post({ action: 'setBench', bench }); }, // 관리자만 (서버에서 권한 체크)
+
   // ── 인증 필요 ──
   getRounds()       { return this._get('getRounds'); },
   saveRounds(rounds){ return this._post({ action: 'saveRounds', rounds }); },
