@@ -37,6 +37,16 @@ function om(id) { Q(id).classList.add('on'); }
 function load(msg) { Q('ldm').textContent = msg || '불러오는 중...'; Q('ld').classList.add('on'); }
 function hide() { Q('ld').classList.remove('on'); }
 function toast(m, t) { const el = Q('toast'); el.textContent = m; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), t || 2600); }
+// ── 공유: 휴대폰 공유시트(카톡 등) → 없으면 클립보드 복사 → 최후엔 프롬프트 ──
+async function shareText(title, text) {
+  if (navigator.share) {                                  // 모바일: 네이티브 공유시트 (원터치)
+    try { await navigator.share({ title, text }); }
+    catch (e) { /* 사용자가 취소했거나 실패 — 조용히 무시 */ }
+    return;
+  }
+  try { await navigator.clipboard.writeText(text); toast('📋 복사했어요. 친구에게 붙여넣기 하세요'); }  // 데스크톱 등
+  catch (e) { prompt('아래 내용을 복사해 공유하세요', text); }
+}
 
 // ════════════════════════════════════════
 // 로그인 / 인증
@@ -366,6 +376,30 @@ function updFt() {
   Q('f-g').textContent = A.sc.gir.filter(Boolean).length; Q('f-p').textContent = A.sc.putts.reduce((a, b) => a + b, 0);
   const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
   Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
+}
+// ── 스코어카드 원터치 공유 ──
+function shareSC() {
+  const sc = A.sc;
+  if (!sc.course) { toast('공유할 스코어카드가 없어요'); return; }
+  const h = getH();
+  if (!sc.scores.some(x => x > 0)) { toast('입력된 점수가 없어요'); return; }
+  let tot = 0, playedPar = 0;
+  for (let i = 0; i < 18; i++) if (sc.scores[i] > 0) { tot += sc.scores[i]; playedPar += h[i]; }
+  const vs = tot - playedPar;
+  const fmt = a => a.map(x => x > 0 ? x : '-').join(' ');
+  const f9 = sc.scores.slice(0, 9).reduce((a, b) => a + b, 0), b9 = sc.scores.slice(9, 18).reduce((a, b) => a + b, 0);
+  const gir = sc.gir.filter(Boolean).length, putt = sc.putts.reduce((a, b) => a + b, 0);
+  const mc = sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
+  let t = `⛳ ${sc.course.name}`;
+  if (sc.date) t += ` (${sc.date})`;
+  t += `\n총타수 ${tot} (파대비 ${vsL(vs)})\n\n`;
+  t += `전반  ${fmt(sc.scores.slice(0, 9))}  = ${f9 || '-'}\n`;
+  t += `후반  ${fmt(sc.scores.slice(9, 18))}  = ${b9 || '-'}\n\n`;
+  t += `GIR ${gir}/18 · 퍼팅 ${putt}`;
+  if (mc || tc) t += ` · M/TP ${mc}/${tc}`;
+  if (sc.partner) t += `\n함께: ${sc.partner}`;
+  t += `\n\n— 온그린`;
+  shareText('온그린 스코어카드', t);
 }
 
 // ════════════════════════════════════════
@@ -724,6 +758,21 @@ function renderStat(m) {
     });
   }
   el.innerHTML = h;
+}
+// ── 분석값 원터치 공유 ──
+function shareStat() {
+  const rounds = A.rounds.filter(r => !r.isDraft);
+  if (!rounds.length) { toast('공유할 통계가 없어요'); return; }
+  const a = analyze(rounds);
+  const avg = k => rounds.reduce((s, r) => s + (r[k] || 0), 0) / rounds.length;
+  const dotc = { g: '🟢', y: '🟡', r: '🔴' };
+  let t = `📊 온그린 분석 (${a.n}R)\n\n`;
+  t += `평균 ${avg('score').toFixed(1)}타 (${avg('vs') >= 0 ? '+' : ''}${avg('vs').toFixed(1)})\n`;
+  t += `퍼팅 ${avg('putts').toFixed(1)} · GIR ${avg('gir').toFixed(0)}% · FIR ${avg('fir').toFixed(0)}%\n\n`;
+  t += `🚦 진단\n`;
+  a.sig.forEach(s => { t += `${dotc[s.status]} ${s.icon} ${s.area} — ${s.value}\n`; });
+  t += `\n— 온그린`;
+  shareText('온그린 분석', t);
 }
 
 // ════════════════════════════════════════
