@@ -35,10 +35,12 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 .cc-info{flex:1;min-width:0;cursor:pointer}.cc-name{font-size:16px;font-weight:600;color:var(--t)}.cc-sub{font-size:13px;color:var(--t2);margin-top:3px}
 /* 골프장 카드 — 왼쪽으로 슬라이드하면 삭제 버튼이 드러남 */
 .cc-wrap{position:relative;overflow:hidden;border-radius:var(--rd);margin-bottom:10px}
-.cc-wrap .cc{margin-bottom:0;position:relative;z-index:1;transition:transform .2s ease;touch-action:pan-y}
+.cc-wrap .cc{margin-bottom:0;position:relative;z-index:1;transition:transform .28s cubic-bezier(.22,.61,.36,1);touch-action:pan-y;will-change:transform}
 .cc-wrap.open .cc{transform:translateX(-88px)}
-.cc-del{position:absolute;top:0;right:0;bottom:0;display:flex}
-.cc-del button{min-width:88px;border:none;background:var(--r);color:#fff;font-size:14px;font-weight:700;cursor:pointer;border-radius:0 var(--rd) var(--rd) 0}
+.cc-del{position:absolute;top:0;right:0;bottom:0;display:flex;background:var(--r)}
+.cc-del button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:88px;border:none;background:none;color:#fff;font-size:12px;font-weight:700;letter-spacing:.5px;cursor:pointer;transition:filter .15s ease}
+.cc-del button svg{width:20px;height:20px}
+.cc-del button:active{filter:brightness(.85)}
 .cbg{font-size:11px;font-weight:600;padding:4px 10px;border-radius:10px;white-space:nowrap;flex-shrink:0}
 .cbg.off{background:#0d2e1a;color:#69f0ae}.cbg.pnd{background:#3a2a0a;color:#ffb830}
 .ib{width:36px;height:36px;border-radius:9px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:none}

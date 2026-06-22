@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.6.1';
+const APP_VERSION = 'v12.6.2';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -499,7 +499,7 @@ function renderCourses() {
   const sorted = [...list].sort((a, b) => { const ra = rank(a.name), rb = rank(b.name); return ra !== rb ? ra - rb : a.name.localeCompare(b.name, 'ko'); });
   // 카드: 연필(수정)·삭제 버튼은 없애고, 관리자는 왼쪽으로 슬라이드하면 삭제 버튼이 나옴
   const card = c => `<div class="cc-wrap">
-    ${A.isAdm ? `<div class="cc-del"><button onclick="delCourse('${c.name}')">🗑 삭제</button></div>` : ''}
+    ${A.isAdm ? `<div class="cc-del"><button onclick="delCourse('${c.name}')" aria-label="삭제"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>삭제</span></button></div>` : ''}
     <div class="cc">
       <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
         <div class="cc-name">${c.name}</div>
