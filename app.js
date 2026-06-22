@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.7.0';
+const APP_VERSION = 'v12.8.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -67,6 +67,15 @@ async function shareText(title, text) {
   }
   try { await navigator.clipboard.writeText(text); toast('📋 복사했어요. 친구에게 붙여넣기 하세요'); }  // 데스크톱 등
   catch (e) { prompt('아래 내용을 복사해 공유하세요', text); }
+}
+// ── 앱(링크) 공유 / 초대 ── 현재 접속 주소를 그대로 공유. 아이폰은 사파리로 열어 홈 화면 추가 안내 포함.
+function shareApp() {
+  const url = location.href.split('#')[0];   // 현재 앱 주소(쿼리는 유지, 앵커만 제거)
+  const text =
+    `🟢 온그린 — 골프 스코어카드\n${url}\n\n` +
+    `📱 아이폰: 사파리(Safari)로 열고 → 아래 공유 버튼 → '홈 화면에 추가'를 누르면 앱처럼 쓸 수 있어요.\n` +
+    `🤖 안드로이드: 크롬(Chrome)으로 열고 → 메뉴(⋮) → '홈 화면에 추가'.`;
+  shareText('온그린 — 골프 스코어카드', text);
 }
 
 // ════════════════════════════════════════
@@ -296,6 +305,24 @@ function roundPars(r) {                          // 박제된 파 우선, 없으
   const [l0, l1] = r.layoutIdx || [0, 1];
   return c ? [...(c.layouts[l0]?.holes || []), ...(c.layouts[l1]?.holes || [])] : Array(18).fill(4);
 }
+// ── 같은 골프장 이전 기록과 비교 (코스별 평균을 대신해 스코어카드 안에서 바로 보여줌) ──
+function courseCompareHTML(r) {
+  const same = A.rounds.filter(x => !x.isDraft && x.courseName === r.courseName && x.id !== r.id);
+  if (!same.length) return '';
+  const prevAvg = same.reduce((a, x) => a + (x.score || 0), 0) / same.length;
+  const prevBest = Math.min(...same.map(x => x.score));
+  const d = r.score - prevAvg;                  // 음수면 이전 평균보다 좋음
+  const arrow = d < -0.05 ? '▼' : d > 0.05 ? '▲' : '·';
+  const col = d < -0.05 ? 'var(--g)' : d > 0.05 ? 'var(--r)' : 'var(--t2)';
+  const row = (l, v) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--t2);padding:5px 0"><span>${l}</span>${v}</div>`;
+  return `<div class="cb" style="margin-top:8px;padding:12px 16px">
+    <div class="cbt" style="margin-bottom:6px">📍 이 골프장 이전 기록과 비교 (이전 ${same.length}R)</div>
+    ${row('이전 평균', `<b style="color:var(--t)">${prevAvg.toFixed(1)}</b>`)}
+    ${row('이전 베스트', `<b style="color:var(--t)">${prevBest}</b>`)}
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--t2);padding:5px 0;border-top:.5px solid var(--bd);margin-top:3px">
+      <span>이번 라운드</span><b style="color:${col}">${r.score} <span style="font-size:11px">(평균 대비 ${arrow}${Math.abs(d).toFixed(1)})</span></b></div>
+  </div>`;
+}
 function openDet(id) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
   const hh = roundPars(r);
@@ -319,6 +346,7 @@ function openDet(id) {
     <div class="cb"><div class="cbt">홀별 스코어</div>
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
+    ${courseCompareHTML(r)}
     <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button onclick="openSC(${id},false);cm('m-det')" style="flex:1;background:var(--a);border:none;border-radius:12px;padding:12px;color:#000;font-size:14px;font-weight:700;cursor:pointer">🔧 수정</button>
@@ -397,8 +425,8 @@ function renderSC() {
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
     const teeLbl = tpv ? 'TP' : 'M', teeCls = mm ? 'om' : tpv ? 'otp' : '';
     const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
-    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht"><span class="htg ${gg ? 'og' : ''}">GIR</span>${firCell}<span class="htg ${pp > 0 ? 'op' : ''}">${pp}🍩</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
-    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht"><button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button>${firCell}<button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}🍩</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
+    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht"><span class="htg ${gg ? 'og' : ''}">GIR</span>${firCell}<span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
+    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht"><button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button>${firCell}<button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
   }
   Q('sc-body').innerHTML = html; updFt();
   if (!ro) { const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false; }
@@ -660,8 +688,19 @@ function openEditCourse(key) {
 
 async function submitCourseForm() {
   const name = Q('cs-n').value.trim(), eid = Q('cs-eid').value, isEdit = !!eid;
-  if (!name) { toast('골프장 이름이 필요해요'); return; }
-  const secs = document.querySelectorAll('.css'); if (secs.length < 2) { toast('코스를 2개 이상 만들어주세요'); return; }
+  // 왜 안 눌리는지(저장이 안 되는지) 분명히 알려준다 — 빈 칸이면 그 칸으로 안내.
+  if (!name) {
+    toast('⚠️ 골프장 이름을 입력하세요');
+    const el = Q('cs-n'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
+    return;
+  }
+  const secs = document.querySelectorAll('.css'); if (secs.length < 2) { toast('⚠️ 코스(전반·후반)를 2개 이상 만들어주세요'); return; }
+  const emptySec = [...secs].find(s => !s.querySelector('.cs-name').value.trim());
+  if (emptySec) {
+    toast('⚠️ 각 코스의 이름을 입력하세요 (예: 레이크)');
+    const el = emptySec.querySelector('.cs-name'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
+    return;
+  }
   const layouts = [];
   secs.forEach(s => { const uid = s.id.replace('cs-s-', ''); const n = s.querySelector('.cs-name').value.trim() || '코스'; const hn = s.querySelector('.cs-hn').value || '9'; layouts.push({ name: n, holes: gp(uid, hn) }); });
 
@@ -757,7 +796,7 @@ function analysisHTML(a) {
   const cards = a.sig.map(s => `<div class="dgi ${s.status}">
     <div class="dgi-h"><span class="dgi-t">${dotc[s.status]} ${s.icon} ${s.area}</span><span class="dgi-v ${s.status}">${s.value}</span></div>
     <div class="dgi-m">${s.msg}</div>${s.note ? `<div class="dgi-n">ℹ️ ${s.note}</div>` : ''}</div>`).join('');
-  return `${cards}<div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.5">※ ${a.n}개 라운드 기준 · 파3의 M·TP는 드라이버에서 빠지고 GIR(아이언)에 반영 · 기준값은 설정 → 분석 기준에서 조정</div>`;
+  return `${cards}<div style="font-size:11px;color:var(--t2);margin-top:8px;line-height:1.55;word-break:keep-all">※ ${a.n}개 라운드 기준 · 파3의 M·TP는 드라이버에서 빠지고 GIR(아이언)에 반영 · 기준값은 설정 → 분석 기준에서 조정</div>`;
 }
 // ════════════════════════════════════════
 // 발전 분석 (시간축 · "과거의 나와 비교")
@@ -896,13 +935,16 @@ function bestRecords() {
   const rs = A.rounds.filter(r => !r.isDraft);
   if (rs.length < 2) return null;                 // 라운드 2개↑부터 트로피 의미 있음
   const birds = r => { const hp = roundPars(r); return (r.scores || []).filter((s, i) => s > 0 && s - (hp[i] || 4) === -1).length; };
+  const pen = r => (r.mulligan || 0) + (r.tpCount || 0);   // 패널티/멀리건 합(적을수록 좋음)
+  const pens = rs.map(pen), penMin = Math.min(...pens), penMax = Math.max(...pens);
   return {
     score: Math.min(...rs.map(r => r.score)),
     putts: Math.min(...rs.map(r => r.putts != null ? r.putts : Infinity)),
     gir: Math.max(...rs.map(r => r.gir || 0)),
     fir: Math.max(...rs.map(r => r.fir || 0)),
     birdies: Math.max(...rs.map(birds)),
-    birdsOf: birds,
+    penalty: penMax > penMin ? penMin : null,   // 차이가 있을 때만 "최소 패널티" 기록으로 인정
+    birdsOf: birds, penOf: pen,
   };
 }
 function roundTrophies(r) {
@@ -912,12 +954,15 @@ function roundTrophies(r) {
   if (r.putts != null && r.putts === R.putts) t.push({ i: '🍩', l: '최소 퍼팅' });
   if ((r.gir || 0) === R.gir && R.gir > 0) t.push({ i: '🎯', l: '최고 GIR' });
   if ((r.fir || 0) === R.fir && R.fir > 0) t.push({ i: '🚗', l: '최고 FIR' });
-  if (R.birdies > 0 && R.birdsOf(r) === R.birdies) t.push({ i: '🐦', l: '최다 버디' });
+  if (R.birdies > 0 && R.birdsOf(r) === R.birdies) t.push({ i: '🕊️', l: '최다 버디' });
+  if (R.penalty != null && R.penOf(r) === R.penalty) t.push({ i: '🛟', l: '최소 패널티' });
   return t;
 }
+// 기록 보유 라운드엔 ⭐ 별표로 한눈에 표시 + 어떤 기록인지 이모지 배지로 함께.
 function trophyBadges(r) {
   const t = roundTrophies(r); if (!t.length) return '';
-  return `<span style="display:inline-flex;gap:2px;vertical-align:middle">${t.map(x => `<span title="${x.l}" style="font-size:13px">${x.i}</span>`).join('')}</span>`;
+  const titles = t.map(x => x.l).join(', ');
+  return `<span style="display:inline-flex;align-items:center;gap:2px;vertical-align:middle" title="${titles}"><span style="font-size:13px">⭐</span>${t.map(x => `<span title="${x.l}" style="font-size:13px">${x.i}</span>`).join('')}</span>`;
 }
 function recordsHTML(rsChrono) {
   const rs = rsChrono, n = rs.length; if (!n) return '';
@@ -934,7 +979,7 @@ function recordsHTML(rsChrono) {
     ${row('🍩', '최소 퍼팅 라운드', minP.putts != null ? minP.putts : '-', minP.date || '')}
     ${row('🎯', '최고 GIR', (maxG.gir || 0) + '%', maxG.date || '')}
     ${row('🚗', '최고 FIR', (maxF.fir || 0) + '%', maxF.date || '')}
-    ${row('🐦', '최다 버디(1R)', birds(maxB) + '개', maxB.date || '')}
+    ${row('🕊️', '최다 버디(1R)', birds(maxB) + '개', maxB.date || '')}
   </div>
   <div class="lbl" style="margin-top:14px">🚩 마일스톤 (첫 돌파)</div>
   <div class="cb" style="padding:6px 16px">
@@ -1013,7 +1058,6 @@ function renderStat(m) {
     const eagle = allD.filter(d => d <= -2).length, birdie = allD.filter(d => d === -1).length, par2 = allD.filter(d => d === 0).length, bogey = allD.filter(d => d === 1).length, dbl2 = allD.filter(d => d === 2).length, trip = allD.filter(d => d >= 3).length;
     const mx = Math.max(eagle, birdie, par2, bogey, dbl2, trip) || 1;
     const blowup = trip / n;
-    const sgn = v => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(2);
 
     // ── 요약 대시보드 ──
     h += `<div class="lbl">📋 요약</div><div class="sgd">
@@ -1039,8 +1083,10 @@ function renderStat(m) {
     h += `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', '평균 스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', '평균 오버파')}${statCard(avg('putts').toFixed(1), '', '평균 퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${statCard('±' + sd.toFixed(1), '', '기복(편차)')}</div>`;
 
     // ── 실력 비율 (홀 기준) ──
+    const birdieRate = ex.played ? Math.round(birdie / ex.played * 100) : null;
     h += `<div class="lbl">실력 비율 (홀 기준)</div><div class="sgd">
       ${statCard(ex.parSaveRate == null ? '-' : ex.parSaveRate, ex.parSaveRate == null ? '' : '%', '파 이하')}
+      ${statCard(birdieRate == null ? '-' : birdieRate, birdieRate == null ? '' : '%', '🕊️ 버디')}
       ${statCard(ex.bogeyRate == null ? '-' : ex.bogeyRate, ex.bogeyRate == null ? '' : '%', '보기')}
       ${statCard(ex.dblPlusRate == null ? '-' : ex.dblPlusRate, ex.dblPlusRate == null ? '' : '%', '더블+')}
       ${statCard(nf(blowup), '', '블로업/R')}</div>
@@ -1060,12 +1106,6 @@ function renderStat(m) {
     h += `<div class="cb"><div class="cbt">퍼팅 분포 (홀 수)</div>${[['1퍼팅', ex.p1, 'var(--g)'], ['2퍼팅', ex.p2, 'var(--b)'], ['3퍼팅', ex.p3, 'var(--a)'], ['4+', ex.p4, 'var(--r)']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / pmx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>
     <div style="font-size:10px;color:var(--t3);margin:-6px 2px 4px">💡 <b>스크램블링</b> — 그린 놓친 홀을 파 이하로 막은 비율(높을수록 좋음).</div>`;
 
-    // ── 정확도의 가치 (적중 vs 미스 홀 평균 오버파) ──
-    h += `<div class="lbl">정확도의 가치</div><div class="cb">
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:.5px solid var(--bd)"><span style="font-size:13px;color:var(--t)">🚗 페어웨이</span><span style="font-size:12px;color:var(--t2)">적중 <b style="color:var(--g)">${sgn(ex.firHitAvg)}</b> · 놓침 <b style="color:var(--r)">${sgn(ex.firMissAvg)}</b>${ex.firHitAvg != null && ex.firMissAvg != null ? ` · 차이 <b style="color:var(--t)">${(ex.firMissAvg - ex.firHitAvg).toFixed(2)}타</b>` : ''}</span></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:13px;color:var(--t)">🎯 그린(GIR)</span><span style="font-size:12px;color:var(--t2)">적중 <b style="color:var(--g)">${sgn(ex.girHitAvg)}</b> · 놓침 <b style="color:var(--r)">${sgn(ex.girMissAvg)}</b>${ex.girHitAvg != null && ex.girMissAvg != null ? ` · 차이 <b style="color:var(--t)">${(ex.girMissAvg - ex.girHitAvg).toFixed(2)}타</b>` : ''}</span></div></div>
-    <div style="font-size:10px;color:var(--t3);margin:-6px 2px 4px">💡 적중/놓친 홀의 평균 오버파. 차이가 클수록 그 샷의 가치가 큽니다.</div>`;
-
     // ── 전반 / 후반 ──
     h += `<div class="lbl">전반 / 후반</div><div class="sgd">
       ${statCard(f9a == null ? '-' : f9a.toFixed(1), '', '전반(1-9)')}
@@ -1075,11 +1115,6 @@ function renderStat(m) {
     // ── 타수 분포 ──
     h += `<div class="lbl">타수 분포</div>
     <div class="cb">${[['이글↑', eagle, 'var(--p)'], ['버디', birdie, 'var(--b)'], ['파', par2, 'var(--g)'], ['보기', bogey, 'var(--a)'], ['더블', dbl2, 'var(--r)'], ['트리플+', trip, '#7f1d1d']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>`;
-
-    // ── 코스별 평균 ──
-    const byC = {}; rounds.forEach(r => { const k = r.courseName || '?'; (byC[k] = byC[k] || []).push(r.score); });
-    const cks = Object.keys(byC).sort((a, b) => byC[b].length - byC[a].length);
-    h += `<div class="lbl">코스별 평균</div><div class="cb">${cks.map(k => { const arr = byC[k]; const a = (arr.reduce((x, y) => x + y, 0) / arr.length).toFixed(1); return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:.5px solid var(--bd)"><span style="font-size:13px;color:var(--t)">${k}</span><span style="font-size:13px;color:var(--t2)">평균 <b style="color:var(--t)">${a}</b> · ${arr.length}R</span></div>`; }).join('')}</div>`;
 
     // ── 🏆 개인기록 · 마일스톤 ──
     h += `<div class="lbl">🏆 개인기록</div>${recordsHTML(chrono)}`;
@@ -1243,7 +1278,7 @@ function guideScorecardHTML() {
   ${btn('－ ＋', '타수 −1/＋1. 가운데 <b>숫자(P)</b> 탭 = 파로 바로 입력.')}
   ${btn('GIR', '정규타수(파−2) 안에 그린 올렸으면 ON. (아이언 지표)')}
   ${btn('FIR', '티샷이 페어웨이면 ON. 파4·5만, <b>파3은 자동 비활성(·)</b>.')}
-  ${btn('🍩', '퍼팅 수. 탭마다 1→2→3→4 순환.')}
+  ${btn('2P', '퍼팅 수. 탭마다 1P→2P→3P→4P 순환(기본 2P).')}
   ${btn('M／TP', '티샷 사고. 끄기→<b>M</b>(멀리건·벌타X)→<b>TP</b>(벌타 받고 진행)→끄기. 드라이버 생존율 진단에 쓰여요.')}
 
   ${S('⑤ 저장')}
@@ -1280,12 +1315,12 @@ function guideStatsHTML() {
   ${S('정확도 · 쇼트게임')}
   ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
   ${it('GIR홀 퍼팅 · 3퍼팅 · 1퍼팅율 · 퍼팅 분포', '그린 정규로 올린 홀 퍼팅(순수 퍼팅력) / 3퍼팅 수 / 1퍼팅 비율 / 1·2·3·4+ 퍼팅 홀 수.')}
-  ${it('스크램블링 · 정확도의 가치', '그린 놓친 홀을 파 이하로 막은 비율 / 페어웨이·그린 적중 vs 놓침 홀의 평균 오버파 차이.')}
+  ${it('스크램블링', '그린 놓친 홀을 파 이하로 막은 비율(높을수록 좋음).')}
 
   ${S('🏆 기록 · 트로피')}
   ${it('개인기록 · 마일스톤', '베스트·최소퍼팅·최고GIR/FIR·최다버디 기록 / 100·90·80 첫 돌파 날짜.')}
-  ${it('트로피 배지', '개인 기록을 보유한 라운드 카드에 🏆🍩🎯🚗🐦 배지가 붙어요(홈·라운드별·상세).')}
-  ${it('타수 분포 · 코스별', '이글↑·버디·파·보기·더블·트리플+ 개수 / 골프장별 평균.')}
+  ${it('트로피 배지', '개인 기록을 보유한 라운드 카드엔 ⭐ 별표가 붙고, 어떤 기록인지 🏆베스트·🍩최소퍼팅·🎯GIR·🚗FIR·🕊️버디·🛟최소패널티 배지로 함께 보여요(홈·라운드별·상세).')}
+  ${it('타수 분포 · 코스 비교', '이글↑·버디·파·보기·더블·트리플+ 개수 / 라운드 상세에서 같은 골프장 이전 기록(평균·베스트)과 비교.')}
 
   <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.5">※ <b>라운드별</b> 탭은 각 라운드를 내 평균과 비교해 🟢🟡🔴로 표시(3R↑).</div>
   <div style="margin-top:12px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준 · 지표가 바뀌면 자동 갱신.</div>`;

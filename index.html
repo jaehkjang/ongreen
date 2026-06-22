@@ -78,7 +78,7 @@
   </div>
   <div style="padding:8px 14px 0;background:var(--bg2);border-bottom:.5px solid var(--bd);flex-shrink:0;display:flex;align-items:center;gap:8px">
     <div class="seg" id="sc-seg" style="flex:1"></div>
-    <button id="sc-edit-holes" onclick="openEditHoles()" style="display:none;flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:10px;color:var(--t);font-size:12px;font-weight:600;cursor:pointer;padding:8px 10px;white-space:nowrap">⛳ 파수정</button>
+    <button id="sc-edit-holes" onclick="openEditHoles()" style="display:none;flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:10px;color:var(--t);font-size:12px;font-weight:600;cursor:pointer;padding:8px 10px;white-space:nowrap">🔧 파수정</button>
   </div>
   <div id="sc-bnr"></div>
   <div class="body-sc" id="sc-body"></div>
@@ -117,6 +117,11 @@
       <div class="mf"><label>새 비밀번호 확인</label><input id="p-n2" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="text-align:center;letter-spacing:8px;font-size:20px"></div>
       <div id="p-msg" style="font-size:13px;min-height:18px;margin-bottom:10px"></div>
       <button class="mok" onclick="changePin()" style="width:100%">비밀번호 변경</button>
+    </div>
+    <div class="lbl">📱 앱 공유</div>
+    <div class="sr">
+      <div class="sl2" style="font-size:13px;color:var(--t2);line-height:1.6">친구에게 온그린을 보내보세요. 받은 사람은 링크를 열고 홈 화면에 추가하면 앱처럼 쓸 수 있어요.</div>
+      <button class="btn btn-g" onclick="shareApp()" style="width:100%;margin-top:10px;background:#0d2e1a;border:1.5px solid var(--g);border-radius:12px;color:var(--g);font-size:15px;font-weight:700;cursor:pointer;padding:13px">📤 앱 링크 공유 / 초대</button>
     </div>
     <div class="lbl">📊 분석 기준</div>
     <div class="sr"><div id="bench-box"></div></div>
@@ -237,7 +242,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.7.0"></script>
-<script src="app.js?v=12.7.0"></script>
+<script src="api.js?v=12.8.0"></script>
+<script src="app.js?v=12.8.0"></script>
 </body>
 </html>

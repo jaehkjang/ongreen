@@ -30,15 +30,15 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 .rc-sub{font-size:13px;color:var(--t2);margin-top:3px}
 .pill{padding:5px 12px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap;flex-shrink:0}
 .rp{background:#3d1a18;color:#ff8a80}.gp{background:#0d2e1a;color:#69f0ae}.ep{background:var(--bg3);color:var(--t2)}
-.rc-meta{display:flex;gap:12px;margin-top:12px;padding-top:12px;border-top:.5px solid var(--bd);flex-wrap:wrap}
+.rc-meta{display:flex;gap:12px;margin-top:12px;padding-top:12px;border-top:.5px solid var(--bd);flex-wrap:wrap;color:var(--t2);font-size:13px}
 .cc{background:var(--bg2);border-radius:var(--rd);padding:16px;margin-bottom:10px;border:.5px solid var(--bd);display:flex;align-items:center;gap:8px}
 .cc-info{flex:1;min-width:0;cursor:pointer}.cc-name{font-size:16px;font-weight:600;color:var(--t)}.cc-sub{font-size:13px;color:var(--t2);margin-top:3px}
 /* 골프장 카드 — 왼쪽으로 슬라이드하면 삭제 버튼이 드러남 */
 .cc-wrap{position:relative;overflow:hidden;border-radius:var(--rd);margin-bottom:10px}
-.cc-wrap .cc{margin-bottom:0;position:relative;z-index:1;transition:transform .2s ease;touch-action:pan-y}
-.cc-wrap.open .cc{transform:translateX(-88px)}
-.cc-del{position:absolute;top:0;right:0;bottom:0;display:flex}
-.cc-del button{min-width:88px;border:none;background:var(--r);color:#fff;font-size:14px;font-weight:700;cursor:pointer;border-radius:0 var(--rd) var(--rd) 0}
+.cc-wrap .cc{margin-bottom:0;position:relative;z-index:1;transition:transform .2s ease,border-radius .2s ease;touch-action:pan-y}
+.cc-wrap.open .cc{transform:translateX(-88px);border-top-right-radius:0;border-bottom-right-radius:0}
+.cc-del{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:stretch}
+.cc-del button{min-width:88px;border:none;background:var(--r);color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;border-radius:0}
 .cbg{font-size:11px;font-weight:600;padding:4px 10px;border-radius:10px;white-space:nowrap;flex-shrink:0}
 .cbg.off{background:#0d2e1a;color:#69f0ae}.cbg.pnd{background:#3a2a0a;color:#ffb830}
 .ib{width:36px;height:36px;border-radius:9px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:none}
@@ -92,7 +92,7 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 .dgi-v{font-size:12px;font-weight:700;text-align:right;flex-shrink:0}
 .dgi-v.g{color:var(--g)}.dgi-v.y{color:var(--a)}.dgi-v.r{color:var(--r)}
 .dgi-m{font-size:12px;color:var(--t2);line-height:1.5}
-.dgi-n{font-size:10px;color:var(--t3);line-height:1.5;margin-top:6px;padding-top:6px;border-top:.5px solid var(--bd)}
+.dgi-n{font-size:11px;color:var(--t2);line-height:1.55;margin-top:6px;padding-top:6px;border-top:.5px solid var(--bd);word-break:keep-all}
 /* SETTINGS */
 .sr{background:var(--bg2);border-radius:var(--rd);padding:16px;margin-bottom:10px;border:.5px solid var(--bd)}
 .sl2{font-size:15px;font-weight:600;color:var(--t);margin-bottom:8px}
@@ -105,6 +105,10 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 .mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:50;align-items:flex-end;justify-content:center}
 .mo.on{display:flex}
 .ms{background:var(--bg2);border-radius:24px 24px 0 0;padding:20px;width:100%;max-width:430px;max-height:90vh;overflow-y:auto;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+/* 공지/설명서 읽기 모달은 한 화면 가득 크게 — 읽기 편하게 */
+#m-notice .ms{min-height:80vh;max-height:92vh}
+#m-notice .mt{font-size:22px}
+#m-notice #notice-read{font-size:15.5px;line-height:1.75}
 .mh{width:44px;height:4px;background:var(--bg3);border-radius:2px;margin:0 auto 18px}
 .mt{font-size:19px;font-weight:700;color:var(--t);text-align:center;margin-bottom:18px}
 .mf{margin-bottom:14px}.mf label{display:block;font-size:12px;font-weight:600;color:var(--t2);margin-bottom:7px;text-transform:uppercase}
