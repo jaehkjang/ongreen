@@ -16,6 +16,29 @@
 
 ---
 
+## [v13.0.0] - 2026-06-22
+
+### 변경됨 (Changed) — 백엔드 전환: Google Apps Script + Sheet → Supabase
+- **앱 속도 개선이 목적.** 요청마다 Apps Script 콜드 스타트(수 초) + 느린 `SpreadsheetApp`
+  호출이 주된 병목이라, 백엔드를 상시 가동되는 **Supabase(PostgreSQL + PostgREST)** 로 옮기고
+  프런트가 DB의 RPC 함수를 **직접** 호출하도록 바꿨습니다. (요청 1회 1~5초 → 50~200ms 기대)
+- `api.js` 의 전송 계층을 Apps Script `/exec` 호출 → Supabase `/rest/v1/rpc/*` 호출로 교체.
+  **메서드 이름과 반환 JSON 모양은 그대로 유지**하여 `app.js` 로직은 변경 없음.
+- `API.VERSION` 을 `v13-supabase-2026.06.22` 로 변경(서버 `og_version()` 과 일치).
+
+### 추가됨 (Added)
+- `supabase/schema.sql` — 테이블 + 인증/CRUD/관리자/가져오기 RPC 함수 전체.
+  (RLS 켜짐 + 정책 없음 → 테이블 직접 접근 차단, 토큰/관리자 권한은 함수 내부에서 검증.)
+- `docs/SUPABASE_SETUP.md` — 프로젝트 생성·스키마 실행·연결·첫 관리자 안내.
+- `docs/MIGRATION.md` + `tools/migrate.html` + `tools/export_from_sheet.gs.txt`
+  — 기존 시트 데이터(라운드/코스/사용자/BENCH)를 한 번에 옮기는 도구.
+
+### 참고
+- 기존 인증 모델(사용자명 + 4자리 PIN → 토큰)과 관리자 권한 서버 검증은 그대로 유지.
+- 첫 가입자가 자동으로 관리자가 됩니다.
+
+---
+
 ## [v12.1.0] - 2026-06-22
 
 ### 추가됨 (Added)

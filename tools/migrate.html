@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>온그린 데이터 마이그레이션</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #0e0f12; color: #e7e7ea; margin: 0; padding: 20px; line-height: 1.6; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; } h2 { font-size: 15px; margin-top: 28px; color: #7ddca0; }
+  label { display: block; font-size: 13px; color: #aab; margin: 14px 0 4px; }
+  input, textarea { width: 100%; box-sizing: border-box; background: #1b1d22; color: #e7e7ea;
+         border: 1px solid #33363d; border-radius: 8px; padding: 10px; font-size: 14px; font-family: inherit; }
+  textarea { min-height: 200px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  button { background: #1f7a46; color: #fff; border: none; border-radius: 8px; padding: 12px 18px;
+         font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 14px; }
+  button.sec { background: #2a2d34; }
+  #log { white-space: pre-wrap; background: #121319; border: 1px solid #2a2d34; border-radius: 8px;
+         padding: 12px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin-top: 14px; min-height: 40px; }
+  .ok { color: #7ddca0; } .err { color: #ff8a80; } .muted { color: #888; font-size: 12px; }
+  code { background: #1b1d22; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⛳ 온그린 → Supabase 데이터 마이그레이션</h1>
+  <p class="muted">기존 데이터를 새 Supabase 백엔드로 한 번에 옮깁니다. 자세한 절차는 <code>docs/MIGRATION.md</code> 참고.</p>
+
+  <h2>1. Supabase 연결 정보</h2>
+  <label>Project URL (예: https://abcd1234.supabase.co)</label>
+  <input id="url" placeholder="https://YOUR-PROJECT.supabase.co">
+  <label>anon public key</label>
+  <input id="key" placeholder="eyJ...">
+
+  <h2>2. 가져올 데이터(JSON dump)</h2>
+  <p class="muted">아래 모양의 JSON 을 붙여넣으세요. 만드는 법은 <code>docs/MIGRATION.md</code> 의
+    "기존 시트에서 내보내기" 참고. 파일 업로드도 가능합니다.</p>
+  <input id="file" type="file" accept="application/json,.json" style="border:none;padding:0">
+  <textarea id="dump" placeholder='{
+  "bench": { "puttGood": 32, "girGood": 50 },
+  "courses": [ { "id":"c1", "name":"OO CC", "addr":"...", "layouts":[ ... ] } ],
+  "users": [
+    { "username":"홍길동", "pin":"1234", "is_admin":true,
+      "rounds":[ { "id":1, "date":"2025.01.01", "scores":[...] } ] }
+  ]
+}'></textarea>
+
+  <h2>3. 가져오기 실행</h2>
+  <p class="muted">최초 가져오기(사용자 0명)는 인증 없이 부트스트랩으로 실행됩니다. 이미 사용자가 있으면
+    아래 관리자 계정으로 로그인 후 실행하세요(선택).</p>
+  <label>관리자 사용자명 (이미 사용자가 있을 때만 필요)</label>
+  <input id="au" placeholder="(선택) 관리자 이름">
+  <label>관리자 PIN</label>
+  <input id="ap" placeholder="(선택) 4자리" inputmode="numeric" maxlength="4">
+
+  <button id="go">가져오기 실행</button>
+  <button id="val" class="sec">JSON 형식만 검사</button>
+  <div id="log"></div>
+</div>
+
+<script src="../api.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const log = (m, cls) => { const d = $('log'); d.innerHTML += `<div class="${cls||''}">${m}</div>`; };
+  const clr = () => $('log').innerHTML = '';
+
+  $('file').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { $('dump').value = r.result; log('파일 로드됨: ' + f.name, 'ok'); };
+    r.readAsText(f);
+  });
+
+  function parseDump() {
+    let d; try { d = JSON.parse($('dump').value); }
+    catch (e) { log('❌ JSON 파싱 실패: ' + e.message, 'err'); return null; }
+    const nU = (d.users||[]).length, nC = (d.courses||[]).length;
+    log(`✓ JSON OK — 사용자 ${nU}명, 코스 ${nC}개, bench ${d.bench?'있음':'없음'}`, 'ok');
+    const noPin = (d.users||[]).filter(u => !/^\d{4}$/.test(u.pin||'')).map(u=>u.username);
+    if (noPin.length) log('⚠️ PIN 없는 사용자(가져온 뒤 관리자가 PIN 재설정 필요): ' + noPin.join(', '), 'err');
+    return d;
+  }
+
+  $('val').onclick = () => { clr(); parseDump(); };
+
+  $('go').onclick = async () => {
+    clr();
+    const url = $('url').value.trim(), key = $('key').value.trim();
+    if (!url || !key) { log('❌ URL 과 anon key 를 입력하세요', 'err'); return; }
+    const dump = parseDump(); if (!dump) return;
+
+    API.URL = url; API.ANON_KEY = key;
+    const au = $('au').value.trim(), ap = $('ap').value.trim();
+    if (au && ap) {
+      log('관리자 로그인 시도...');
+      const lr = await callAPI(() => API.login(au, ap));
+      if (!lr || !lr.ok) { log('❌ 로그인 실패: ' + (lr && lr.err || lr && lr.wrongPin && 'PIN 불일치' || '네트워크'), 'err'); return; }
+      API.setAuth(au, lr.token);
+      log('✓ 관리자 로그인 OK', 'ok');
+    } else {
+      log('인증 없이 부트스트랩으로 실행(사용자 0명일 때만 성공).', 'muted');
+    }
+
+    log('가져오는 중...');
+    const r = await callAPI(() => API.importDump(dump));
+    if (r && r.ok) {
+      log(`✅ 완료! 사용자 ${r.users}명, 코스 ${r.courses}개 가져옴.`, 'ok');
+      log('이제 index.html(api.js)에 같은 URL/key 를 넣고 앱을 사용하세요.', 'muted');
+    } else {
+      log('❌ 실패: ' + (r && r.err || '네트워크 오류'), 'err');
+    }
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+/**
+ * ogExportAll — 기존 온그린 Google Sheet 데이터를 dump.json 으로 내보냅니다.
+ *
+ * 사용법:
+ *  1) 기존 Apps Script 프로젝트(스프레드시트에 접근 가능한)에 이 코드를 새 .gs 파일로 붙여넣기.
+ *  2) 아래 CONFIG 의 시트명/열 이름을 "당신 시트"에 맞게 수정.
+ *  3) ogExportAll 함수를 실행 → 실행 로그에 Drive 다운로드 링크가 출력됩니다.
+ *  4) 받은 dump.json 을 tools/migrate.html 로 가져오기.
+ *
+ * ⚠️ 시트 구조(시트명/열 순서)는 프로젝트마다 다릅니다. 이 파일은 "일반적인 형태"를
+ *    가정한 템플릿입니다. 실제 시트에 맞게 CONFIG 와 매핑 부분을 조정하세요.
+ *    이미 백엔드(Apps_Script.gs)에 읽기 함수가 있다면 그걸 재사용해도 됩니다.
+ */
+
+// ────────────────────────────────────────────────────────────
+// CONFIG — 당신 시트에 맞게 수정하세요
+// ────────────────────────────────────────────────────────────
+var CONFIG = {
+  SHEET_ID: '',                 // '' 이면 이 스크립트에 연결된 스프레드시트 사용
+  USERS_SHEET:   'Users',       // 사용자 시트 이름
+  ROUNDS_SHEET:  'Rounds',      // 라운드 시트 이름
+  COURSES_SHEET: 'Courses',     // 코스 시트 이름
+  BENCH_PROP_KEY: 'BENCH',      // Script Properties 의 BENCH 키
+  // 라운드/코스가 한 셀에 JSON 문자열로 저장돼 있다면 true (가장 흔한 형태)
+  ROUNDS_AS_JSON:  true,        // Rounds 시트: [username, roundsJSON] 형태로 가정
+  COURSES_AS_JSON: true,        // Courses 시트: 각 행이 코스 JSON, 또는 [name, json]
+};
+
+function ogExportAll() {
+  var ss = CONFIG.SHEET_ID ? SpreadsheetApp.openById(CONFIG.SHEET_ID)
+                           : SpreadsheetApp.getActiveSpreadsheet();
+  var dump = { bench: readBench_(), courses: readCourses_(ss), users: readUsers_(ss) };
+
+  var json = JSON.stringify(dump, null, 2);
+  var file = DriveApp.createFile('ongreen_dump.json', json, MimeType.PLAIN_TEXT);
+  Logger.log('✅ 내보내기 완료');
+  Logger.log('사용자 %s명, 코스 %s개', dump.users.length, dump.courses.length);
+  Logger.log('다운로드: %s', file.getUrl());
+  return file.getUrl();
+}
+
+// ── BENCH (Script Properties) ──
+function readBench_() {
+  try {
+    var v = PropertiesService.getScriptProperties().getProperty(CONFIG.BENCH_PROP_KEY);
+    return v ? JSON.parse(v) : {};
+  } catch (e) { return {}; }
+}
+
+// ── 코스 ──
+function readCourses_(ss) {
+  var sh = ss.getSheetByName(CONFIG.COURSES_SHEET);
+  if (!sh) return [];
+  var rows = sh.getDataRange().getValues();
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {     // 1행은 헤더로 가정
+    var row = rows[i];
+    if (CONFIG.COURSES_AS_JSON) {
+      // 어느 칸이든 JSON 으로 파싱되는 첫 셀을 코스 객체로 사용
+      var obj = firstJson_(row);
+      if (obj && obj.name) out.push(obj);
+    } else {
+      // 열 매핑 예시: [id, name, addr, layoutsJSON] — 실제 시트에 맞게 조정
+      var layouts = tryJson_(row[3]) || [];
+      if (row[1]) out.push({ id: String(row[0] || ''), name: String(row[1]), addr: String(row[2] || ''), layouts: layouts });
+    }
+  }
+  return out;
+}
+
+// ── 사용자 + 라운드 ──
+function readUsers_(ss) {
+  var ush = ss.getSheetByName(CONFIG.USERS_SHEET);
+  if (!ush) return [];
+  var urows = ush.getDataRange().getValues();
+  // 라운드를 username 으로 묶기
+  var roundsByUser = readRoundsByUser_(ss);
+
+  var out = [];
+  for (var i = 1; i < urows.length; i++) {    // 1행은 헤더로 가정
+    var r = urows[i];
+    // 열 매핑 예시: [username, pinOrHash, isAdmin, createdAt] — 실제 시트에 맞게 조정
+    var username = String(r[0] || '').trim();
+    if (!username) continue;
+    var pinRaw = String(r[1] || '').trim();
+    var user = {
+      username: username,
+      is_admin: /^(1|true|y|관리자)$/i.test(String(r[2] || '')),
+      rounds: roundsByUser[username] || [],
+    };
+    // 시트에 평문 4자리 PIN 이 있으면 넣기. 해시면 생략(가져온 뒤 PIN 재설정).
+    if (/^\d{4}$/.test(pinRaw)) user.pin = pinRaw;
+    if (r[3]) user.created_at = String(r[3]);
+    out.push(user);
+  }
+  return out;
+}
+
+function readRoundsByUser_(ss) {
+  var sh = ss.getSheetByName(CONFIG.ROUNDS_SHEET);
+  var map = {};
+  if (!sh) return map;
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {     // 1행은 헤더로 가정
+    var row = rows[i];
+    var username = String(row[0] || '').trim();
+    if (!username) continue;
+    if (CONFIG.ROUNDS_AS_JSON) {
+      // [username, roundsJSON]  (전체 배열이 한 셀에 저장된 형태)
+      var arr = tryJson_(row[1]);
+      if (Array.isArray(arr)) map[username] = arr;
+    } else {
+      // 한 행 = 한 라운드인 형태라면 여기서 행→라운드 객체로 매핑하세요(시트에 맞게).
+      map[username] = map[username] || [];
+      var obj = firstJson_(row);
+      if (obj) map[username].push(obj);
+    }
+  }
+  return map;
+}
+
+// ── 유틸 ──
+function tryJson_(v) { try { return JSON.parse(v); } catch (e) { return null; } }
+function firstJson_(row) {
+  for (var j = 0; j < row.length; j++) {
+    if (typeof row[j] === 'string' && row[j].charAt(0) === '{') {
+      var o = tryJson_(row[j]); if (o) return o;
+    }
+  }
+  return null;
+}

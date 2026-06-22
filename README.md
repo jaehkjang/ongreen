@@ -2,9 +2,11 @@
 
 골프 스코어카드 모바일 웹앱 — 라운드 점수를 입력하고 통계를 보는 **모바일 우선(max-width 430px) 단일 페이지 앱(SPA)**입니다.
 
-- 버전: **v12 (2026.06.21)**
-- 빌드 도구·패키지 매니저·테스트 프레임워크 **없음** — 순수 정적 프런트엔드(HTML/CSS/JS) + Google Apps Script 백엔드
+- 버전: **v13 (2026.06.22)** — 백엔드를 Google Apps Script + Sheet → **Supabase(PostgreSQL)** 로 전환(속도 개선)
+- 빌드 도구·패키지 매니저·테스트 프레임워크 **없음** — 순수 정적 프런트엔드(HTML/CSS/JS) + Supabase 백엔드
 - 코드·주석·UI 모두 **한국어**
+
+> 🚀 **새로 설치/이전하기**: [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) · 기존 데이터 옮기기: [`docs/MIGRATION.md`](docs/MIGRATION.md)
 
 ---
 
@@ -19,7 +21,7 @@ python3 -m http.server 8000
 #    http://localhost:8000
 ```
 
-- 백엔드는 별도 배포된 **Google Apps Script 웹앱(`/exec` URL)** 과 통신합니다. 백엔드 URL은 `api.js`의 `API.URL`에 지정되어 있습니다.
+- 백엔드는 **Supabase(PostgreSQL + 자동 REST API)** 입니다. `api.js`의 `URL`/`ANON_KEY`에 프로젝트 정보를 넣으면 프런트가 DB의 RPC 함수(`supabase/schema.sql`)를 직접 호출합니다. 설정은 [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) 참고.
 - 인증: **사용자명 + 4자리 PIN → 토큰**. PIN은 저장하지 않고 토큰만 `localStorage`(`og_s` 키)에 보관합니다.
 
 ---
@@ -31,7 +33,7 @@ python3 -m http.server 8000
 | 파일 | 별명 | 역할 |
 |------|------|------|
 | `index.html` | 뼈대 | 6개 페이지(`pg-login`·`pg-home`·`pg-course`·`pg-sc`·`pg-stat`·`pg-set`)의 정적 마크업과 인라인 SVG 아이콘. `api.js` → `app.js` 순서로 로드 |
-| `api.js` | 통신 방 (우체부) | 서버와 주고받는 **모든** 코드. 전역 `API` 객체가 모든 엔드포인트를 노출하고, `_get`/`_post`가 인증 정보(`u`, `token`)를 자동으로 붙임 |
+| `api.js` | 통신 방 (우체부) | 서버와 주고받는 **모든** 코드. 전역 `API` 객체가 모든 엔드포인트를 Supabase RPC 호출로 노출하고, `_auth`가 인증 정보(`u`, `token`)를 자동으로 붙임 |
 | `app.js` | 두뇌 방 | 로그인 판단·점수 계산·통계·화면 전환 등 모든 로직과 `render*()` 기반 UI 렌더링 |
 | `style.css` | 모양 | 다크 테마, iOS 스타일. CSS 변수는 `:root`에 정의 |
 
@@ -66,18 +68,18 @@ graph TD
         APP <--> LS
     end
 
-    GAS["☁️ Google Apps Script<br/>웹앱 /exec (백엔드)"]
-    SHEET[("📊 스프레드시트<br/>라운드·코스·사용자")]
-    PROPS[("⚙️ Script Properties<br/>BENCH 기준값")]
+    RPC["☁️ Supabase RPC<br/>/rest/v1/rpc/og_* (SECURITY DEFINER)"]
+    DB[("🐘 PostgreSQL<br/>og_users·og_rounds·og_courses")]
+    SET[("⚙️ og_settings<br/>BENCH 기준값")]
 
-    API -- "_get / _post (u, token)" --> GAS
-    GAS --> SHEET
-    GAS --> PROPS
+    API -- "_rpc / _auth (apikey, u, token)" --> RPC
+    RPC --> DB
+    RPC --> SET
 
     classDef front fill:#1f6f43,stroke:#0d3,color:#fff
     classDef back fill:#33415c,stroke:#5b7,color:#fff
     class HTML,APP,API,CSS,STATE,LS front
-    class GAS,SHEET,PROPS back
+    class RPC,DB,SET back
 ```
 
 ### 2. 앱 시작 ~ 로그인 흐름
@@ -109,7 +111,7 @@ sequenceDiagram
     participant APP as app.js (두뇌)
     participant A as 전역 상태 A
     participant API as api.js (우체부)
-    participant GAS as Apps Script
+    participant DB as Supabase RPC
 
     U->>APP: 새 라운드 + 코스 선택
     APP->>A: A.sc 초기화 (홀별 18칸 배열)
@@ -120,8 +122,8 @@ sequenceDiagram
     end
     U->>APP: 저장
     APP->>API: callAPI(() => API.saveRounds(...))
-    API->>GAS: _post (u, token, rounds)
-    GAS-->>API: { ok: true }
+    API->>DB: og_save_rounds (u, token, rounds)
+    DB-->>API: { ok: true }
     API-->>APP: 결과
     APP->>A: A.rounds 갱신
     APP->>APP: renderStat() — 서버 호출 없이<br/>클라이언트에서 통계 계산
@@ -170,6 +172,7 @@ stateDiagram-v2
 
 ## 주의사항
 
-- **버전 일치**: `api.js`의 `API.VERSION`은 백엔드 `Apps_Script.gs`의 `VERSION`과 **반드시 동일**해야 합니다. 불일치 시 VER 에러 / 경고 배너가 뜹니다.
-- **권한 체크는 서버에서**: 관리자 전용 동작은 클라이언트가 아니라 서버(`isAdm`)에서 검증됩니다. 프런트의 표시 숨김은 편의일 뿐입니다.
-- 백엔드(`Apps_Script.gs`)는 이 저장소에 없으며 Apps Script 편집기에서 따로 관리·배포합니다. 수정 후 **[배포 관리] → [새 버전]** 배포가 필요합니다(URL은 안 바뀜).
+- **버전 일치**: `api.js`의 `API.VERSION`은 백엔드 `supabase/schema.sql`의 `og_version()` 반환값과 **반드시 동일**해야 합니다. 불일치 시 경고 배너가 뜹니다.
+- **권한 체크는 서버에서**: 관리자 전용 동작은 클라이언트가 아니라 서버(RPC 함수의 `is_admin` 검증)에서 확인합니다. 프런트의 표시 숨김은 편의일 뿐입니다.
+- **보안 모델**: 모든 테이블은 RLS 켜짐 + 정책 없음 → anon 키로 테이블 직접 접근 불가. 데이터 접근은 `SECURITY DEFINER` RPC 함수로만 이뤄지고, 그 안에서 토큰/권한을 검증합니다.
+- 백엔드를 고치려면 `supabase/schema.sql` 을 수정하고 Supabase SQL Editor 에서 다시 실행합니다(`create or replace` 라 안전).
