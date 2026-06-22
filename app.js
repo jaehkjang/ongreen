@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.6.1';
+const APP_VERSION = 'v12.6.2';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -836,6 +836,7 @@ function renderStat(m) {
       ${statCard(girPuttAvg == null ? '-' : girPuttAvg.toFixed(2), '', 'GIR홀 퍼팅')}
       ${statCard((threeP / n).toFixed(1), '', '3퍼팅/라운드')}
       ${statCard(scrRate == null ? '-' : scrRate.toFixed(0), scrRate == null ? '' : '%', '스크램블링')}</div>
+    <div style="font-size:10px;color:var(--t3);margin-top:8px">💡 <b>스크램블링</b> — 그린을 놓친 홀에서 파 이하로 막아낸 비율. 높을수록 위기관리·쇼트게임이 좋아요(높을수록 좋음).</div>
 
     <div class="lbl">전반 / 후반</div><div class="sgd">
       ${statCard(f9a == null ? '-' : f9a.toFixed(1), '', '전반(1-9)')}
