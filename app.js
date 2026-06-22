@@ -4,6 +4,12 @@
 // 통신은 api.js(API), 모양은 style.css.
 // ============================================================
 
+// ── 앱(프런트엔드) 버전 ──
+// 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
+// ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
+//    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
+const APP_VERSION = 'v12.1.0';
+
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
   { id: 'd1', name: '블루원 CC', addr: '경북 경주', status: 'official', layouts: [{ name: '레이크', holes: [4,3,4,5,3,4,5,4,3] }, { name: '파인', holes: [4,5,3,4,4,5,3,4,4] }] },
@@ -817,7 +823,8 @@ async function admDelUser(u) {
 // ════════════════════════════════════════
 async function checkVersion() {
   const r = await callAPI(() => API.ping());
-  const tag = Q('ver-tag'); if (tag) tag.textContent = '앱 ' + API.VERSION + (r && r.version ? ' / 서버 ' + r.version : ' / 서버 응답 없음');
+  const lf = Q('login-ver'); if (lf) lf.textContent = APP_VERSION;
+  const tag = Q('ver-tag'); if (tag) tag.textContent = APP_VERSION + ' · 통신 ' + API.VERSION + (r && r.version ? ' / 서버 ' + r.version : ' / 서버 응답 없음');
   if (r && r.version && r.version !== API.VERSION) {
     const b = Q('ver-banner');
     if (b) { b.textContent = `⚠️ 버전이 안 맞아요 (앱 ${API.VERSION} / 서버 ${r.version}). 새로고침 또는 재배포가 필요해요`; b.classList.add('on'); }
