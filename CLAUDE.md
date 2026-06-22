@@ -43,3 +43,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **권한 체크는 서버에서**: 관리자 전용 동작은 클라이언트가 아니라 서버(`isAdm`)에서 검증됩니다. 프런트의 표시 숨김은 편의일 뿐입니다.
 - 인증은 사용자명 + 4자리 PIN → 토큰 방식. PIN은 저장하지 않고 토큰만 보관합니다.
 - 백엔드 수정 후에는 Apps Script에서 [배포 관리] → [새 버전] 배포가 필요합니다(URL은 안 바뀜).
+- **작업 제출 규칙**: 모든 변경은 `main`에 직접 커밋하지 말고, **반드시 새 브랜치를 만들어 Pull Request(PR)로 제출**합니다.
