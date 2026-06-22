@@ -71,7 +71,10 @@
   <div class="top">
     <button class="back" onclick="scBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
     <div class="sc-mid"><div class="t-ttl" id="sc-t" style="font-size:17px"></div><div style="font-size:11px;color:var(--t2)" id="sc-s"></div></div>
-    <button class="sv" id="sv" onclick="saveRound()">저장</button>
+    <div class="t-acts">
+      <button class="ic-btn" onclick="shareSC()" title="스코어카드 공유" style="width:44px;font-size:19px">📤</button>
+      <button class="sv" id="sv" onclick="saveRound()">저장</button>
+    </div>
   </div>
   <div style="padding:8px 14px 0;background:var(--bg2);border-bottom:.5px solid var(--bd);flex-shrink:0;display:flex;align-items:center;gap:8px">
     <div class="seg" id="sc-seg" style="flex:1"></div>
@@ -90,7 +93,7 @@
 
 <!-- 통계 -->
 <div class="page" id="pg-stat">
-  <div class="top"><div class="t-col"><div class="t-ttl">통계</div><div class="t-sub" id="st-user"></div></div></div>
+  <div class="top"><div class="t-col"><div class="t-ttl">통계</div><div class="t-sub" id="st-user"></div></div><div class="t-acts"><button class="ic-btn" onclick="shareStat()" title="분석 공유" style="font-size:20px">📤</button></div></div>
   <div class="body" id="st-body"></div>
   <div class="tab">
     <button class="tb" onclick="goHome()"><svg viewBox="0 0 24 24" fill="none"><path class="tbi" d="M4 6h16M4 12h16M4 18h16" stroke-width="2.2" stroke-linecap="round"/></svg><span>라운드</span></button>
