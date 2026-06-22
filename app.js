@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.5.0';
+const APP_VERSION = 'v12.6.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -29,6 +29,20 @@ let A = {
 
 // ── 분석 기준값(신호등) · 관리자가 설정에서 수정 → 서버 공유. 서버 없으면 이 기본값 ──
 let BENCH = { survGood: 70, survOk: 60, tpDemote: 3, puttGood: 32, puttBad: 36, girGood: 50, girBad: 28 };
+
+// ── 📢 공지 게시판 (읽기 전용) ──
+// 사용자는 읽기만 합니다. 새 글(id가 마지막으로 본 id보다 큼)이 있으면 홈의 📢 배지에 알림이 뜹니다.
+// 사용 설명서·통계 설명은 body 를 "함수"로 두어 → 기능/기준값이 바뀌면 본문이 자동으로 갱신됩니다.
+//   · id 가 클수록 최신(맨 위). 글 본문만 자동 갱신될 때는 id 를 그대로 두어 불필요한 알림을 막습니다.
+//   · 진짜 새 공지를 추가할 때만 id 를 올리세요(그래야 사용자에게 NEW 알림이 뜸).
+const NOTICE_GUIDE_ID = 3;   // 첫 로그인 팝업으로 띄울 "사용 설명서" 글 id
+const NOTICES = [
+  { id: 3, date: '2026.06.22', cat: '설명서', pin: true, title: '📖 사용 설명서 — 스코어카드 작성', body: guideScorecardHTML },
+  { id: 2, date: '2026.06.22', cat: '설명서', pin: true, title: '📊 통계 분석 — 지표 설명', body: guideStatsHTML },
+  { id: 1, date: '2026.06.22', cat: '공지', title: '🎉 온그린에 오신 걸 환영합니다', body:
+    `<p style="line-height:1.6">라운드 점수를 기록하면 통계로 실력을 진단해주는 앱이에요.</p>
+     <p style="margin-top:8px;line-height:1.6">여기 게시판의 <b>사용 설명서</b>·<b>통계 지표 설명</b>은 늘 최신으로 유지돼요(읽기 전용). 새 공지는 홈 📢 아이콘 알림으로 알려드려요.</p>` },
+];
 function nf(x) { return Number.isInteger(+x) ? String(+x) : (+x).toFixed(1); }
 let _sid = 0, _delId = null, _editOldName = '';
 
@@ -113,6 +127,7 @@ async function loadAll(silent) {
     setUserLabels();
     renderHome(); showPg('home'); goHome(); hide();
     if (!silent) toast('오프라인 상태예요 — 저장된 기록을 표시합니다');
+    maybeShowGuidePopup();   // 첫 로그인이면 사용 설명서 팝업(한 번만)
     return;
   }
 
@@ -127,6 +142,7 @@ async function loadAll(silent) {
   renderHome(); showPg('home');
   goHome();
   hide();
+  maybeShowGuidePopup();   // 첫 로그인이면 사용 설명서 팝업(한 번만)
 }
 function setUserLabels() {
   Q('h-user').textContent = '👤 ' + A.u;
@@ -225,6 +241,7 @@ function renderHome() {
     </div>`;
   });
   el.innerHTML = h;
+  updateNoticeBadge();   // 📢 새 공지 알림 배지 갱신
 }
 
 // ════════════════════════════════════════
@@ -921,6 +938,121 @@ async function admDelUser(u) {
   if (!confirm(`"${u}" 님을 삭제할까요? 라운드 기록도 함께 삭제됩니다.`)) return;
   const r = await callAPI(() => API.deleteUser(u));
   if (r.ok) { toast('✅ 삭제 완료'); admLoadUsers(); } else toast('❌ 실패');
+}
+
+// ════════════════════════════════════════
+// 📢 공지 게시판 (읽기 전용 · 새 글 알림)
+// ════════════════════════════════════════
+function latestNoticeId() { return NOTICES.reduce((m, n) => Math.max(m, n.id), 0); }
+function noticeSeenId() { return parseInt(localStorage.getItem('og_notice_seen') || '0', 10) || 0; }
+function unreadNoticeCount() { const s = noticeSeenId(); return NOTICES.filter(n => n.id > s).length; }
+function updateNoticeBadge() {
+  const b = Q('nb'); if (!b) return;
+  const c = unreadNoticeCount();
+  b.textContent = c > 9 ? '9+' : c; b.style.display = c ? 'flex' : 'none';
+}
+function markNoticesSeen() { localStorage.setItem('og_notice_seen', String(latestNoticeId())); updateNoticeBadge(); }
+function noticeBodyHTML(n) { return typeof n.body === 'function' ? n.body() : n.body; }
+
+function goNotice() { showPg('notice'); renderNotices(); }
+function renderNotices() {
+  const seen = noticeSeenId();                 // 표시는 "보기 전" 기준으로 NEW 판정
+  const el = Q('notice-body'); if (!el) return;
+  const chip = c => {
+    const co = c === '설명서' ? 'var(--b)' : 'var(--a)';
+    return `<span style="flex-shrink:0;font-size:11px;font-weight:700;color:${co};border:1px solid ${co};border-radius:8px;padding:2px 8px">${c}</span>`;
+  };
+  let h = `<div class="lbl">📢 공지 게시판</div>
+    <p style="font-size:12px;color:var(--t3);margin:-2px 2px 12px;line-height:1.6">읽기 전용입니다. 📌 표시 글은 기능이 바뀌면 늘 최신으로 자동 갱신돼요.</p>`;
+  NOTICES.forEach(n => {
+    const isNew = n.id > seen;
+    h += `<div class="rc" onclick="openNotice(${n.id})">
+      <div style="display:flex;align-items:center;gap:8px">
+        ${chip(n.cat)}
+        <span class="rc-name" style="flex:1;min-width:0;font-size:15px">${n.title}</span>
+        ${isNew ? `<span style="flex-shrink:0;background:var(--r);color:#fff;font-size:10px;font-weight:800;padding:2px 7px;border-radius:8px">NEW</span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--t3);margin-top:6px">${n.date}${n.pin ? ' · 📌 항상 최신' : ''}</div>
+    </div>`;
+  });
+  el.innerHTML = h;
+  markNoticesSeen();                           // 목록을 열었으니 모두 읽음 처리 → 배지 제거
+}
+function openNotice(id) {
+  const n = NOTICES.find(x => x.id === id); if (!n) return;
+  Q('notice-t').textContent = n.title;
+  Q('notice-read').innerHTML = noticeBodyHTML(n);
+  om('m-notice');
+}
+// 첫 로그인(이 기기에서 처음)일 때만 사용 설명서를 팝업으로 띄움. 한 번 닫으면 다시 안 뜸.
+function maybeShowGuidePopup() {
+  if (localStorage.getItem('og_guide_seen')) return;
+  localStorage.setItem('og_guide_seen', '1');   // 한 번 띄우면 끝(닫는 방식 무관)
+  openNotice(NOTICE_GUIDE_ID);
+}
+
+// ── 사용 설명서 본문(자동 생성) : 스코어카드 작성 위주 ──
+// 기능이 바뀌면 이 함수만 손보면 게시판 글이 자동으로 갱신됩니다(별도 글 수정 불필요).
+function guideScorecardHTML() {
+  const courseCnt = (A.official || []).length;
+  const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
+  const btn = (b, t) => `<div style="display:flex;gap:8px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;display:inline-block;min-width:30px;text-align:center;background:var(--bg3);border:1px solid var(--bd);border-radius:8px;padding:2px 7px;font-size:12px;font-weight:700;color:var(--t)">${b}</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
+  return `
+  <p style="color:var(--t2);font-size:13px;line-height:1.6">홀별로 점수를 넣으면 통계·진단이 자동 계산돼요.</p>
+
+  ${S('① 라운드 만들기')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">홈 <b style="color:var(--t)">[＋ 추가]</b> → 날짜·날씨·동반자·메모 → <b style="color:var(--t)">[골프장 선택]</b>.</div>
+
+  ${S('② 골프장 고르기')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6"><b style="color:var(--a)">리스트는 아직 채우는 중</b>(현재 ${courseCnt}곳)이라, 없으면 <b style="color:var(--t)">[＋ 추가]</b>로 직접 등록해 바로 쓰면 돼요. 등록한 곳은 목록에 남습니다.</div>
+
+  ${S('③ 홀 파(par) 확인')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">같은 골프장도 도는 코스 조합에 따라 파가 달라요. 뜨는 창에서 ＋/－로 그날 파를 맞추세요(<b style="color:var(--g)">이 라운드에만</b> 적용, 공식 데이터는 안 바뀜). 작성 중에도 상단 <b>⛳ 파수정</b>으로 가능.</div>
+
+  ${S('④ 버튼 의미')}
+  ${btn('－ ＋', '타수 −1/＋1. 가운데 <b>숫자(P)</b> 탭 = 파로 바로 입력.')}
+  ${btn('GIR', '정규타수(파−2) 안에 그린 올렸으면 ON. (아이언 지표)')}
+  ${btn('FIR', '티샷이 페어웨이면 ON. 파4·5만, <b>파3은 자동 비활성(·)</b>.')}
+  ${btn('🍩', '퍼팅 수. 탭마다 1→2→3→4 순환.')}
+  ${btn('M／TP', '티샷 사고. 끄기→<b>M</b>(멀리건·벌타X)→<b>TP</b>(벌타 받고 진행)→끄기. 드라이버 생존율 진단에 쓰여요.')}
+
+  ${S('⑤ 저장')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">위 세그먼트로 전·후반 전환, 아래 바에 합계가 실시간 집계. 다 채우면 <b style="color:var(--g)">✓ 완료</b>로 저장. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
+
+  <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준 · 기능이 바뀌면 자동 갱신.</div>`;
+}
+
+// ── 통계 분석 지표 설명(자동 생성) : 각 지표가 무엇을 뜻하는지 ──
+// 신호등 기준값(BENCH)을 그대로 끌어와 기준이 바뀌면 설명도 함께 갱신됩니다.
+function guideStatsHTML() {
+  const b = BENCH;
+  const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
+  const it = (name, desc) => `<div style="margin:6px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.5">${desc}</div></div>`;
+  return `
+  <p style="color:var(--t2);font-size:13px;line-height:1.6"><b>통계</b> 탭에서 자동 계산되는 지표들의 뜻이에요.</p>
+
+  ${S('🚦 진단 신호등')}
+  <div style="font-size:12px;color:var(--t2);line-height:1.5;margin-bottom:3px"><b style="color:var(--g)">🟢좋음</b>·<b style="color:var(--a)">🟡양호</b>·<b style="color:var(--r)">🔴부족</b> 3단계(기준은 설정에서 조정).</div>
+  ${it('🚗 드라이버 생존율', `(파4·5홀 − M·TP홀) ÷ 파4·5홀 = 티샷에서 공 안 잃은 비율. 🟢${b.survGood}↑·🟡${b.survOk}↑(%). OB/해저드 ${b.tpDemote}홀↑이면 강등.`)}
+  ${it('🎯 아이언 GIR', `정규타수(파−2) 안에 그린 올린 비율. 🟢${b.girGood}↑·🟡${b.girBad}↑(%).`)}
+  ${it('🍩 퍼팅', `라운드 총 퍼팅(적을수록 좋음). 🟢${b.puttGood}↓·🟡${b.puttBad}↓(개).`)}
+
+  ${S('스코어')}
+  ${it('평균 스코어·오버파', '총타수 평균과 파 대비(+오버/−언더).')}
+  ${it('베스트 · 최근5R 폼 · 기복', '최저타 / 최근5R과 전체 평균 차(▼좋아짐·▲나빠짐) / 점수 편차(작을수록 일정).')}
+  ${it('파 종류별', '파3·4·5에서 파 대비 평균 — 약한 홀 유형.')}
+  ${it('전·후반', '앞뒤 9홀 평균과 차이(후반 무너짐 확인).')}
+
+  ${S('정확도 · 쇼트게임')}
+  ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
+  ${it('GIR홀 퍼팅 · 3퍼팅', '그린 정규로 올린 홀의 퍼팅(순수 퍼팅력) / 라운드당 3퍼팅 수.')}
+  ${it('스크램블링', '그린 놓친 홀을 파 이하로 막은 비율.')}
+
+  ${S('그래프')}
+  ${it('스코어 추이 · 타수 분포 · 코스별', '최근 막대(내 평균 대비 색) / 이글↑·버디·파·보기·더블+ 개수 / 골프장별 평균.')}
+
+  <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.5">※ <b>라운드별</b> 탭은 각 라운드를 내 평균과 비교해 🟢🟡🔴로 표시(3R↑).</div>
+  <div style="margin-top:12px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준 · 지표가 바뀌면 자동 갱신.</div>`;
 }
 
 // ════════════════════════════════════════
