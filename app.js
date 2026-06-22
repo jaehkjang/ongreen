@@ -8,8 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.2.4';
-const APP_VERSION = 'v12.4.0';
+const APP_VERSION = 'v12.5.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -156,6 +155,15 @@ async function refreshNotes() {
 function goHome() { showPg('home'); renderHome(); document.querySelector('.tab .tb:first-child')?.classList.add('on'); document.querySelector('.tab .tb:last-child')?.classList.remove('on'); }
 function goStat() { showPg('stat'); renderStat(0); document.querySelector('.tab .tb:last-child')?.classList.add('on'); document.querySelector('.tab .tb:first-child')?.classList.remove('on'); }
 function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); }
+// 홈 상단 노란 알림 배너 → 설정의 관리자 "골프장 변경 알림" 메뉴로 바로 이동.
+// 알림 목록(누가·어느 코스·어느 구성을 어떻게 고쳤는지)을 자동으로 펼치고 그 위치로 스크롤한다.
+async function goAdmNotes() {
+  goSet();
+  if (!A.isAdm) return;
+  await admLoadNotes();                                  // 변경 내역 자동 로드 (상세 포함)
+  const el = Q('adm-notes');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 
 // ── 설정 → 📊 분석 기준 : 모두 설명 보기 / 관리자만 수정 ──
 function renderBenchSettings() {
@@ -196,10 +204,10 @@ async function saveBench() {
 function renderHome() {
   const el = Q('h-body'); let h = '';
   if (A.isAdm && A.notes.length) {
-    h += `<div class="adm-bnr" onclick="goSet()" style="display:flex">
+    h += `<div class="adm-bnr" onclick="goAdmNotes()" style="display:flex">
       <span style="font-size:22px">🔔</span><div style="flex:1">
         <div style="font-size:14px;font-weight:700;color:var(--a)">골프장 변경 알림</div>
-        <div style="font-size:12px;color:var(--t2)">${A.notes.length}건 — 설정 ▶ 관리자 패널</div>
+        <div style="font-size:12px;color:var(--t2)">${A.notes.length}건 — 눌러서 수정 내역 보기</div>
       </div><span style="color:var(--a)">→</span></div>`;
   }
   const rounds = A.rounds;
@@ -571,14 +579,19 @@ async function applyEditHoles() {
   cm('m-edh'); renderSC(); toast('✅ 이 라운드의 홀 파가 수정됐어요');
 
   // 마스터와 다르면 관리자에게 알림 (관리자 본인이 고친 건 제외)
+  // detail 에 "어느 코스 · 어느 구성(레이아웃 조합) · 몇 번 홀이 어떻게" 까지 담아
+  // 관리자가 알림만 보고도 무엇이 바뀌었는지 바로 알 수 있게 한다.
   if (!A.isAdm) {
     const mp = masterParsFor(A.sc.course);
     if (mp) {
+      const c = A.sc.course;
+      const lname = i => (i < 9 ? c.layouts[0].name : c.layouts[1].name);   // 홀이 속한 레이아웃 이름
       const diff = [];
-      newPars.forEach((p, i) => { if (p !== mp[i]) diff.push(`${i + 1}번 P${mp[i]}→P${p}`); });
+      newPars.forEach((p, i) => { if (p !== mp[i]) diff.push(`${lname(i)} ${(i % 9) + 1}번 P${mp[i]}→P${p}`); });
       if (diff.length) {
-        const detail = `${A.sc.course.name}: ${diff.slice(0, 4).join(', ')}${diff.length > 4 ? ' 외' : ''}`;
-        callAPI(() => API.reportParChange(A.sc.course.name, detail));
+        const combo = `${c.layouts[0].name}+${c.layouts[1].name}`;          // 어느 구성(코스 조합)
+        const detail = `${c.name} (${combo}) · ${diff.slice(0, 4).join(', ')}${diff.length > 4 ? ` 외 ${diff.length - 4}곳` : ''}`;
+        callAPI(() => API.reportParChange(c.name, detail));
       }
     }
   }
