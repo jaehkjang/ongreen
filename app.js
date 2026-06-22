@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.6.2';
+const APP_VERSION = 'v12.7.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -45,6 +45,7 @@ const NOTICES = [
 ];
 function nf(x) { return Number.isInteger(+x) ? String(+x) : (+x).toFixed(1); }
 let _sid = 0, _delId = null, _editOldName = '';
+let _trendMetric = 0;   // 발전 추세 그래프에서 보고 있는 지표(0 스코어·1 퍼팅·2 GIR·3 FIR)
 
 // ── 작은 도우미 ──
 const Q = id => document.getElementById(id);
@@ -233,7 +234,7 @@ function renderHome() {
     const draft = r.isDraft;
     h += `<div class="rc" onclick="${draft ? `resumeDraft(${r.id})` : `openDet(${r.id})`}">
       <div class="rc-top"><div style="flex:1;min-width:0">
-        <div class="rc-name">${r.courseName || '?'} <span style="font-size:12px;color:var(--t3)">${r.courseLbl || ''}</span></div>
+        <div class="rc-name">${r.courseName || '?'} <span style="font-size:12px;color:var(--t3)">${r.courseLbl || ''}</span> ${trophyBadges(r)}</div>
         <div class="rc-sub">${r.date || ''} · ${r.weather || ''}${r.partner ? ' · ' + r.partner : ''}${r.memo ? ' · ' + r.memo : ''}</div>
       </div>${draft ? `<span style="background:#3a2a0a;color:var(--a);font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;flex-shrink:0">✏️ 작성중</span>` : `<div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div>`}</div>
       ${draft ? `<div style="margin-top:10px;padding:8px 12px;background:#2a2a0a;border-radius:8px;font-size:12px;color:var(--a)">탭해서 이어서 입력 →</div>` :
@@ -301,7 +302,9 @@ function openDet(id) {
   const AV = playerAvgs();
   const cP = sig(r.putts, AV.putts, true, 2, AV.n), cG = sig(r.gir, AV.gir, false, 10, AV.n), cF = sig(r.fir, AV.fir, false, 10, AV.n);
   Q('det-t').textContent = `${r.courseName} ${r.date}`;
+  const trs = roundTrophies(r);
   Q('det-body').innerHTML = `
+    ${trs.length ? `<div style="text-align:center;margin-bottom:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${trs.map(x => `<span style="background:var(--bg3);border:.5px solid var(--bd);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--t)">${x.i} ${x.l}</span>`).join('')}</div>` : ''}
     <div class="sgd" style="margin-bottom:12px">
       <div class="sc"><span class="sn">${r.score}</span><span class="sl">총 스코어</span></div>
       <div class="sc"><span class="sn" style="color:${r.vs > 0 ? 'var(--r)' : 'var(--g)'}">${vsL(r.vs)}</span><span class="sl">파 대비</span></div>
@@ -756,6 +759,191 @@ function analysisHTML(a) {
     <div class="dgi-m">${s.msg}</div>${s.note ? `<div class="dgi-n">ℹ️ ${s.note}</div>` : ''}</div>`).join('');
   return `${cards}<div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.5">※ ${a.n}개 라운드 기준 · 파3의 M·TP는 드라이버에서 빠지고 GIR(아이언)에 반영 · 기준값은 설정 → 분석 기준에서 조정</div>`;
 }
+// ════════════════════════════════════════
+// 발전 분석 (시간축 · "과거의 나와 비교")
+// ════════════════════════════════════════
+// 시간순(오름차순) 라운드 — 추세/발전용. date 우선, 없으면 id(생성시각)
+function roundsChrono() {
+  return A.rounds.filter(r => !r.isDraft).slice().sort((a, b) => {
+    const da = a.date || '', db = b.date || '';
+    if (da && db && da !== db) return da < db ? -1 : 1;
+    return (a.id || 0) - (b.id || 0);
+  });
+}
+// 단순 선형회귀 기울기(라운드당 변화량)
+function regSlope(ys) {
+  const n = ys.length; if (n < 2) return 0;
+  let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  ys.forEach((y, x) => { sx += x; sy += y; sxy += x * y; sxx += x * x; });
+  const den = n * sxx - sx * sx; return den ? (n * sxy - sx * sy) / den : 0;
+}
+// 추정 핸디(베스트 기반 간이) — 최근 20R 오버파 중 좋은 N개 평균. 코스 난이도(슬로프) 미반영.
+function estHandicap(rsChrono) {
+  const last = rsChrono.slice(-20).map(r => r.vs).filter(v => typeof v === 'number').sort((a, b) => a - b);
+  const n = last.length; if (!n) return null;
+  const cnt = n >= 20 ? 8 : n >= 19 ? 7 : n >= 17 ? 6 : n >= 15 ? 5 : n >= 12 ? 4 : n >= 9 ? 3 : n >= 6 ? 2 : 1;
+  const best = last.slice(0, cnt);
+  return best.reduce((a, b) => a + b, 0) / best.length;
+}
+
+// ── 발전 추세: 지표 선택 그래프(이동평균) + 추세 판정 + 구간 비교 ──
+const TREND_METRICS = [
+  { k: 'score', lbl: '스코어', low: true,  u: '' },
+  { k: 'putts', lbl: '퍼팅',   low: true,  u: '' },
+  { k: 'gir',   lbl: 'GIR',    low: false, u: '%' },
+  { k: 'fir',   lbl: 'FIR',    low: false, u: '%' },
+];
+function setTrend(k) { _trendMetric = k; const w = Q('trend-wrap'); if (w) w.innerHTML = trendWrapHTML(); }
+function trendWrapHTML() {
+  const rs = roundsChrono(); const M = TREND_METRICS[_trendMetric] || TREND_METRICS[0];
+  const toggle = `<div class="seg" style="margin-bottom:10px">${TREND_METRICS.map((m, i) => `<button class="sg ${i === _trendMetric ? 'on' : ''}" onclick="setTrend(${i})">${m.lbl}</button>`).join('')}</div>`;
+  const vals = rs.map(r => +(r[M.k] || 0));
+  if (vals.length < 2) return toggle + `<div class="cb" style="text-align:center;color:var(--t3);font-size:12px;padding:20px">라운드가 2개 이상이면 추세가 표시됩니다</div>`;
+  const fmt = v => (M.k === 'gir' || M.k === 'fir') ? Math.round(v) + '%' : v.toFixed(1);
+  const slope = regSlope(vals);
+  const improving = M.low ? slope < -0.05 : slope > 0.05;
+  const worsening = M.low ? slope > 0.05 : slope < -0.05;
+  const vc = improving ? 'var(--g)' : worsening ? 'var(--r)' : 'var(--a)';
+  const vTxt = improving ? '개선 중 📈' : worsening ? '주의 필요' : '정체';
+  const perR = (slope >= 0 ? '+' : '') + slope.toFixed(2) + (M.u || '');
+  const seg = Math.max(1, Math.min(5, Math.round(rs.length / 3)));
+  const early = vals.slice(0, seg), recent = vals.slice(-seg);
+  const ea = early.reduce((a, b) => a + b, 0) / early.length, ra = recent.reduce((a, b) => a + b, 0) / recent.length;
+  const dd = ra - ea, ddGood = M.low ? dd < -0.05 : dd > 0.05;
+  const ddTxt = (M.k === 'gir' || M.k === 'fir') ? (dd >= 0 ? '+' : '') + Math.round(dd) + '%' : (dd >= 0 ? '+' : '') + dd.toFixed(1);
+  const cmp = `<div class="sgd" style="margin-top:12px">
+    ${statCard(fmt(ea), '', '초기 ' + seg + 'R')}
+    ${statCard(fmt(ra), '', '최근 ' + seg + 'R')}
+    <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${ddGood ? 'var(--g)' : Math.abs(dd) < 0.05 ? 'var(--t)' : 'var(--r)'}">${ddTxt}</span><span class="sl">초기 → 최근 변화 ${ddGood ? '(좋아짐 🎉)' : Math.abs(dd) < 0.05 ? '' : '(나빠짐)'}</span></div></div>`;
+  return toggle + trendChartSVG(vals, M, vc) +
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:0 2px">
+      <span style="font-size:12px;color:var(--t2)">추세: 라운드당 <b style="color:${vc}">${perR}</b></span>
+      <span style="font-size:13px;font-weight:700;color:${vc}">${vTxt}</span></div>` + cmp;
+}
+function trendChartSVG(vals, M, lc) {
+  const W = 300, H = 116, pl = 6, pr = 6, pt = 12, pb = 10;
+  const n = vals.length;
+  const mn = Math.min(...vals), mx = Math.max(...vals), rng = (mx - mn) || 1;
+  const X = i => pl + (n === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (n - 1));
+  const Y = v => pt + (1 - (v - mn) / rng) * (H - pt - pb);
+  const ma = vals.map((_, i) => { const s = Math.max(0, i - 4); const a = vals.slice(s, i + 1); return a.reduce((x, y) => x + y, 0) / a.length; });
+  const ptsRaw = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const ptsMa = ma.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const dots = vals.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2" fill="var(--t3)" vector-effect="non-scaling-stroke"/>`).join('');
+  const u = M.u || '';
+  return `<div class="cb" style="padding:12px 12px 8px">
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:120px;display:block">
+      <polyline points="${ptsRaw}" fill="none" stroke="var(--bd)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+      ${dots}
+      <polyline points="${ptsMa}" fill="none" stroke="${lc}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:4px">
+      <span>최저 ${mn}${u}</span><span style="color:${lc}">━ 5R 이동평균 (${n}R)</span><span>최고 ${mx}${u}</span></div></div>`;
+}
+
+// ── 약점 우선순위(간이 스트로크게인): 영역별 손실 타수 추정 → 고칠 순서 ──
+function weaknessHTML(a, rounds) {
+  if (!a.n) return '';
+  const n = a.n;
+  let missed = 0, saved = 0;          // 그린 미스 홀 / 그중 파 이하로 막은 홀
+  rounds.forEach(r => { const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || []; sc.forEach((s, i) => { if (!(s > 0)) return; if (!gi[i]) { missed++; if (s <= (hp[i] || 4)) saved++; } }); });
+  const scrRate = missed ? saved / missed : 1;
+  const items = [
+    { area: '🚗 드라이버', lost: a.teeLostPer * 1.0, tip: 'OB·해저드 줄이기 (티샷 안정)' },
+    { area: '🎯 아이언', lost: Math.max(0, (BENCH.girGood - a.girPct) / 100) * 18 * 0.5, tip: '그린 적중률(GIR) 올리기' },
+    { area: '⛳ 숏게임', lost: (missed / n) * (1 - scrRate) * 0.5, tip: '어프로치·파세이브' },
+    { area: '🍩 퍼팅', lost: Math.max(0, a.puttAvg - BENCH.puttGood), tip: '거리감·3퍼팅 줄이기' },
+  ].sort((x, y) => y.lost - x.lost);
+  const mx = Math.max(...items.map(i => i.lost), 0.1);
+  const co = ['var(--r)', 'var(--a)', '#6a6a6e', '#4a4a4e'];
+  const rows = items.map((it, idx) => `<div style="margin-bottom:11px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+      <span style="font-size:13px;font-weight:700;color:var(--t)">${idx === 0 ? '⭐ ' : ''}${it.area}${idx === 0 ? ' <span style="font-size:10px;color:var(--a);font-weight:700">최우선</span>' : ''}</span>
+      <span style="font-size:13px;font-weight:700;color:${co[idx]}">+${it.lost.toFixed(1)}타</span></div>
+    <div class="bt"><div class="bf" style="width:${Math.round(it.lost / mx * 100)}%;background:${co[idx]};min-width:3px"></div></div>
+    <div style="font-size:10px;color:var(--t3);margin-top:4px">→ ${it.tip}</div></div>`).join('');
+  return `<div class="cb">${rows}<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:2px">※ 라운드당 손실 타수 추정(설정 기준값 대비). 영역 간 중복이 있을 수 있는 상대 비교용입니다.</div></div>`;
+}
+
+// ── 추가 집계(홀 기준): 실력 비율 · 퍼팅 분포 · 정확도의 가치 ──
+function extraStats(rounds) {
+  let played = 0, parOrBetter = 0, bogey = 0, dblPlus = 0;
+  let firHitVs = 0, firHitN = 0, firMissVs = 0, firMissN = 0;
+  let girHitVs = 0, girHitN = 0, girMissVs = 0, girMissN = 0;
+  let p1 = 0, p2 = 0, p3 = 0, p4 = 0, puttHoles = 0;
+  rounds.forEach(r => {
+    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], fi = r.firArr || [], pa = r.puttsArr || [];
+    for (let i = 0; i < 18; i++) {
+      const s = sc[i]; if (!(s > 0)) continue;
+      const par = hp[i] || 4, d = s - par;
+      played++;
+      if (d <= 0) parOrBetter++;
+      if (d === 1) bogey++;
+      if (d >= 2) dblPlus++;
+      if (gi[i]) { girHitN++; girHitVs += d; } else { girMissN++; girMissVs += d; }
+      if (par > 3) { if (fi[i]) { firHitN++; firHitVs += d; } else { firMissN++; firMissVs += d; } }
+      const pt = pa[i] || 0; if (pt > 0) { puttHoles++; if (pt <= 1) p1++; else if (pt === 2) p2++; else if (pt === 3) p3++; else p4++; }
+    }
+  });
+  const pct = (x, y) => y ? Math.round(x / y * 100) : null, avg = (x, y) => y ? x / y : null;
+  return { played, parSaveRate: pct(parOrBetter, played), bogeyRate: pct(bogey, played), dblPlusRate: pct(dblPlus, played),
+    firHitAvg: avg(firHitVs, firHitN), firMissAvg: avg(firMissVs, firMissN), girHitAvg: avg(girHitVs, girHitN), girMissAvg: avg(girMissVs, girMissN),
+    p1, p2, p3, p4, puttHoles, onePuttRate: pct(p1, puttHoles) };
+}
+
+// ── 🏆 개인기록 + 트로피(기록 보유 라운드 배지) ──
+function bestRecords() {
+  const rs = A.rounds.filter(r => !r.isDraft);
+  if (rs.length < 2) return null;                 // 라운드 2개↑부터 트로피 의미 있음
+  const birds = r => { const hp = roundPars(r); return (r.scores || []).filter((s, i) => s > 0 && s - (hp[i] || 4) === -1).length; };
+  return {
+    score: Math.min(...rs.map(r => r.score)),
+    putts: Math.min(...rs.map(r => r.putts != null ? r.putts : Infinity)),
+    gir: Math.max(...rs.map(r => r.gir || 0)),
+    fir: Math.max(...rs.map(r => r.fir || 0)),
+    birdies: Math.max(...rs.map(birds)),
+    birdsOf: birds,
+  };
+}
+function roundTrophies(r) {
+  const R = bestRecords(); if (!R || r.isDraft) return [];
+  const t = [];
+  if (r.score === R.score) t.push({ i: '🏆', l: '베스트 스코어' });
+  if (r.putts != null && r.putts === R.putts) t.push({ i: '🍩', l: '최소 퍼팅' });
+  if ((r.gir || 0) === R.gir && R.gir > 0) t.push({ i: '🎯', l: '최고 GIR' });
+  if ((r.fir || 0) === R.fir && R.fir > 0) t.push({ i: '🚗', l: '최고 FIR' });
+  if (R.birdies > 0 && R.birdsOf(r) === R.birdies) t.push({ i: '🐦', l: '최다 버디' });
+  return t;
+}
+function trophyBadges(r) {
+  const t = roundTrophies(r); if (!t.length) return '';
+  return `<span style="display:inline-flex;gap:2px;vertical-align:middle">${t.map(x => `<span title="${x.l}" style="font-size:13px">${x.i}</span>`).join('')}</span>`;
+}
+function recordsHTML(rsChrono) {
+  const rs = rsChrono, n = rs.length; if (!n) return '';
+  const best = rs.reduce((b, r) => r.score < b.score ? r : b);
+  const minP = rs.reduce((b, r) => (r.putts != null ? r.putts : 99) < (b.putts != null ? b.putts : 99) ? r : b);
+  const maxG = rs.reduce((b, r) => (r.gir || 0) > (b.gir || 0) ? r : b);
+  const maxF = rs.reduce((b, r) => (r.fir || 0) > (b.fir || 0) ? r : b);
+  const birds = r => { const hp = roundPars(r); return (r.scores || []).filter((s, i) => s > 0 && s - (hp[i] || 4) === -1).length; };
+  const maxB = rs.reduce((b, r) => birds(r) > birds(b) ? r : b);
+  const ms = t => { const r = rs.find(x => x.score < t); return r ? `✅ ${r.date || ''}` : '🔒 미달성'; };
+  const row = (icon, lbl, val, sub) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:.5px solid var(--bd)"><span style="font-size:18px">${icon}</span><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--t)">${lbl}</div>${sub ? `<div style="font-size:11px;color:var(--t3)">${sub}</div>` : ''}</div><span style="font-size:15px;font-weight:700;color:var(--t);flex-shrink:0">${val}</span></div>`;
+  return `<div class="cb" style="padding:6px 16px">
+    ${row('🏆', '베스트 스코어', best.score, `${best.courseName || ''} · ${best.date || ''}`)}
+    ${row('🍩', '최소 퍼팅 라운드', minP.putts != null ? minP.putts : '-', minP.date || '')}
+    ${row('🎯', '최고 GIR', (maxG.gir || 0) + '%', maxG.date || '')}
+    ${row('🚗', '최고 FIR', (maxF.fir || 0) + '%', maxF.date || '')}
+    ${row('🐦', '최다 버디(1R)', birds(maxB) + '개', maxB.date || '')}
+  </div>
+  <div class="lbl" style="margin-top:14px">🚩 마일스톤 (첫 돌파)</div>
+  <div class="cb" style="padding:6px 16px">
+    ${row('💯', '100 깨기 (99↓)', ms(100))}
+    ${row('9️⃣', '90 깨기 (89↓)', ms(90))}
+    ${row('8️⃣', '80 깨기 (79↓)', ms(80))}
+  </div>`;
+}
+
 function toggleRoundAna(id) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
   const box = Q('rana-box'), btn = Q('rana-btn'); if (!box) return;
@@ -791,8 +979,13 @@ function renderStat(m) {
     const scores = rounds.map(r => r.score); const mean = scores.reduce((a, b) => a + b, 0) / n;
     const sd = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
     const best = Math.min(...scores);
-    const last5 = rounds.slice(0, Math.min(5, n)); const l5avg = last5.reduce((a, r) => a + r.score, 0) / last5.length;
-    const form = l5avg - mean;   // 음수면 좋아지는 중
+    const aAll = analyze(rounds);                         // 진단·약점 공용
+    const ex = extraStats(rounds);                        // 실력 비율·퍼팅 분포·정확도 가치
+    const chrono = roundsChrono(); const hcp = estHandicap(chrono);
+    const segN = Math.max(1, Math.min(5, Math.round(chrono.length / 3)));
+    const earlyAvg = chrono.slice(0, segN).reduce((a, r) => a + r.score, 0) / segN;
+    const recentAvg = chrono.slice(-segN).reduce((a, r) => a + r.score, 0) / segN;
+    const prog = recentAvg - earlyAvg;                    // 음수면 발전(타수 줄어듦)
 
     // 홀 단위 집계 (실제로 친 홀만)
     const parSum = { 3: [0, 0], 4: [0, 0], 5: [0, 0] }; let girPutt = [0, 0], threeP = 0, scrT = 0, scrS = 0;
@@ -817,43 +1010,79 @@ function renderStat(m) {
     const f9a = f9[1] ? f9[0] / f9[1] : null, b9a = b9[1] ? b9[0] / b9[1] : null;
 
     const allD = rounds.flatMap(r => { const hh = roundPars(r); return (r.scores || []).map((s, i) => s > 0 ? s - (hh[i] || 4) : null).filter(x => x !== null); });
-    const eagle = allD.filter(d => d <= -2).length, birdie = allD.filter(d => d === -1).length, par2 = allD.filter(d => d === 0).length, bogey = allD.filter(d => d === 1).length, dbl = allD.filter(d => d >= 2).length, mx = Math.max(eagle, birdie, par2, bogey, dbl) || 1;
-    const td = [...rounds].reverse().slice(-10);
+    const eagle = allD.filter(d => d <= -2).length, birdie = allD.filter(d => d === -1).length, par2 = allD.filter(d => d === 0).length, bogey = allD.filter(d => d === 1).length, dbl2 = allD.filter(d => d === 2).length, trip = allD.filter(d => d >= 3).length;
+    const mx = Math.max(eagle, birdie, par2, bogey, dbl2, trip) || 1;
+    const blowup = trip / n;
+    const sgn = v => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(2);
 
-    h += `<div class="lbl">🚦 진단 (전체 라운드)</div>${analysisHTML(analyze(rounds))}`;
+    // ── 요약 대시보드 ──
+    h += `<div class="lbl">📋 요약</div><div class="sgd">
+      ${statCard(n, '', '총 라운드')}
+      ${statCard(best, '', '베스트')}
+      ${statCard(avg('score').toFixed(1), '', '평균 스코어')}
+      ${statCard(hcp == null ? '-' : (hcp >= 0 ? '+' : '') + hcp.toFixed(1), '', '추정 핸디')}</div>`;
+    if (chrono.length >= 4) h += `<div class="cb" style="display:flex;align-items:center;gap:12px;padding:14px">
+      <span style="font-size:24px">${prog < 0 ? '📈' : prog > 0 ? '📉' : '➡️'}</span>
+      <div style="font-size:13px;color:var(--t2);line-height:1.5">최근 ${segN}R 평균 <b style="color:var(--t)">${recentAvg.toFixed(1)}</b> · 초기 ${segN}R 대비 <b style="color:${prog < 0 ? 'var(--g)' : prog > 0 ? 'var(--r)' : 'var(--t)'}">${prog < 0 ? '▼' : prog > 0 ? '▲' : ''}${Math.abs(prog).toFixed(1)}타</b>${prog < 0 ? ' — 좋아지고 있어요 🎉' : prog > 0 ? '' : ' — 유지 중'}</div></div>`;
+    h += `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 4px">💡 추정 핸디 = 최근 20R 중 좋은 라운드의 오버파 평균(간이). 코스 난이도 미반영.</div>`;
 
-    h += `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', '평균 스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', '평균 오버파')}${statCard(avg('putts').toFixed(1), '', '평균 퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${statCard(n, '', '라운드수')}</div>
+    // ── 진단 신호등 ──
+    h += `<div class="lbl">🚦 진단 (전체 라운드)</div>${analysisHTML(aAll)}`;
 
-    <div class="lbl">베스트 · 최근 폼 · 기복</div><div class="sgd">
-      ${statCard(best, '', '베스트 스코어')}
-      ${statCard((form <= 0 ? '▼' : '▲') + Math.abs(form).toFixed(1), '', '최근5R 폼')}
-      ${statCard('±' + sd.toFixed(1), '', '기복(편차)')}</div>
+    // ── 발전 추세 (과거의 나와 비교) ──
+    h += `<div class="lbl">📈 발전 추세 (과거의 나와 비교)</div><div id="trend-wrap">${trendWrapHTML()}</div>`;
 
-    <div class="lbl">파 종류별 (파 대비)</div><div class="sgd">
-      ${statCard(parVs(3), '', '파3')}${statCard(parVs(4), '', '파4')}${statCard(parVs(5), '', '파5')}</div>
+    // ── 약점 우선순위 ──
+    h += `<div class="lbl">🎯 약점 우선순위 (고칠 순서)</div>${weaknessHTML(aAll, rounds)}`;
 
-    <div class="lbl">퍼팅 · 쇼트게임</div><div class="sgd">
+    // ── 핵심 지표 ──
+    h += `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', '평균 스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', '평균 오버파')}${statCard(avg('putts').toFixed(1), '', '평균 퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${statCard('±' + sd.toFixed(1), '', '기복(편차)')}</div>`;
+
+    // ── 실력 비율 (홀 기준) ──
+    h += `<div class="lbl">실력 비율 (홀 기준)</div><div class="sgd">
+      ${statCard(ex.parSaveRate == null ? '-' : ex.parSaveRate, ex.parSaveRate == null ? '' : '%', '파 이하')}
+      ${statCard(ex.bogeyRate == null ? '-' : ex.bogeyRate, ex.bogeyRate == null ? '' : '%', '보기')}
+      ${statCard(ex.dblPlusRate == null ? '-' : ex.dblPlusRate, ex.dblPlusRate == null ? '' : '%', '더블+')}
+      ${statCard(nf(blowup), '', '블로업/R')}</div>
+    <div style="font-size:10px;color:var(--t3);margin:-6px 2px 4px">💡 블로업 = 트리플보기 이상 홀(라운드당 ${nf(blowup)}홀). 줄이면 스코어가 크게 떨어져요.</div>`;
+
+    // ── 파 종류별 ──
+    h += `<div class="lbl">파 종류별 (파 대비)</div><div class="sgd">
+      ${statCard(parVs(3), '', '파3')}${statCard(parVs(4), '', '파4')}${statCard(parVs(5), '', '파5')}</div>`;
+
+    // ── 퍼팅 · 쇼트게임 ──
+    h += `<div class="lbl">퍼팅 · 쇼트게임</div><div class="sgd">
       ${statCard(girPuttAvg == null ? '-' : girPuttAvg.toFixed(2), '', 'GIR홀 퍼팅')}
       ${statCard((threeP / n).toFixed(1), '', '3퍼팅/라운드')}
-      ${statCard(scrRate == null ? '-' : scrRate.toFixed(0), scrRate == null ? '' : '%', '스크램블링')}</div>
-    <div style="font-size:10px;color:var(--t3);margin-top:8px">💡 <b>스크램블링</b> — 그린을 놓친 홀에서 파 이하로 막아낸 비율. 높을수록 위기관리·쇼트게임이 좋아요(높을수록 좋음).</div>
+      ${statCard(ex.onePuttRate == null ? '-' : ex.onePuttRate, ex.onePuttRate == null ? '' : '%', '1퍼팅율')}
+      ${statCard(scrRate == null ? '-' : scrRate.toFixed(0), scrRate == null ? '' : '%', '스크램블링')}</div>`;
+    const pmx = Math.max(ex.p1, ex.p2, ex.p3, ex.p4) || 1;
+    h += `<div class="cb"><div class="cbt">퍼팅 분포 (홀 수)</div>${[['1퍼팅', ex.p1, 'var(--g)'], ['2퍼팅', ex.p2, 'var(--b)'], ['3퍼팅', ex.p3, 'var(--a)'], ['4+', ex.p4, 'var(--r)']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / pmx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>
+    <div style="font-size:10px;color:var(--t3);margin:-6px 2px 4px">💡 <b>스크램블링</b> — 그린 놓친 홀을 파 이하로 막은 비율(높을수록 좋음).</div>`;
 
-    <div class="lbl">전반 / 후반</div><div class="sgd">
+    // ── 정확도의 가치 (적중 vs 미스 홀 평균 오버파) ──
+    h += `<div class="lbl">정확도의 가치</div><div class="cb">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:.5px solid var(--bd)"><span style="font-size:13px;color:var(--t)">🚗 페어웨이</span><span style="font-size:12px;color:var(--t2)">적중 <b style="color:var(--g)">${sgn(ex.firHitAvg)}</b> · 놓침 <b style="color:var(--r)">${sgn(ex.firMissAvg)}</b>${ex.firHitAvg != null && ex.firMissAvg != null ? ` · 차이 <b style="color:var(--t)">${(ex.firMissAvg - ex.firHitAvg).toFixed(2)}타</b>` : ''}</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:13px;color:var(--t)">🎯 그린(GIR)</span><span style="font-size:12px;color:var(--t2)">적중 <b style="color:var(--g)">${sgn(ex.girHitAvg)}</b> · 놓침 <b style="color:var(--r)">${sgn(ex.girMissAvg)}</b>${ex.girHitAvg != null && ex.girMissAvg != null ? ` · 차이 <b style="color:var(--t)">${(ex.girMissAvg - ex.girHitAvg).toFixed(2)}타</b>` : ''}</span></div></div>
+    <div style="font-size:10px;color:var(--t3);margin:-6px 2px 4px">💡 적중/놓친 홀의 평균 오버파. 차이가 클수록 그 샷의 가치가 큽니다.</div>`;
+
+    // ── 전반 / 후반 ──
+    h += `<div class="lbl">전반 / 후반</div><div class="sgd">
       ${statCard(f9a == null ? '-' : f9a.toFixed(1), '', '전반(1-9)')}
       ${statCard(b9a == null ? '-' : b9a.toFixed(1), '', '후반(10-18)')}
-      ${statCard((f9a != null && b9a != null) ? ((b9a - f9a >= 0 ? '+' : '') + (b9a - f9a).toFixed(1)) : '-', '', '후반 차이')}</div>
+      ${statCard((f9a != null && b9a != null) ? ((b9a - f9a >= 0 ? '+' : '') + (b9a - f9a).toFixed(1)) : '-', '', '후반 차이')}</div>`;
 
-    <div class="lbl">스코어 추이</div>
-    <div class="cb"><div style="display:flex;align-items:flex-end;gap:4px;height:80px">${(() => { const mn = Math.min(...td.map(r => r.score)), mxs = Math.max(...td.map(r => r.score)), rng = mxs - mn || 1; return td.map(r => { const bh = Math.round((r.score - mn) / rng * 60) + 12; const co = r.score <= mean - 2 ? 'var(--g)' : r.score >= mean + 2 ? 'var(--r)' : 'var(--a)'; return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><span style="font-size:9px;color:var(--t2)">${r.score}</span><div style="width:100%;height:${bh}px;background:${co};border-radius:4px 4px 0 0"></div><span style="font-size:8px;color:var(--t3)">${(r.courseName || '').substring(0, 3)}</span></div>`; }).join(''); })()}</div>
-    <div style="font-size:10px;color:var(--t3);margin-top:8px;text-align:center">색: 내 평균(${mean.toFixed(0)}타) 대비 — 🟢더 좋음 🟡비슷 🔴더 나쁨</div></div>
+    // ── 타수 분포 ──
+    h += `<div class="lbl">타수 분포</div>
+    <div class="cb">${[['이글↑', eagle, 'var(--p)'], ['버디', birdie, 'var(--b)'], ['파', par2, 'var(--g)'], ['보기', bogey, 'var(--a)'], ['더블', dbl2, 'var(--r)'], ['트리플+', trip, '#7f1d1d']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>`;
 
-    <div class="lbl">타수 분포</div>
-    <div class="cb">${[['이글↑', eagle, 'var(--p)'], ['버디', birdie, 'var(--b)'], ['파', par2, 'var(--g)'], ['보기', bogey, 'var(--a)'], ['더블+', dbl, 'var(--r)']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>`;
-
-    // 코스별 평균
+    // ── 코스별 평균 ──
     const byC = {}; rounds.forEach(r => { const k = r.courseName || '?'; (byC[k] = byC[k] || []).push(r.score); });
     const cks = Object.keys(byC).sort((a, b) => byC[b].length - byC[a].length);
     h += `<div class="lbl">코스별 평균</div><div class="cb">${cks.map(k => { const arr = byC[k]; const a = (arr.reduce((x, y) => x + y, 0) / arr.length).toFixed(1); return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:.5px solid var(--bd)"><span style="font-size:13px;color:var(--t)">${k}</span><span style="font-size:13px;color:var(--t2)">평균 <b style="color:var(--t)">${a}</b> · ${arr.length}R</span></div>`; }).join('')}</div>`;
+
+    // ── 🏆 개인기록 · 마일스톤 ──
+    h += `<div class="lbl">🏆 개인기록</div>${recordsHTML(chrono)}`;
 
   } else {
     // 라운드별 — 내 평균 대비 신호등
@@ -861,7 +1090,7 @@ function renderStat(m) {
     h += `<div class="lbl">라운드별</div>`;
     rounds.forEach(r => {
       const cS = sig(r.score, AV.score, true, 2, AV.n), cP = sig(r.putts, AV.putts, true, 2, AV.n), cG = sig(r.gir, AV.gir, false, 10, AV.n), cF = sig(r.fir, AV.fir, false, 10, AV.n);
-      h += `<div class="rc" onclick="openDet(${r.id})"><div class="rc-top"><div style="flex:1"><div class="rc-name">${r.courseName || '?'} <span style="font-size:12px;color:var(--t3)">${r.courseLbl || ''}</span></div><div class="rc-sub">${r.date || ''} · ${r.weather || ''}</div></div><div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div></div><div class="rc-meta"><span>${dot(cF)}FIR ${r.fir}%</span><span>${dot(cG)}GIR ${r.gir}%</span><span>${dot(cP)}퍼팅 ${r.putts}</span>${r.mulligan ? `<span style="color:var(--r)">멀리건 ${r.mulligan}</span>` : ''}</div></div>`;
+      h += `<div class="rc" onclick="openDet(${r.id})"><div class="rc-top"><div style="flex:1"><div class="rc-name">${r.courseName || '?'} <span style="font-size:12px;color:var(--t3)">${r.courseLbl || ''}</span> ${trophyBadges(r)}</div><div class="rc-sub">${r.date || ''} · ${r.weather || ''}</div></div><div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div></div><div class="rc-meta"><span>${dot(cF)}FIR ${r.fir}%</span><span>${dot(cG)}GIR ${r.gir}%</span><span>${dot(cP)}퍼팅 ${r.putts}</span>${r.mulligan ? `<span style="color:var(--r)">멀리건 ${r.mulligan}</span>` : ''}</div></div>`;
     });
   }
   el.innerHTML = h;
@@ -1038,19 +1267,25 @@ function guideStatsHTML() {
   ${it('🎯 아이언 GIR', `정규타수(파−2) 안에 그린 올린 비율. 🟢${b.girGood}↑·🟡${b.girBad}↑(%).`)}
   ${it('🍩 퍼팅', `라운드 총 퍼팅(적을수록 좋음). 🟢${b.puttGood}↓·🟡${b.puttBad}↓(개).`)}
 
+  ${S('📋 요약 · 발전')}
+  ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
+  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시.')}
+  ${it('🎯 약점 우선순위', '드라이버·아이언·숏게임·퍼팅을 설정 기준값과 비교해 라운드당 손실 타수를 추정 → 고칠 순서를 ⭐최우선부터. (상대 비교용)')}
+
   ${S('스코어')}
-  ${it('평균 스코어·오버파', '총타수 평균과 파 대비(+오버/−언더).')}
-  ${it('베스트 · 최근5R 폼 · 기복', '최저타 / 최근5R과 전체 평균 차(▼좋아짐·▲나빠짐) / 점수 편차(작을수록 일정).')}
-  ${it('파 종류별', '파3·4·5에서 파 대비 평균 — 약한 홀 유형.')}
-  ${it('전·후반', '앞뒤 9홀 평균과 차이(후반 무너짐 확인).')}
+  ${it('평균 스코어·오버파·기복', '총타수 평균 / 파 대비(+오버·−언더) / 점수 편차(작을수록 일정).')}
+  ${it('실력 비율 · 블로업', '홀 기준 파 이하·보기·더블+ 비율. 블로업 = 라운드당 트리플보기↑ 홀.')}
+  ${it('파 종류별 · 전·후반', '파3·4·5 파 대비 평균(약한 홀 유형) / 앞뒤 9홀 평균·차이(후반 무너짐).')}
 
   ${S('정확도 · 쇼트게임')}
   ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
-  ${it('GIR홀 퍼팅 · 3퍼팅', '그린 정규로 올린 홀의 퍼팅(순수 퍼팅력) / 라운드당 3퍼팅 수.')}
-  ${it('스크램블링', '그린 놓친 홀을 파 이하로 막은 비율.')}
+  ${it('GIR홀 퍼팅 · 3퍼팅 · 1퍼팅율 · 퍼팅 분포', '그린 정규로 올린 홀 퍼팅(순수 퍼팅력) / 3퍼팅 수 / 1퍼팅 비율 / 1·2·3·4+ 퍼팅 홀 수.')}
+  ${it('스크램블링 · 정확도의 가치', '그린 놓친 홀을 파 이하로 막은 비율 / 페어웨이·그린 적중 vs 놓침 홀의 평균 오버파 차이.')}
 
-  ${S('그래프')}
-  ${it('스코어 추이 · 타수 분포 · 코스별', '최근 막대(내 평균 대비 색) / 이글↑·버디·파·보기·더블+ 개수 / 골프장별 평균.')}
+  ${S('🏆 기록 · 트로피')}
+  ${it('개인기록 · 마일스톤', '베스트·최소퍼팅·최고GIR/FIR·최다버디 기록 / 100·90·80 첫 돌파 날짜.')}
+  ${it('트로피 배지', '개인 기록을 보유한 라운드 카드에 🏆🍩🎯🚗🐦 배지가 붙어요(홈·라운드별·상세).')}
+  ${it('타수 분포 · 코스별', '이글↑·버디·파·보기·더블·트리플+ 개수 / 골프장별 평균.')}
 
   <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.5">※ <b>라운드별</b> 탭은 각 라운드를 내 평균과 비교해 🟢🟡🔴로 표시(3R↑).</div>
   <div style="margin-top:12px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준 · 지표가 바뀌면 자동 갱신.</div>`;
