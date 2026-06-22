@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.2.3';
+const APP_VERSION = 'v12.2.4';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -454,7 +454,9 @@ function renderCourses() {
 
 function selCourse(key) {
   const c = A.allCourses().find(x => x.id === key || x.name === key); if (!c) return;
-  A.sc.course = c; A.sc.li = [0, 1]; openHoleMdl(c);
+  A.sc.course = c; A.sc.li = [0, 1];
+  A.sc.holeEdits = {};          // 코스 새로 고를 때 홀파 수정값 초기화 (레이아웃이름 → 9홀 파 배열)
+  openHoleMdl(c);
 }
 
 function openHoleMdl(c) { Q('m-hl-t').textContent = c.name; renderHolePkr(c, 0, 1); om('m-hl'); }
@@ -462,12 +464,27 @@ function renderHolePkr(c, l0, l1) {
   A.sc.li = [l0, l1];
   const combos = []; for (let a = 0; a < c.layouts.length; a++) for (let b = 0; b < c.layouts.length; b++) if (a !== b) combos.push([a, b]);
   Q('hl-pkr').innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--t2);margin-bottom:8px">코스 조합</div><div style="display:flex;flex-wrap:wrap;gap:8px">${combos.map(([a, b]) => `<button class="lb ${a === l0 && b === l1 ? 'on' : ''}" onclick="renderHolePkr(A.sc.course,${a},${b})">${c.layouts[a].name}+${c.layouts[b].name}</button>`).join('')}</div>`;
-  const all = [...c.layouts[l0].holes, ...c.layouts[l1].holes];
+  // 코스(레이아웃)별 수정값이 있으면 마스터 대신 그걸 표시 → 조합 바꿔도 수정 유지
+  const ed = A.sc.holeEdits || {};
+  const h0 = ed[c.layouts[l0].name] || c.layouts[l0].holes;
+  const h1 = ed[c.layouts[l1].name] || c.layouts[l1].holes;
+  const all = [...h0, ...h1];
   const nm = [...Array(9).fill(c.layouts[l0].name), ...Array(9).fill(c.layouts[l1].name)];
   Q('hl-lbl').textContent = `${c.layouts[l0].name}+${c.layouts[l1].name} 홀 구성`;
   Q('hl-grid').innerHTML = all.map((p, i) => `<div style="text-align:center;background:var(--bg3);border-radius:10px;padding:8px 4px"><div style="font-size:10px;color:var(--t2);margin-bottom:4px">${nm[i]} ${(i % 9) + 1}H</div><div style="display:flex;align-items:center;justify-content:center;gap:4px"><button onclick="adjHP(${i},-1)" style="width:26px;height:26px;border-radius:50%;border:1.5px solid #6a6a6e;background:var(--bg3);color:#fff;cursor:pointer;font-size:14px">-</button><span id="hp-${i}" style="width:20px;text-align:center;font-size:16px;font-weight:700;color:var(--t)">${p}</span><button onclick="adjHP(${i},1)" style="width:26px;height:26px;border-radius:50%;border:1.5px solid #6a6a6e;background:var(--bg3);color:#fff;cursor:pointer;font-size:14px">+</button></div></div>`).join('');
 }
-function adjHP(i, d) { const el = Q('hp-' + i); if (!el) return; let v = parseInt(el.textContent) + d; if (v < 3) v = 3; if (v > 5) v = 5; el.textContent = v; }
+function adjHP(i, d) {
+  const el = Q('hp-' + i); if (!el) return;
+  let v = parseInt(el.textContent) + d; if (v < 3) v = 3; if (v > 5) v = 5; el.textContent = v;
+  // 수정값을 코스(레이아웃)별로 저장해 조합을 바꿔도 유지 (마스터 데이터는 건드리지 않음)
+  const c = A.sc.course; if (!c) return;
+  const [l0, l1] = A.sc.li;
+  const ly = i < 9 ? c.layouts[l0] : c.layouts[l1];
+  const li = i < 9 ? i : i - 9;
+  if (!A.sc.holeEdits) A.sc.holeEdits = {};
+  if (!A.sc.holeEdits[ly.name]) A.sc.holeEdits[ly.name] = ly.holes.slice();
+  A.sc.holeEdits[ly.name][li] = v;
+}
 function startScoringFromPicker() {
   // picker에서 조정한 홀별 파를 이번 라운드에만 적용 (공식 코스 데이터는 그대로 보존)
   const src = A.sc.course; const [s0, s1] = A.sc.li;
