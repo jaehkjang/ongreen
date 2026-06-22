@@ -9,6 +9,7 @@
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
 const APP_VERSION = 'v12.2.4';
+const APP_VERSION = 'v12.4.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -212,7 +213,7 @@ function renderHome() {
         <div class="rc-sub">${r.date || ''} · ${r.weather || ''}${r.partner ? ' · ' + r.partner : ''}${r.memo ? ' · ' + r.memo : ''}</div>
       </div>${draft ? `<span style="background:#3a2a0a;color:var(--a);font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;flex-shrink:0">✏️ 작성중</span>` : `<div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div>`}</div>
       ${draft ? `<div style="margin-top:10px;padding:8px 12px;background:#2a2a0a;border-radius:8px;font-size:12px;color:var(--a)">탭해서 이어서 입력 →</div>` :
-      `<div class="rc-meta"><span>🍩 ${r.putts}퍼팅</span><span>🎯 GIR ${r.gir}%</span><span>🚗 FIR ${r.fir}%</span>${(r.mulligan || r.tpCount) ? `<span style="color:var(--r)">🔄 M${r.mulligan || 0}·TP${r.tpCount || 0}</span>` : ''}</div>`}
+      `<div class="rc-meta"><span>🚗 FIR ${r.fir}%</span><span>🎯 GIR ${r.gir}%</span><span>🍩 ${r.putts}퍼팅</span>${(r.mulligan || r.tpCount) ? `<span style="color:var(--r)">🔄 M${r.mulligan || 0}·TP${r.tpCount || 0}</span>` : ''}</div>`}
     </div>`;
   });
   el.innerHTML = h;
@@ -279,9 +280,9 @@ function openDet(id) {
     <div class="sgd" style="margin-bottom:12px">
       <div class="sc"><span class="sn">${r.score}</span><span class="sl">총 스코어</span></div>
       <div class="sc"><span class="sn" style="color:${r.vs > 0 ? 'var(--r)' : 'var(--g)'}">${vsL(r.vs)}</span><span class="sl">파 대비</span></div>
-      <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
-      <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
       <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span></div>
+      <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
+      <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
       <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span style="font-size:14px;color:var(--t2)">/</span>${r.tpCount || 0}</span><span class="sl">M / TP</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
@@ -290,8 +291,9 @@ function openDet(id) {
     <div class="cb"><div class="cbt">홀별 스코어</div>
       <div style="display:flex;flex-wrap:wrap;gap:5px">${(r.scores || []).map((s, i) => { const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff">${s > 0 ? s : '-'}</div>`; }).join('')}</div>
     </div>
+    <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <button onclick="openSC(${id},false);cm('m-det')" style="flex:1;background:var(--a);border:none;border-radius:12px;padding:12px;color:#000;font-size:14px;font-weight:700;cursor:pointer">✏️ 수정</button>
+      <button onclick="openSC(${id},false);cm('m-det')" style="flex:1;background:var(--a);border:none;border-radius:12px;padding:12px;color:#000;font-size:14px;font-weight:700;cursor:pointer">🔧 수정</button>
       <button onclick="askDel(${id});cm('m-det')" style="flex:1;background:#2d0f0f;border:1.5px solid #6a2020;border-radius:12px;padding:12px;color:var(--r);font-size:14px;font-weight:700;cursor:pointer">🗑 삭제</button>
     </div>`;
   om('m-det');
@@ -316,7 +318,7 @@ function openSC(id, ro) {
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${n0} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${n1} (10-18)</button>`;
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = ro ? 'none' : 'block';
   if (ro) {
-    Q('sc-bnr').innerHTML = `<div style="padding:8px 12px;background:var(--bg2);border-bottom:.5px solid var(--bd)"><div class="bnr ro"><span style="font-size:13px;color:var(--t2)">🔒 읽기 전용</span><button style="background:var(--a);border:none;border-radius:10px;padding:9px 18px;color:#000;font-size:14px;font-weight:700;cursor:pointer" onclick="enableEdit()">✏️ 수정</button></div></div>`;
+    Q('sc-bnr').innerHTML = `<div style="padding:8px 12px;background:var(--bg2);border-bottom:.5px solid var(--bd)"><div class="bnr ro"><span style="font-size:13px;color:var(--t2)">🔒 읽기 전용</span><button style="background:var(--a);border:none;border-radius:10px;padding:9px 18px;color:#000;font-size:14px;font-weight:700;cursor:pointer" onclick="enableEdit()">🔧 수정</button></div></div>`;
     const b = Q('sv'); b.disabled = true; b.textContent = '저장됨'; b.className = 'sv';
   } else {
     Q('sc-bnr').innerHTML = `<div style="padding:8px 12px;background:var(--bg2);border-bottom:.5px solid var(--bd)"><div class="bnr ed"><span style="font-size:13px;color:#ff8a80">수정 중</span><button style="background:var(--r);border:none;border-radius:10px;padding:9px 18px;color:#fff;font-size:14px;font-weight:700;cursor:pointer" onclick="askDel(${id})">🗑 삭제</button></div></div>`;
@@ -395,27 +397,24 @@ function updFt() {
   const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
   Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
 }
-// ── 스코어카드 원터치 공유 ──
-function shareSC() {
-  const sc = A.sc;
-  if (!sc.course) { toast('공유할 스코어카드가 없어요'); return; }
-  const h = getH();
-  if (!sc.scores.some(x => x > 0)) { toast('입력된 점수가 없어요'); return; }
-  let tot = 0, playedPar = 0;
-  for (let i = 0; i < 18; i++) if (sc.scores[i] > 0) { tot += sc.scores[i]; playedPar += h[i]; }
-  const vs = tot - playedPar;
+// ── 스코어카드 원터치 공유 (저장 완료된 라운드만) ──
+function shareRound(id) {
+  const r = A.rounds.find(x => x.id === id);
+  if (!r) { toast('공유할 스코어카드가 없어요'); return; }
+  if (r.isDraft) { toast('작성 중인 카드는 저장 후 공유할 수 있어요'); return; }
+  const h = roundPars(r);
+  const scores = r.scores || [];
+  if (!scores.some(x => x > 0)) { toast('입력된 점수가 없어요'); return; }
   const fmt = a => a.map(x => x > 0 ? x : '-').join(' ');
-  const f9 = sc.scores.slice(0, 9).reduce((a, b) => a + b, 0), b9 = sc.scores.slice(9, 18).reduce((a, b) => a + b, 0);
-  const gir = sc.gir.filter(Boolean).length, putt = sc.putts.reduce((a, b) => a + b, 0);
-  const mc = sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
-  let t = `⛳ ${sc.course.name}`;
-  if (sc.date) t += ` (${sc.date})`;
-  t += `\n총타수 ${tot} (파대비 ${vsL(vs)})\n\n`;
-  t += `전반  ${fmt(sc.scores.slice(0, 9))}  = ${f9 || '-'}\n`;
-  t += `후반  ${fmt(sc.scores.slice(9, 18))}  = ${b9 || '-'}\n\n`;
-  t += `GIR ${gir}/18 · 퍼팅 ${putt}`;
-  if (mc || tc) t += ` · M/TP ${mc}/${tc}`;
-  if (sc.partner) t += `\n함께: ${sc.partner}`;
+  const f9 = scores.slice(0, 9).reduce((a, b) => a + b, 0), b9 = scores.slice(9, 18).reduce((a, b) => a + b, 0);
+  let t = `⛳ ${r.courseName}`;
+  if (r.date) t += ` (${r.date})`;
+  t += `\n총타수 ${r.score} (파대비 ${vsL(r.vs)})\n\n`;
+  t += `전반  ${fmt(scores.slice(0, 9))}  = ${f9 || '-'}\n`;
+  t += `후반  ${fmt(scores.slice(9, 18))}  = ${b9 || '-'}\n\n`;
+  t += `🚗 FIR ${r.fir}% · 🎯 GIR ${r.gir}% · 🍩 퍼팅 ${r.putts}`;
+  if (r.mulligan || r.tpCount) t += ` · M/TP ${r.mulligan || 0}/${r.tpCount || 0}`;
+  if (r.partner) t += `\n함께: ${r.partner}`;
   t += `\n\n— 온그린`;
   shareText('온그린 스코어카드', t);
 }
@@ -423,7 +422,46 @@ function shareSC() {
 // ════════════════════════════════════════
 // 골프장 (단일 목록 · 승인 없음 · 삭제는 관리자만)
 // ════════════════════════════════════════
+// ── 골프장 카드 슬라이드-삭제 ──
+// 카드를 왼쪽으로 끌면 뒤에 숨은 삭제 버튼이 드러난다. 목록 컨테이너에 한 번만
+// 위임 핸들러를 달고, 열려 있는 카드는 _ccOpen 으로 추적한다.
+let _ccOpen = null;
+function initCourseSwipe() {
+  const list = Q('cs-list');
+  if (!list || list._swipeReady) return;
+  list._swipeReady = true;
+  let wrap = null, startX = 0, startY = 0, dx = 0, dir = 0, width = 88;   // dir: 0 미정 1 가로 2 세로
+  const setX = x => { const cc = wrap.querySelector('.cc'); if (cc) cc.style.transform = x ? `translateX(${x}px)` : ''; };
+  list.addEventListener('touchstart', e => {
+    const w = e.target.closest('.cc-wrap');
+    if (_ccOpen && _ccOpen !== w) { _ccOpen.classList.remove('open'); _ccOpen = null; }   // 다른 카드 열려있으면 닫기
+    if (!w || !w.querySelector('.cc-del')) { wrap = null; return; }
+    wrap = w; startX = e.touches[0].clientX; startY = e.touches[0].clientY; dx = 0; dir = 0;
+    width = w.querySelector('.cc-del').offsetWidth || 88;
+    const cc = w.querySelector('.cc'); if (cc) cc.style.transition = 'none';
+  }, { passive: true });
+  list.addEventListener('touchmove', e => {
+    if (!wrap) return;
+    dx = e.touches[0].clientX - startX;
+    if (!dir) dir = (Math.abs(dx) > Math.abs(e.touches[0].clientY - startY)) ? 1 : 2;
+    if (dir !== 1) return;
+    const base = wrap.classList.contains('open') ? -width : 0;
+    let t = base + dx; if (t > 0) t = 0; if (t < -width) t = -width;
+    setX(t);
+  }, { passive: true });
+  list.addEventListener('touchend', () => {
+    if (!wrap) return;
+    const cc = wrap.querySelector('.cc'); if (cc) cc.style.transition = '';
+    const base = wrap.classList.contains('open') ? -width : 0;
+    const open = (base + dx) < -width / 2;
+    wrap.classList.toggle('open', open);
+    _ccOpen = open ? wrap : (_ccOpen === wrap ? null : _ccOpen);
+    setX(0);
+    wrap = null;
+  });
+}
 function renderCourses() {
+  initCourseSwipe(); _ccOpen = null;          // 슬라이드-삭제 핸들러 준비 + 열린 카드 상태 초기화
   const q = (Q('cs-q')?.value || '').trim();
   const all = A.allCourses();
   const list = q ? all.filter(c => c.name.includes(q) || (c.addr || '').includes(q)) : all;
@@ -434,14 +472,16 @@ function renderCourses() {
   (A.rounds || []).filter(r => !r.isDraft).forEach(r => { const nm = r.courseName; if (nm && !seen.has(nm)) { seen.add(nm); recent.push(nm); } });
   const rank = nm => { const i = recent.indexOf(nm); return i < 0 ? Infinity : i; };
   const sorted = [...list].sort((a, b) => { const ra = rank(a.name), rb = rank(b.name); return ra !== rb ? ra - rb : a.name.localeCompare(b.name, 'ko'); });
-  const card = c => `<div class="cc">
-    <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
-      <div class="cc-name">${c.name}</div>
-      <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
+  // 카드: 연필(수정)·삭제 버튼은 없애고, 관리자는 왼쪽으로 슬라이드하면 삭제 버튼이 나옴
+  const card = c => `<div class="cc-wrap">
+    ${A.isAdm ? `<div class="cc-del"><button onclick="delCourse('${c.name}')">🗑 삭제</button></div>` : ''}
+    <div class="cc">
+      <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
+        <div class="cc-name">${c.name}</div>
+        <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
+      </div>
+      <span class="cbg off">✅ 공식</span>
     </div>
-    <span class="cbg off">✅ 공식</span>
-    <button class="ib" style="background:#1a2e1a;border:1px solid var(--g);color:var(--g)" onclick="openEditCourse('${c.id || c.name}')" title="수정">✏️</button>
-    ${A.isAdm ? `<button class="ib" style="background:#2d0f0f;border:1px solid #6a2020;color:var(--r)" onclick="delCourse('${c.name}')">🗑</button>` : ''}
   </div>`;
   if (q) { Q('cs-list').innerHTML = sorted.map(card).join(''); return; }   // 검색 중엔 그냥 결과만
   const recentList = sorted.filter(c => rank(c.name) !== Infinity);
@@ -655,6 +695,7 @@ function analyze(rounds) {
   let dst = survPct >= BENCH.survGood ? 'g' : survPct >= BENCH.survOk ? 'y' : 'r';
   if (teeLostPer >= BENCH.tpDemote) dst = dst === 'g' ? 'y' : 'r';
   const S = (status, icon, area, value, msg, note) => ({ status, icon, area, value, msg, note });
+  // 표시 순서: 드라이버 → 아이언 → 퍼팅
   const sig = [
     S(dst, '🚗', '드라이버',
       `생존 ${survPct}% (페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀)`,
@@ -662,18 +703,18 @@ function analyze(rounds) {
       dst === 'y' ? `대체로 살리지만 가끔 공을 잃습니다. 페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀.` :
       `티샷에서 공을 자주 잃습니다(OB/해저드 ${nf(teeLostPer)}홀). 스코어 손실의 큰 원인입니다.`,
       `생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀 · M=벌타 없이 다시 침, TP=벌타 받고 진행 · 둘 다 "공 잃음"으로 동일 처리`),
-    S(puttAvg <= BENCH.puttGood ? 'g' : puttAvg > BENCH.puttBad ? 'r' : 'y', '🍩', '퍼팅',
-      `${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}홀`,
-      puttAvg <= BENCH.puttGood ? `퍼팅 수가 적습니다. 그린에서 타수를 잘 지키고 있어요.` :
-      puttAvg > BENCH.puttBad ? `퍼팅 수가 많습니다. 쓰리퍼팅 ${nf(threeAvg)}홀 — 첫 퍼트 거리감이 주 원인일 가능성이 큽니다.` :
-      `퍼팅 보통. 쓰리퍼팅이 라운드당 ${nf(threeAvg)}홀 — 여기서 타수가 새고 있습니다.`,
-      `라운드 총 퍼팅 평균(적을수록 좋음). 참고: GIR홀 퍼팅 ${girPuttN ? nf(girPuttAvg) + '개' : '-'}가 순수 퍼팅력에 더 가깝습니다.`),
     S(girPct >= BENCH.girGood ? 'g' : girPct < BENCH.girBad ? 'r' : 'y', '🎯', '아이언(GIR)',
       `GIR ${girPct}%`,
       girPct >= BENCH.girGood ? `그린 적중률이 높습니다. 아이언으로 기회를 잘 만들고 있어요.` :
       girPct < BENCH.girBad ? `그린 적중률이 낮습니다. 대부분 그린을 놓쳐 어프로치·숏게임 부담이 커집니다.` :
       `그린 적중 보통. 절반가량은 정규 타수에 그린을 못 올립니다.`,
-      `GIR = 정규타수(파−2) 안에 그린 올린 홀 비율. 파3 티샷 실수도 여기 반영됩니다.`)
+      `GIR = 정규타수(파−2) 안에 그린 올린 홀 비율. 파3 티샷 실수도 여기 반영됩니다.`),
+    S(puttAvg <= BENCH.puttGood ? 'g' : puttAvg > BENCH.puttBad ? 'r' : 'y', '🍩', '퍼팅',
+      `${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}홀`,
+      puttAvg <= BENCH.puttGood ? `퍼팅 수가 적습니다. 그린에서 타수를 잘 지키고 있어요.` :
+      puttAvg > BENCH.puttBad ? `퍼팅 수가 많습니다. 쓰리퍼팅 ${nf(threeAvg)}홀 — 첫 퍼트 거리감이 주 원인일 가능성이 큽니다.` :
+      `퍼팅 보통. 쓰리퍼팅이 라운드당 ${nf(threeAvg)}홀 — 여기서 타수가 새고 있습니다.`,
+      `라운드 총 퍼팅 평균(적을수록 좋음). 참고: GIR홀 퍼팅 ${girPuttN ? nf(girPuttAvg) + '개' : '-'}가 순수 퍼팅력에 더 가깝습니다.`)
   ];
   return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, sig };
 }
@@ -789,27 +830,11 @@ function renderStat(m) {
     h += `<div class="lbl">라운드별</div>`;
     rounds.forEach(r => {
       const cS = sig(r.score, AV.score, true, 2, AV.n), cP = sig(r.putts, AV.putts, true, 2, AV.n), cG = sig(r.gir, AV.gir, false, 10, AV.n), cF = sig(r.fir, AV.fir, false, 10, AV.n);
-      h += `<div class="rc" onclick="openDet(${r.id})"><div class="rc-top"><div style="flex:1"><div class="rc-name">${r.courseName || '?'} <span style="font-size:12px;color:var(--t3)">${r.courseLbl || ''}</span></div><div class="rc-sub">${r.date || ''} · ${r.weather || ''}</div></div><div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div></div><div class="rc-meta"><span>${dot(cP)}퍼팅 ${r.putts}</span><span>${dot(cG)}GIR ${r.gir}%</span><span>${dot(cF)}FIR ${r.fir}%</span>${r.mulligan ? `<span style="color:var(--r)">멀리건 ${r.mulligan}</span>` : ''}</div></div>`;
+      h += `<div class="rc" onclick="openDet(${r.id})"><div class="rc-top"><div style="flex:1"><div class="rc-name">${r.courseName || '?'} <span style="font-size:12px;color:var(--t3)">${r.courseLbl || ''}</span></div><div class="rc-sub">${r.date || ''} · ${r.weather || ''}</div></div><div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div></div><div class="rc-meta"><span>${dot(cF)}FIR ${r.fir}%</span><span>${dot(cG)}GIR ${r.gir}%</span><span>${dot(cP)}퍼팅 ${r.putts}</span>${r.mulligan ? `<span style="color:var(--r)">멀리건 ${r.mulligan}</span>` : ''}</div></div>`;
     });
   }
   el.innerHTML = h;
 }
-// ── 분석값 원터치 공유 ──
-function shareStat() {
-  const rounds = A.rounds.filter(r => !r.isDraft);
-  if (!rounds.length) { toast('공유할 통계가 없어요'); return; }
-  const a = analyze(rounds);
-  const avg = k => rounds.reduce((s, r) => s + (r[k] || 0), 0) / rounds.length;
-  const dotc = { g: '🟢', y: '🟡', r: '🔴' };
-  let t = `📊 온그린 분석 (${a.n}R)\n\n`;
-  t += `평균 ${avg('score').toFixed(1)}타 (${avg('vs') >= 0 ? '+' : ''}${avg('vs').toFixed(1)})\n`;
-  t += `퍼팅 ${avg('putts').toFixed(1)} · GIR ${avg('gir').toFixed(0)}% · FIR ${avg('fir').toFixed(0)}%\n\n`;
-  t += `🚦 진단\n`;
-  a.sig.forEach(s => { t += `${dotc[s.status]} ${s.icon} ${s.area} — ${s.value}\n`; });
-  t += `\n— 온그린`;
-  shareText('온그린 분석', t);
-}
-
 // ════════════════════════════════════════
 // 관리자 패널
 // ════════════════════════════════════════
@@ -820,6 +845,7 @@ async function admLoadNotes() {
   el.innerHTML = A.notes.map(nt => `<div class="pi">
     <div style="font-size:14px;font-weight:700;color:var(--t)">🗺️ ${nt.course}</div>
     <div style="font-size:12px;color:var(--t2);margin-top:3px">${nt.user} 님이 <b style="color:${nt.action === '추가' ? 'var(--g)' : 'var(--a)'}">${nt.action}</b> · ${nt.at}</div>
+    ${nt.detail ? `<div style="font-size:12px;color:var(--t);margin-top:5px;padding:6px 8px;background:var(--bg3);border-radius:8px;line-height:1.5">✏️ ${nt.detail}</div>` : ''}
   </div>`).join('') +
   `<button onclick="admClearNotes()" style="width:100%;margin-top:6px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:10px;color:var(--t);font-size:13px;font-weight:600;cursor:pointer;padding:10px">확인 (배지 지우기)</button>`;
 }
