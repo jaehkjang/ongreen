@@ -64,7 +64,7 @@ async function doLogin() {
 
 function logout() {
   if (!confirm('로그아웃 하시겠어요?')) return;
-  localStorage.removeItem('og_s');
+  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache');
   API.setAuth('', '');
   Object.assign(A, { u: '', isAdm: false, rounds: [], official: [...DEF], notes: [] });
   Q('li-n').value = ''; Q('li-p').value = ''; showPg('login');
@@ -86,28 +86,40 @@ async function changePin() {
 // ════════════════════════════════════════
 // 데이터 불러오기
 // ════════════════════════════════════════
-async function loadAll() {
-  load('데이터 불러오는 중...');
+async function loadAll(silent) {
+  if (!silent) load('데이터 불러오는 중...');  // 캐시로 이미 화면이 떠 있으면(silent) 로딩창 없이 조용히 갱신
   const [rr, cr, br] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()), callAPI(() => API.getBench()) ]);
 
-  if (rr && rr.err === '인증실패') { hide(); logoutSilent(); return; }  // 토큰 만료(초기화 등)
+  if (rr && rr.err === '인증실패') { hide(); logoutSilent(); return; }  // 토큰 만료(초기화 등) — 이때만 로그아웃
+
+  // 네트워크 단절: 로그인은 유지하고 캐시 데이터를 그대로 보여줌(튕기지 않음)
+  if (rr && rr.__net) {
+    setUserLabels();
+    renderHome(); showPg('home'); goHome(); hide();
+    if (!silent) toast('오프라인 상태예요 — 저장된 기록을 표시합니다');
+    return;
+  }
 
   if (br && br.ok && br.bench && typeof br.bench === 'object') Object.assign(BENCH, br.bench);  // 서버 기준값 반영(없으면 기본값 유지)
   A.rounds = (rr && rr.rounds) || [];
   A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(c => ({ ...c, status: 'official' })) : [...DEF];
+  try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {}  // 다음 실행 때 즉시 표시용 캐시
 
-  Q('h-user').textContent = '👤 ' + A.u;
-  Q('st-user').textContent = '👤 ' + A.u;
-  Q('set-u').textContent = '👤 ' + A.u;
-  Q('adm-panel').style.display = A.isAdm ? 'block' : 'none';
-  if (A.isAdm) await refreshNotes();
+  setUserLabels();
+  if (A.isAdm) refreshNotes();  // 관리자 알림은 뒤에서 채움(홈 표시를 막지 않음)
 
   renderHome(); showPg('home');
   goHome();
   hide();
 }
+function setUserLabels() {
+  Q('h-user').textContent = '👤 ' + A.u;
+  Q('st-user').textContent = '👤 ' + A.u;
+  Q('set-u').textContent = '👤 ' + A.u;
+  Q('adm-panel').style.display = A.isAdm ? 'block' : 'none';
+}
 function logoutSilent() {
-  localStorage.removeItem('og_s'); API.setAuth('', '');
+  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); API.setAuth('', '');
   Object.assign(A, { u: '', isAdm: false, rounds: [], official: [...DEF], notes: [] });
   showPg('login'); toast('다시 로그인해주세요');
 }
@@ -134,7 +146,7 @@ function renderBenchSettings() {
   const expl = `<div style="font-size:13px;color:var(--t2);line-height:1.7">
     신호등은 <b style="color:var(--g)">🟢 좋음</b> / <b style="color:var(--a)">🟡 양호</b> / <b style="color:var(--r)">🔴 부족</b> 3단계입니다.<br><br>
     <b style="color:var(--t)">🚗 드라이버 — 티샷 생존율</b><br>생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀. 🟢 ${b.survGood}%↑ · 🟡 ${b.survOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀↑이면 한 단계 강등.<br><br>
-    <b style="color:var(--t)">🎱 퍼팅 — 라운드 총 퍼팅</b><br>🟢 ${b.puttGood}개↓ · 🟡 ${b.puttBad}개↓ · 🔴 그 초과.<br><br>
+    <b style="color:var(--t)">🍩 퍼팅 — 라운드 총 퍼팅</b><br>🟢 ${b.puttGood}개↓ · 🟡 ${b.puttBad}개↓ · 🔴 그 초과.<br><br>
     <b style="color:var(--t)">🎯 아이언 — GIR(그린 적중률)</b><br>🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.</div>`;
   let html = expl;
   if (A.isAdm) {
@@ -184,7 +196,7 @@ function renderHome() {
         <div class="rc-sub">${r.date || ''} · ${r.weather || ''}${r.partner ? ' · ' + r.partner : ''}${r.memo ? ' · ' + r.memo : ''}</div>
       </div>${draft ? `<span style="background:#3a2a0a;color:var(--a);font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;flex-shrink:0">✏️ 작성중</span>` : `<div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div>`}</div>
       ${draft ? `<div style="margin-top:10px;padding:8px 12px;background:#2a2a0a;border-radius:8px;font-size:12px;color:var(--a)">탭해서 이어서 입력 →</div>` :
-      `<div class="rc-meta"><span>🔵 ${r.putts}퍼팅</span><span>🎯 GIR ${r.gir}%</span><span>🚗 FIR ${r.fir}%</span>${(r.mulligan || r.tpCount) ? `<span style="color:var(--r)">🔄 M${r.mulligan || 0}·TP${r.tpCount || 0}</span>` : ''}</div>`}
+      `<div class="rc-meta"><span>🍩 ${r.putts}퍼팅</span><span>🎯 GIR ${r.gir}%</span><span>🚗 FIR ${r.fir}%</span>${(r.mulligan || r.tpCount) ? `<span style="color:var(--r)">🔄 M${r.mulligan || 0}·TP${r.tpCount || 0}</span>` : ''}</div>`}
     </div>`;
   });
   el.innerHTML = h;
@@ -339,8 +351,8 @@ function renderSC() {
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
     const teeLbl = tpv ? 'TP' : 'M', teeCls = mm ? 'om' : tpv ? 'otp' : '';
     const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
-    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht"><span class="htg ${gg ? 'og' : ''}">GIR</span>${firCell}<span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
-    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht"><button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button>${firCell}<button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
+    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht"><span class="htg ${gg ? 'og' : ''}">GIR</span>${firCell}<span class="htg ${pp > 0 ? 'op' : ''}">${pp}🍩</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
+    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht"><button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button>${firCell}<button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}🍩</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
   }
   Q('sc-body').innerHTML = html; updFt();
   if (!ro) { const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false; }
@@ -593,7 +605,7 @@ function analyze(rounds) {
       dst === 'y' ? `대체로 살리지만 가끔 공을 잃습니다. 페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀.` :
       `티샷에서 공을 자주 잃습니다(OB/해저드 ${nf(teeLostPer)}홀). 스코어 손실의 큰 원인입니다.`,
       `생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀 · M=벌타 없이 다시 침, TP=벌타 받고 진행 · 둘 다 "공 잃음"으로 동일 처리`),
-    S(puttAvg <= BENCH.puttGood ? 'g' : puttAvg > BENCH.puttBad ? 'r' : 'y', '🎱', '퍼팅',
+    S(puttAvg <= BENCH.puttGood ? 'g' : puttAvg > BENCH.puttBad ? 'r' : 'y', '🍩', '퍼팅',
       `${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}홀`,
       puttAvg <= BENCH.puttGood ? `퍼팅 수가 적습니다. 그린에서 타수를 잘 지키고 있어요.` :
       puttAvg > BENCH.puttBad ? `퍼팅 수가 많습니다. 쓰리퍼팅 ${nf(threeAvg)}홀 — 첫 퍼트 거리감이 주 원인일 가능성이 큽니다.` :
@@ -813,11 +825,22 @@ async function checkVersion() {
 }
 
 (async () => {
-  await checkVersion();
+  checkVersion();  // 비블로킹: 버전 배너는 응답이 오면 그때 표시(자동 로그인을 막지 않음)
   const s = JSON.parse(localStorage.getItem('og_s') || '{}');
   if (s.u && s.token) {
     A.u = s.u; A.isAdm = s.isAdm || false; API.setAuth(s.u, s.token);
-    await loadAll();
+    let shownFromCache = false;
+    try {
+      const cache = JSON.parse(localStorage.getItem('og_cache') || 'null');  // 지난번 받아둔 데이터로 즉시 화면 표시
+      if (cache && cache.rounds) {
+        A.rounds = cache.rounds;
+        A.official = (cache.official && cache.official.length) ? cache.official : [...DEF];
+        if (cache.bench && typeof cache.bench === 'object') Object.assign(BENCH, cache.bench);
+        setUserLabels(); renderHome(); showPg('home'); goHome();
+        shownFromCache = true;
+      }
+    } catch (e) {}
+    loadAll(shownFromCache);  // 뒤에서 최신 데이터로 갱신(캐시로 떴으면 로딩창 없이)
   } else {
     showPg('login');
   }
