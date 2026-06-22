@@ -40,10 +40,8 @@ const NOTICES = [
   { id: 3, date: '2026.06.22', cat: '설명서', pin: true, title: '📖 사용 설명서 — 스코어카드 작성', body: guideScorecardHTML },
   { id: 2, date: '2026.06.22', cat: '설명서', pin: true, title: '📊 통계 분석 — 지표 설명', body: guideStatsHTML },
   { id: 1, date: '2026.06.22', cat: '공지', title: '🎉 온그린에 오신 걸 환영합니다', body:
-    `<p>온그린은 혼자서 라운드 점수를 기록하고, 내 골프 실력을 데이터로 진단하는 앱이에요.</p>
-     <p style="margin-top:10px">이 <b>공지 게시판</b>에서는 새 소식과 함께 항상 최신 상태로 유지되는
-     <b>사용 설명서</b>와 <b>통계 분석 지표 설명</b>을 볼 수 있어요. 👀 읽기 전용이라 편하게 둘러보세요.</p>
-     <p style="margin-top:10px;color:var(--t2);font-size:13px">새 공지가 올라오면 홈 상단 📢 아이콘에 빨간 알림이 떠요.</p>` },
+    `<p style="line-height:1.6">라운드 점수를 기록하면 통계로 실력을 진단해주는 앱이에요.</p>
+     <p style="margin-top:8px;line-height:1.6">여기 게시판의 <b>사용 설명서</b>·<b>통계 지표 설명</b>은 늘 최신으로 유지돼요(읽기 전용). 새 공지는 홈 📢 아이콘 알림으로 알려드려요.</p>` },
 ];
 function nf(x) { return Number.isInteger(+x) ? String(+x) : (+x).toFixed(1); }
 let _sid = 0, _delId = null, _editOldName = '';
@@ -997,91 +995,64 @@ function maybeShowGuidePopup() {
 // 기능이 바뀌면 이 함수만 손보면 게시판 글이 자동으로 갱신됩니다(별도 글 수정 불필요).
 function guideScorecardHTML() {
   const courseCnt = (A.official || []).length;
-  const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:16px 0 6px">${t}</div>`;
-  const btn = (b, t) => `<div style="display:flex;gap:8px;align-items:flex-start;margin:6px 0"><span style="flex-shrink:0;display:inline-block;min-width:30px;text-align:center;background:var(--bg3);border:1px solid var(--bd);border-radius:8px;padding:2px 7px;font-size:12px;font-weight:700;color:var(--t)">${b}</span><span style="font-size:13px;color:var(--t2);line-height:1.6">${t}</span></div>`;
+  const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
+  const btn = (b, t) => `<div style="display:flex;gap:8px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;display:inline-block;min-width:30px;text-align:center;background:var(--bg3);border:1px solid var(--bd);border-radius:8px;padding:2px 7px;font-size:12px;font-weight:700;color:var(--t)">${b}</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
-  <p style="color:var(--t2);font-size:13px;line-height:1.7">온그린은 라운드 한 판의 점수를 홀별로 입력하면 통계와 진단이 자동으로 계산되는 앱이에요. 아래 순서대로만 하면 됩니다.</p>
+  <p style="color:var(--t2);font-size:13px;line-height:1.6">홀별로 점수를 넣으면 통계·진단이 자동 계산돼요.</p>
 
-  ${S('① 새 라운드 시작')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.7">홈 화면 오른쪽 위 <b style="color:var(--t)">[＋ 추가]</b> → <b>날짜 · 날씨 · 동반자 · 메모</b>를 입력하고 <b style="color:var(--t)">[골프장 선택 →]</b>을 누릅니다.</div>
+  ${S('① 라운드 만들기')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">홈 <b style="color:var(--t)">[＋ 추가]</b> → 날짜·날씨·동반자·메모 → <b style="color:var(--t)">[골프장 선택]</b>.</div>
 
   ${S('② 골프장 고르기')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.7">
-  목록에서 골프장을 탭하세요. 최근에 친 골프장이 맨 위에 옵니다.<br>
-  <b style="color:var(--a)">⚠️ 골프장 리스트는 아직 완성되는 중이에요.</b> 현재 <b style="color:var(--t)">${courseCnt}곳</b>이 등록돼 있고, 찾는 곳이 없으면 오른쪽 위 <b style="color:var(--t)">[＋ 추가]</b>로 직접 등록한 뒤 바로 작성할 수 있어요. (등록한 골프장은 다음에도 목록에 남습니다.)</div>
+  <div style="font-size:13px;color:var(--t2);line-height:1.6"><b style="color:var(--a)">리스트는 아직 채우는 중</b>(현재 ${courseCnt}곳)이라, 없으면 <b style="color:var(--t)">[＋ 추가]</b>로 직접 등록해 바로 쓰면 돼요. 등록한 곳은 목록에 남습니다.</div>
 
-  ${S('③ 홀 파(par) 구성 — 중요!')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.7">
-  골프장을 고르면 <b style="color:var(--t)">코스 조합(예: 레이크+파인)</b>과 <b>홀별 파</b>를 확인하는 창이 떠요. 같은 골프장이라도 어느 코스를 도느냐에 따라 파 구성이 달라서, 그날 친 코스와 파가 맞는지 한 번 확인하는 단계예요.<br>
-  ＋ / － 버튼으로 홀별 파를 바꿀 수 있고, 이 수정은 <b style="color:var(--g)">이 라운드에만</b> 적용됩니다(공식 골프장 데이터는 그대로). 다 맞으면 <b style="color:var(--t)">[✏️ 스코어카드 작성 시작]</b>.<br>
-  <span style="color:var(--t3);font-size:12px">※ 작성 도중에도 상단 <b>⛳ 파수정</b> 버튼으로 다시 고칠 수 있어요. 공식과 다르게 고치면 관리자에게 자동으로 알려져 목록이 점점 정확해집니다.</span></div>
+  ${S('③ 홀 파(par) 확인')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">같은 골프장도 도는 코스 조합에 따라 파가 달라요. 뜨는 창에서 ＋/－로 그날 파를 맞추세요(<b style="color:var(--g)">이 라운드에만</b> 적용, 공식 데이터는 안 바뀜). 작성 중에도 상단 <b>⛳ 파수정</b>으로 가능.</div>
 
-  ${S('④ 스코어카드 입력 — 버튼 의미')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:4px">홀마다 한 줄씩, 각 버튼을 눌러 기록해요.</div>
-  ${btn('－ ＋', '타수를 1씩 줄이고/늘립니다. 가운데 <b>숫자(P)</b>를 탭하면 그 홀의 <b>파(par)로 한 번에</b> 입력돼요(빠른 입력).')}
-  ${btn('GIR', '<b>그린 적중</b> — 정규 타수(파−2) 안에 공을 그린에 올렸으면 켜세요. 아이언 실력 지표가 됩니다.')}
-  ${btn('FIR', '<b>페어웨이 적중</b> — 티샷이 페어웨이를 지켰으면 켜세요. 파4·5에서만 쓰며, <b>파3은 자동으로 비활성(·)</b>입니다.')}
-  ${btn('🍩', '<b>퍼팅 수</b> — 누를 때마다 1 → 2 → 3 → 4 로 순환합니다. 그 홀에서 친 퍼팅 개수예요.')}
-  ${btn('M／TP', '<b>티샷 사고 기록</b> — 끄기 → <b>M</b> → <b>TP</b> → 끄기 순서로 바뀝니다. <b>M</b>은 멀리건(벌타 없이 다시 침), <b>TP</b>는 벌타를 받고 진행한 경우예요. 이 표시로 드라이버에서 공을 얼마나 잃었는지(생존율)를 진단합니다. 둘 다 "공 잃음"으로 같게 봅니다.')}
+  ${S('④ 버튼 의미')}
+  ${btn('－ ＋', '타수 −1/＋1. 가운데 <b>숫자(P)</b> 탭 = 파로 바로 입력.')}
+  ${btn('GIR', '정규타수(파−2) 안에 그린 올렸으면 ON. (아이언 지표)')}
+  ${btn('FIR', '티샷이 페어웨이면 ON. 파4·5만, <b>파3은 자동 비활성(·)</b>.')}
+  ${btn('🍩', '퍼팅 수. 탭마다 1→2→3→4 순환.')}
+  ${btn('M／TP', '티샷 사고. 끄기→<b>M</b>(멀리건·벌타X)→<b>TP</b>(벌타 받고 진행)→끄기. 드라이버 생존율 진단에 쓰여요.')}
 
-  ${S('⑤ 전반 / 후반 전환')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.7">상단 세그먼트로 <b>전반(1–9)</b> ↔ <b>후반(10–18)</b>을 오갑니다. 아래 고정 바에 <b>합계 · 파대비 · GIR · 퍼팅 · M/TP</b>가 실시간으로 집계돼요.</div>
+  ${S('⑤ 저장')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">위 세그먼트로 전·후반 전환, 아래 바에 합계가 실시간 집계. 다 채우면 <b style="color:var(--g)">✓ 완료</b>로 저장. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
 
-  ${S('⑥ 저장 · 임시저장')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.7">
-  모든 홀을 입력하면 저장 버튼이 <b style="color:var(--g)">✓ 완료</b>로 바뀌고, 누르면 저장됩니다.<br>
-  아직 다 못 쳤는데 <b>뒤로</b> 가면 <b style="color:var(--a)">✏️ 작성중</b> 상태로 임시저장돼요. 홈에서 다시 탭하면 이어서 입력할 수 있습니다.</div>
-
-  ${S('⑦ 저장 후')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.7">홈에서 라운드를 탭하면 상세가 열리고 <b>🔧 수정 · 🗑 삭제 · 📤 공유</b>를 할 수 있어요. 공유를 누르면 스코어카드가 보기 좋게 정리돼 카톡 등으로 바로 보낼 수 있습니다.</div>
-
-  <div style="margin-top:18px;padding-top:12px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3);line-height:1.6">📌 이 설명서는 앱 버전 <b>${APP_VERSION}</b> 기준이며, 기능이 업데이트되면 자동으로 갱신됩니다.</div>`;
+  <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준 · 기능이 바뀌면 자동 갱신.</div>`;
 }
 
 // ── 통계 분석 지표 설명(자동 생성) : 각 지표가 무엇을 뜻하는지 ──
 // 신호등 기준값(BENCH)을 그대로 끌어와 기준이 바뀌면 설명도 함께 갱신됩니다.
 function guideStatsHTML() {
   const b = BENCH;
-  const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:16px 0 6px">${t}</div>`;
-  const it = (name, desc) => `<div style="margin:8px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.6">${desc}</div></div>`;
+  const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
+  const it = (name, desc) => `<div style="margin:6px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.5">${desc}</div></div>`;
   return `
-  <p style="color:var(--t2);font-size:13px;line-height:1.7">라운드를 저장하면 <b>통계</b> 탭에서 아래 지표들이 자동으로 계산돼요. 각 숫자가 무엇을 뜻하는지 정리했습니다.</p>
+  <p style="color:var(--t2);font-size:13px;line-height:1.6"><b>통계</b> 탭에서 자동 계산되는 지표들의 뜻이에요.</p>
 
-  ${S('🚦 진단 신호등 (3대 지표)')}
-  <div style="font-size:12px;color:var(--t2);line-height:1.7;margin-bottom:4px">실력을 절대 기준으로 <b style="color:var(--g)">🟢 좋음</b> / <b style="color:var(--a)">🟡 양호</b> / <b style="color:var(--r)">🔴 부족</b> 3단계로 표시해요. 기준값은 관리자가 설정에서 바꿀 수 있습니다.</div>
-  ${it('🚗 드라이버 — 티샷 생존율', `(파4·5홀 − M·TP 켠 홀) ÷ 파4·5홀. 티샷에서 공을 안 잃은 비율이에요. 🟢 ${b.survGood}%↑ · 🟡 ${b.survOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀 이상이면 한 단계 강등됩니다.`)}
-  ${it('🎯 아이언 — GIR(그린 적중률)', `정규 타수(파−2) 안에 그린에 올린 홀의 비율. 🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.`)}
-  ${it('🍩 퍼팅 — 라운드 총 퍼팅', `한 라운드에서 친 퍼팅 수 평균(적을수록 좋음). 🟢 ${b.puttGood}개↓ · 🟡 ${b.puttBad}개↓ · 🔴 그 초과.`)}
+  ${S('🚦 진단 신호등')}
+  <div style="font-size:12px;color:var(--t2);line-height:1.5;margin-bottom:3px"><b style="color:var(--g)">🟢좋음</b>·<b style="color:var(--a)">🟡양호</b>·<b style="color:var(--r)">🔴부족</b> 3단계(기준은 설정에서 조정).</div>
+  ${it('🚗 드라이버 생존율', `(파4·5홀 − M·TP홀) ÷ 파4·5홀 = 티샷에서 공 안 잃은 비율. 🟢${b.survGood}↑·🟡${b.survOk}↑(%). OB/해저드 ${b.tpDemote}홀↑이면 강등.`)}
+  ${it('🎯 아이언 GIR', `정규타수(파−2) 안에 그린 올린 비율. 🟢${b.girGood}↑·🟡${b.girBad}↑(%).`)}
+  ${it('🍩 퍼팅', `라운드 총 퍼팅(적을수록 좋음). 🟢${b.puttGood}↓·🟡${b.puttBad}↓(개).`)}
 
-  ${S('핵심 지표')}
-  ${it('평균 스코어', '저장한 라운드들의 총타수 평균이에요.')}
-  ${it('평균 오버파', '파 대비 평균(+면 오버, −면 언더).')}
-  ${it('평균 퍼팅 · GIR · FIR', '라운드당 평균 퍼팅 수, 그린 적중률(%), 페어웨이 적중률(%)입니다.')}
-  ${it('라운드수', '통계에 쓰인 저장된 라운드 개수.')}
+  ${S('스코어')}
+  ${it('평균 스코어·오버파', '총타수 평균과 파 대비(+오버/−언더).')}
+  ${it('베스트 · 최근5R 폼 · 기복', '최저타 / 최근5R과 전체 평균 차(▼좋아짐·▲나빠짐) / 점수 편차(작을수록 일정).')}
+  ${it('파 종류별', '파3·4·5에서 파 대비 평균 — 약한 홀 유형.')}
+  ${it('전·후반', '앞뒤 9홀 평균과 차이(후반 무너짐 확인).')}
 
-  ${S('베스트 · 최근 폼 · 기복')}
-  ${it('베스트 스코어', '기록 중 가장 낮은(좋은) 총타수.')}
-  ${it('최근 5R 폼', '최근 5라운드 평균과 전체 평균의 차이. <b>▼</b>면 좋아지는 중, <b>▲</b>면 나빠지는 중이에요.')}
-  ${it('기복(편차)', '스코어의 표준편차. 작을수록 라운드마다 점수가 일정하다는 뜻이에요.')}
-
-  ${S('파 종류별 (파 대비)')}
-  ${it('파3 / 파4 / 파5', '각 파 홀에서 파 대비 평균 몇 타를 쳤는지. 약한 홀 유형을 알 수 있어요.')}
-
-  ${S('퍼팅 · 쇼트게임')}
-  ${it('GIR홀 퍼팅', '그린을 정규로 올린 홀의 퍼팅 평균. 어프로치 영향이 적어 <b>순수 퍼팅력</b>에 더 가깝습니다.')}
-  ${it('3퍼팅/라운드', '라운드당 3퍼팅 이상 한 홀 수. 첫 퍼트 거리감 지표예요.')}
-  ${it('스크램블링', '그린을 놓친 홀에서 파(이하)로 막아낸 비율. 쇼트게임 회복력을 봅니다.')}
-
-  ${S('전반 / 후반')}
-  ${it('전반(1–9) · 후반(10–18) · 차이', '앞·뒤 9홀 평균과 그 차이. 후반에 무너지는지(체력·집중) 확인할 수 있어요.')}
+  ${S('정확도 · 쇼트게임')}
+  ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
+  ${it('GIR홀 퍼팅 · 3퍼팅', '그린 정규로 올린 홀의 퍼팅(순수 퍼팅력) / 라운드당 3퍼팅 수.')}
+  ${it('스크램블링', '그린 놓친 홀을 파 이하로 막은 비율.')}
 
   ${S('그래프')}
-  ${it('스코어 추이', '최근 라운드들의 총타수 막대그래프. 색은 내 평균 대비 🟢더 좋음 🟡비슷 🔴더 나쁨.')}
-  ${it('타수 분포', '이글↑·버디·파·보기·더블+ 홀이 각각 몇 개였는지.')}
-  ${it('코스별 평균', '골프장별 평균 타수와 라운드 수.')}
+  ${it('스코어 추이 · 타수 분포 · 코스별', '최근 막대(내 평균 대비 색) / 이글↑·버디·파·보기·더블+ 개수 / 골프장별 평균.')}
 
-  <div style="margin-top:14px;font-size:12px;color:var(--t2);line-height:1.6">※ <b>라운드별</b> 탭에서는 각 라운드를 <b>내 평균과 비교</b>해 🟢🟡🔴 점으로 보여줘요(라운드 3개 이상부터).</div>
-  <div style="margin-top:14px;padding-top:12px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3);line-height:1.6">📌 이 글은 앱 버전 <b>${APP_VERSION}</b> 기준이며, 지표가 추가/변경되면 자동으로 갱신됩니다.</div>`;
+  <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.5">※ <b>라운드별</b> 탭은 각 라운드를 내 평균과 비교해 🟢🟡🔴로 표시(3R↑).</div>
+  <div style="margin-top:12px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준 · 지표가 바뀌면 자동 갱신.</div>`;
 }
 
 // ════════════════════════════════════════
