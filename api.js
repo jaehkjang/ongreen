@@ -8,7 +8,7 @@ const API = {
   // ▼▼▼ 배포 후 받은 웹앱 URL을 여기에 붙여넣으세요 ▼▼▼
   URL: 'https://script.google.com/macros/s/AKfycbwmJhJ3nLOGgIVzXnoOe1YcnXfAq-gHQ44xyouczhr20l1P_k2uDOTRDqZRJWOjzjoXiw/exec',
 
-  VERSION: 'v13-2026.06.22',   // ← Apps_Script.gs 의 VERSION 과 반드시 동일
+  VERSION: 'v12-2026.06.21',   // ← Apps_Script.gs 의 VERSION 과 반드시 동일
 
   // 로그인 후 받은 손목밴드(토큰)를 보관 — 비밀번호는 저장하지 않음
   u: '', token: '',
