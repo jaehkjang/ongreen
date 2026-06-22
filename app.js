@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.3.1';
+const APP_VERSION = 'v12.4.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -421,7 +421,46 @@ function shareRound(id) {
 // ════════════════════════════════════════
 // 골프장 (단일 목록 · 승인 없음 · 삭제는 관리자만)
 // ════════════════════════════════════════
+// ── 골프장 카드 슬라이드-삭제 ──
+// 카드를 왼쪽으로 끌면 뒤에 숨은 삭제 버튼이 드러난다. 목록 컨테이너에 한 번만
+// 위임 핸들러를 달고, 열려 있는 카드는 _ccOpen 으로 추적한다.
+let _ccOpen = null;
+function initCourseSwipe() {
+  const list = Q('cs-list');
+  if (!list || list._swipeReady) return;
+  list._swipeReady = true;
+  let wrap = null, startX = 0, startY = 0, dx = 0, dir = 0, width = 88;   // dir: 0 미정 1 가로 2 세로
+  const setX = x => { const cc = wrap.querySelector('.cc'); if (cc) cc.style.transform = x ? `translateX(${x}px)` : ''; };
+  list.addEventListener('touchstart', e => {
+    const w = e.target.closest('.cc-wrap');
+    if (_ccOpen && _ccOpen !== w) { _ccOpen.classList.remove('open'); _ccOpen = null; }   // 다른 카드 열려있으면 닫기
+    if (!w || !w.querySelector('.cc-del')) { wrap = null; return; }
+    wrap = w; startX = e.touches[0].clientX; startY = e.touches[0].clientY; dx = 0; dir = 0;
+    width = w.querySelector('.cc-del').offsetWidth || 88;
+    const cc = w.querySelector('.cc'); if (cc) cc.style.transition = 'none';
+  }, { passive: true });
+  list.addEventListener('touchmove', e => {
+    if (!wrap) return;
+    dx = e.touches[0].clientX - startX;
+    if (!dir) dir = (Math.abs(dx) > Math.abs(e.touches[0].clientY - startY)) ? 1 : 2;
+    if (dir !== 1) return;
+    const base = wrap.classList.contains('open') ? -width : 0;
+    let t = base + dx; if (t > 0) t = 0; if (t < -width) t = -width;
+    setX(t);
+  }, { passive: true });
+  list.addEventListener('touchend', () => {
+    if (!wrap) return;
+    const cc = wrap.querySelector('.cc'); if (cc) cc.style.transition = '';
+    const base = wrap.classList.contains('open') ? -width : 0;
+    const open = (base + dx) < -width / 2;
+    wrap.classList.toggle('open', open);
+    _ccOpen = open ? wrap : (_ccOpen === wrap ? null : _ccOpen);
+    setX(0);
+    wrap = null;
+  });
+}
 function renderCourses() {
+  initCourseSwipe(); _ccOpen = null;          // 슬라이드-삭제 핸들러 준비 + 열린 카드 상태 초기화
   const q = (Q('cs-q')?.value || '').trim();
   const all = A.allCourses();
   const list = q ? all.filter(c => c.name.includes(q) || (c.addr || '').includes(q)) : all;
@@ -432,14 +471,16 @@ function renderCourses() {
   (A.rounds || []).filter(r => !r.isDraft).forEach(r => { const nm = r.courseName; if (nm && !seen.has(nm)) { seen.add(nm); recent.push(nm); } });
   const rank = nm => { const i = recent.indexOf(nm); return i < 0 ? Infinity : i; };
   const sorted = [...list].sort((a, b) => { const ra = rank(a.name), rb = rank(b.name); return ra !== rb ? ra - rb : a.name.localeCompare(b.name, 'ko'); });
-  const card = c => `<div class="cc">
-    <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
-      <div class="cc-name">${c.name}</div>
-      <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
+  // 카드: 연필(수정)·삭제 버튼은 없애고, 관리자는 왼쪽으로 슬라이드하면 삭제 버튼이 나옴
+  const card = c => `<div class="cc-wrap">
+    ${A.isAdm ? `<div class="cc-del"><button onclick="delCourse('${c.name}')">🗑 삭제</button></div>` : ''}
+    <div class="cc">
+      <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
+        <div class="cc-name">${c.name}</div>
+        <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
+      </div>
+      <span class="cbg off">✅ 공식</span>
     </div>
-    <span class="cbg off">✅ 공식</span>
-    <button class="ib" style="background:#1a2e1a;border:1px solid var(--g);color:var(--g)" onclick="openEditCourse('${c.id || c.name}')" title="수정">✏️</button>
-    ${A.isAdm ? `<button class="ib" style="background:#2d0f0f;border:1px solid #6a2020;color:var(--r)" onclick="delCourse('${c.name}')">🗑</button>` : ''}
   </div>`;
   if (q) { Q('cs-list').innerHTML = sorted.map(card).join(''); return; }   // 검색 중엔 그냥 결과만
   const recentList = sorted.filter(c => rank(c.name) !== Infinity);
