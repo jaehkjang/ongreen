@@ -41,6 +41,7 @@
   <div class="top">
     <div class="t-col"><div class="t-ttl">⛳ 온그린</div><div class="t-sub" id="h-user"></div></div>
     <div class="t-acts">
+      <div class="ic-wrap"><button class="ic-btn" onclick="goNotice()">📢</button><span class="badge" id="nb">0</span></div>
       <div class="ic-wrap"><button class="ic-btn" onclick="goSet()">⚙️</button><span class="badge" id="ab">0</span></div>
       <button class="add" onclick="newRound()">+ 추가</button>
     </div>
@@ -143,6 +144,15 @@
   </div>
 </div>
 
+<!-- 공지 게시판 (읽기 전용) -->
+<div class="page" id="pg-notice">
+  <div class="top">
+    <button class="back" onclick="goHome()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
+    <div class="t-ttl">공지 게시판</div><div style="width:60px"></div>
+  </div>
+  <div class="body" id="notice-body"></div>
+</div>
+
 <!-- 모달: 새 라운드 -->
 <div class="mo" id="m-nr"><div class="ms">
   <div class="mh"></div><div class="mt">새 라운드</div>
@@ -204,6 +214,13 @@
   <div id="det-body"></div>
   <button class="mno" onclick="cm('m-det')">닫기</button>
 </div></div>
+
+<!-- 모달: 공지/설명서 읽기 -->
+<div class="mo" id="m-notice"><div class="ms">
+  <div class="mh"></div><div class="mt" id="notice-t"></div>
+  <div id="notice-read" style="font-size:14px;color:var(--t);line-height:1.7"></div>
+  <button class="mno" onclick="cm('m-notice')">닫기</button>
+</div></div>
 </div>
 
 <!-- 서비스 워커 제거: 과거 SW 가 GitHub Pages 재배포 순간의 404 를 그대로
@@ -220,7 +237,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.5.0"></script>
-<script src="app.js?v=12.5.0"></script>
+<script src="api.js?v=12.6.0"></script>
+<script src="app.js?v=12.6.0"></script>
 </body>
 </html>
