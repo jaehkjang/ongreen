@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.14.0';
+const APP_VERSION = 'v12.15.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -372,7 +372,6 @@ function openDet(id) {
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
     ${courseCompareHTML(r)}
-    ${mulliGainHTML(r)}
     <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button onclick="openSC(${id},false);cm('m-det')" style="flex:1;background:var(--a);border:none;border-radius:12px;padding:12px;color:#000;font-size:14px;font-weight:700;cursor:pointer">🔧 수정</button>
@@ -959,7 +958,7 @@ function prescriptionHTML(a) {
   return `<div class="cb" style="border-left:3px solid var(--a)">
     <div style="font-size:13px;font-weight:800;color:var(--a);margin-bottom:5px">💊 오늘의 처방</div>
     <div style="font-size:16px;font-weight:700;color:var(--t);line-height:1.4">${top.area.split(' ')[0]} ${name} 한 곳만 잡으세요</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-top:6px">${name} 때문에 라운드당 약 <b style="color:var(--a)">${top.lost.toFixed(1)}타</b>를 흘리고 있어요.<br>→ <b style="color:var(--t)">${top.drill}</b></div></div>`;
+    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-top:6px">${name}에서 약 <b style="color:var(--a)">${top.lost.toFixed(1)}타</b>를 손해 보고 있어요.<br>→ <b style="color:var(--t)">${top.drill}</b></div></div>`;
 }
 // ── 약점 우선순위(간이 스트로크게인): 영역별 손실 타수 추정 → 고칠 순서 ──
 function weaknessHTML(a, rounds) {
@@ -1033,26 +1032,6 @@ function parCrossHTML(rounds) {
   return card('파3', T[3], false) + card('파4', T[4], true) + card('파5', T[5], true);
 }
 
-// ── 🎯 스코어 잠재력: 베스트 전반 + 베스트 후반 = 이미 칠 수 있는 점수 ──
-function potentialHTML(rounds) {
-  let bf = Infinity, bb = Infinity;
-  rounds.forEach(r => {
-    const sc = r.scores || [];
-    const f = sc.slice(0, 9), b = sc.slice(9, 18);
-    if (f.length === 9 && f.every(x => x > 0)) { const s = f.reduce((a, b) => a + b, 0); if (s < bf) bf = s; }
-    if (b.length === 9 && b.every(x => x > 0)) { const s = b.reduce((a, b) => a + b, 0); if (s < bb) bb = s; }
-  });
-  if (bf === Infinity || bb === Infinity) return '';     // 완주한 전·후반이 각각 1개 이상 필요
-  const pot = bf + bb;
-  const avg = rounds.reduce((a, r) => a + r.score, 0) / rounds.length;
-  const gap = avg - pot;
-  return `<div class="cb">
-    <div class="sgd" style="margin-bottom:8px">
-      ${statCard(pot, '', '잠재 베스트(전·후반 최고 합)')}
-      ${statCard(avg.toFixed(1), '', '현재 평균')}</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.65">당신의 <b style="color:var(--g)">베스트 전반(${bf}) + 베스트 후반(${bb})</b>을 합치면 <b style="color:var(--g)">${pot}</b>까지 칠 실력이 이미 있어요. 평균(${avg.toFixed(1)})과의 차이 <b style="color:var(--a)">${gap > 0 ? gap.toFixed(1) : '0'}타</b>는 대부분 <b style="color:var(--t)">기복</b>에서 나옵니다 — 한 라운드를 끝까지 집중하면 줄어드는 점수예요.</div></div>`;
-}
-
 // ── 추가 집계(홀 기준): 실력 비율 · 퍼팅 분포 · 정확도의 가치 ──
 function extraStats(rounds) {
   let played = 0, parOrBetter = 0, bogey = 0, dblPlus = 0;
@@ -1077,36 +1056,6 @@ function extraStats(rounds) {
   return { played, parSaveRate: pct(parOrBetter, played), bogeyRate: pct(bogey, played), dblPlusRate: pct(dblPlus, played),
     firHitAvg: avg(firHitVs, firHitN), firMissAvg: avg(firMissVs, firMissN), girHitAvg: avg(girHitVs, girHitN), girMissAvg: avg(girMissVs, girMissN),
     p1, p2, p3, p4, puttHoles, onePuttRate: pct(p1, puttHoles) };
-}
-
-// ── 🔄 멀리건 추정 이득 ──
-// 멀리건(M·벌타 없이 다시 침) 1회 ≈ 약 1타 이득으로 보수적으로 추정합니다.
-// 멀리건이 없었다면 그 나쁜 샷이 점수에 더해졌을 것이므로, "멀리건 없는 추정 스코어 ≈ 실제 + 멀리건 수".
-// TP(벌타 받고 진행)는 이미 점수에 반영돼 있어 이득으로 세지 않습니다.
-const MULLI_GAIN = 1;
-function mulliGain(r) { return (r.mulligan || 0) * MULLI_GAIN; }
-// 라운드 상세용 — 멀리건이 있을 때만 카드 표시
-function mulliGainHTML(r) {
-  const m = r.mulligan || 0; if (!m) return '';
-  const g = mulliGain(r);
-  return `<div class="cb" style="margin-top:8px;padding:12px 16px;border-left:3px solid var(--a)">
-    <div style="font-size:13px;font-weight:700;color:var(--a);margin-bottom:4px">🔄 멀리건 추정 이득</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.6">멀리건 <b style="color:var(--t)">${m}회</b>로 약 <b style="color:var(--a)">~${nf(g)}타</b> 이득을 봤어요. 멀리건 없이 쳤다면 <b style="color:var(--t)">약 ${r.score + g}타</b>로 추정돼요.</div>
-    <div style="font-size:10px;color:var(--t3);margin-top:6px">※ 멀리건 1회 ≈ 약 1타 이득(보수적 추정). TP(벌타 받고 진행)는 이미 점수에 반영돼 제외.</div></div>`;
-}
-// 전체 통계용
-function overallMulliHTML(rounds) {
-  const n = rounds.length; if (!n) return '';
-  const totM = rounds.reduce((a, r) => a + (r.mulligan || 0), 0);
-  if (!totM) return '';
-  const totG = totM * MULLI_GAIN, avgG = totG / n;
-  const avgScore = rounds.reduce((a, r) => a + (r.score || 0), 0) / n;
-  return `<div class="cb" style="border-left:3px solid var(--a)">
-    <div class="sgd" style="margin-bottom:8px">
-      ${statCard(totM, '회', '전체 멀리건')}
-      ${statCard('~' + nf(avgG), '타', '라운드당 추정 이득')}</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.65">전체 <b style="color:var(--t)">${totM}회</b>의 멀리건으로 약 <b style="color:var(--a)">~${nf(totG)}타</b> 이득을 봤어요. 멀리건 없이 친다면 평균 스코어는 <b style="color:var(--t)">${avgScore.toFixed(1)}</b> → <b style="color:var(--a)">약 ${(avgScore + avgG).toFixed(1)}타</b>로 추정돼요.</div>
-    <div style="font-size:10px;color:var(--t3);margin-top:6px">※ 멀리건 1회 ≈ 약 1타 이득(보수적 추정). TP는 이미 점수에 반영돼 제외돼요.</div></div>`;
 }
 
 // ── 🏆 개인기록 + 트로피(기록 보유 라운드 배지) ──
@@ -1172,7 +1121,7 @@ function toggleRoundAna(id) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
   const box = Q('rana-box'), btn = Q('rana-btn'); if (!box) return;
   if (box.style.display === 'block') { box.style.display = 'none'; if (btn) btn.textContent = '🔍 이 라운드 분석'; }
-  else { box.innerHTML = analysisHTML(analyze([r])); box.style.display = 'block'; if (btn) btn.textContent = '🔍 분석 닫기'; }
+  else { const a = analyze([r]); box.innerHTML = analysisHTML(a) + prescriptionHTML(a); box.style.display = 'block'; if (btn) btn.textContent = '🔍 분석 닫기'; }
 }
 
 // ── 신호등 기준: "내 평균 대비" ──
@@ -1252,7 +1201,6 @@ function renderStat(m) {
     // ── 진단 신호등 ──
     // 진단 카드 + 계산식(접이식). 공지·설정과 같은 benchFormulaHTML() 단일 소스를 써서 설명이 어긋나지 않음.
     h += `<div class="lbl">🚦 진단 (전체 라운드)</div>${analysisHTML(aAll)}`;
-    h += prescriptionHTML(aAll);   // 💊 오늘의 처방 — 손해 가장 큰 한 곳
     h += `<details style="margin:8px 2px 0;background:var(--bg2);border:.5px solid var(--bd);border-radius:12px;padding:10px 12px">
       <summary style="font-size:12px;font-weight:700;color:var(--t2);cursor:pointer;list-style:none">🧮 진단 신호등 계산식 보기</summary>
       <div style="margin-top:8px">${benchFormulaHTML()}</div></details>`;
@@ -1260,19 +1208,11 @@ function renderStat(m) {
     // ── 발전 추세 (과거의 나와 비교) ──
     h += `<div class="lbl">📈 발전 추세 (과거의 나와 비교)</div><div id="trend-wrap">${trendWrapHTML()}</div>`;
 
-    // ── 스코어 잠재력 (이미 칠 수 있는 점수) ──
-    const potH = potentialHTML(rounds);
-    if (potH) h += `<div class="lbl">🎯 스코어 잠재력</div>${potH}`;
-
     // ── 약점 우선순위 ──
     h += `<div class="lbl">🎯 약점 우선순위 (고칠 순서)</div>${weaknessHTML(aAll, rounds)}`;
 
     // ── 핵심 지표 ──
     h += `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', '평균 스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', '평균 오버파')}${statCard(avg('putts').toFixed(1), '', '평균 퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${statCard('±' + sd.toFixed(1), '', '기복(편차)')}</div>`;
-
-    // ── 멀리건 추정 이득 ──
-    const mulH = overallMulliHTML(rounds);
-    if (mulH) h += `<div class="lbl">🔄 멀리건 영향</div>${mulH}`;
 
     // ── 실력 비율 (홀 기준) ──
     const birdieRate = ex.played ? Math.round(birdie / ex.played * 100) : null;
@@ -1577,11 +1517,10 @@ function updateNewsHTML() {
 
   ${S('📣 이번 업데이트 — 더 똑똑해진 분석')}
   ${li('🟢 <b>분석 철학 배너</b> — 라운드 탭 맨 위에서 온그린이 통계를 보는 큰 그림을 한 페이지로 볼 수 있어요.')}
-  ${li('💊 <b>오늘의 처방</b> — 통계 화면에서 손해가 가장 큰 한 곳을 콕 집어 무엇을 연습할지 알려줘요.')}
+  ${li('💊 <b>오늘의 처방</b> — 라운드 상세의 "🔍 이 라운드 분석"에서 손해가 가장 큰 한 곳을 콕 집어 무엇을 연습할지 알려줘요.')}
   ${li('💥 <b>큰 실수의 원인</b> — 더블보기↑가 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.')}
-  ${li('🎯 <b>파 종류별 부서 교차</b> · <b>스코어 잠재력</b> — 약한 홀 유형과, 이미 칠 수 있는 점수를 보여줘요.')}
+  ${li('🎯 <b>파 종류별 부서 교차</b> — 파3은 GIR, 파4·5는 FIR·GIR로 약한 홀 유형을 진단해요.')}
   ${li('📈 <b>기복 추세</b> — 발전 추세에서 기복 지표를 골라 점수가 점점 일정해지는지 볼 수 있어요.')}
-  ${li('🔄 <b>멀리건 추정 이득</b> — 멀리건 없이 쳤다면 몇 타였을지 라운드별·전체로 추정해요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -1631,10 +1570,8 @@ function guideStatsHTML() {
   ${S('📋 요약 · 발전')}
   ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
   ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
-  ${it('💊 오늘의 처방', '4부서 중 손해가 가장 큰 한 곳을 콕 집어, 무엇을 연습할지 한 줄로 알려줘요.')}
+  ${it('💊 오늘의 처방', '라운드 상세의 "🔍 이 라운드 분석"에서, 4부서 중 손해가 가장 큰 한 곳을 콕 집어 무엇을 연습할지 한 줄로 알려줘요.')}
   ${it('🎯 약점 우선순위', '드라이버·아이언·숏게임·퍼팅을 설정 기준값과 비교해 라운드당 손실 타수를 추정 → 고칠 순서를 ⭐최우선부터. (상대 비교용)')}
-  ${it('🎯 스코어 잠재력', '베스트 전반 + 베스트 후반을 합쳐 "이미 칠 수 있는 점수"를 보여줘요. 평균과의 차이는 대부분 기복이에요.')}
-  ${it('🔄 멀리건 영향', '멀리건(M) 1회 ≈ 약 1타 이득으로 추정해, 멀리건 없이 쳤다면 점수가 얼마였을지 보여줘요(라운드별·전체). TP는 이미 점수에 반영돼 제외.')}
 
   ${S('스코어')}
   ${it('평균 스코어·오버파·기복', '총타수 평균 / 파 대비(+오버·−언더) / 점수 편차(작을수록 일정).')}
@@ -1675,16 +1612,15 @@ function philosophyHTML() {
   ${P(`<b style="color:var(--t)">세상 기준</b>(분석 기준값)으로 내 객관적 위치를, <b style="color:var(--t)">내 평균</b>(라운드별 🟢🟡🔴)으로 오늘의 컨디션을 봐요. 같은 데이터를 두 렌즈로 비춰요.`)}
 
   ${S(`③ 과거의 나와 경쟁한다`)}
-  ${P(`남과 비교하면 좌절뿐이라, 온그린은 <b style="color:var(--t)">성장 서사</b>로 동기를 만들어요. 발전 추세, 100·90·80 첫 돌파, 그리고 <b>스코어 잠재력</b>(이미 칠 수 있는 점수)으로요.`)}
+  ${P(`남과 비교하면 좌절뿐이라, 온그린은 <b style="color:var(--t)">성장 서사</b>로 동기를 만들어요. 발전 추세, 100·90·80 첫 돌파, 그리고 <b>기복 추세</b>(점점 일정해지는지)로요.`)}
 
   ${S(`④ 운을 걷어낸 '순수 실력'을 잰다`)}
-  ${P(`그냥 총 퍼팅이 아니라 <b style="color:var(--t)">GIR홀 퍼팅</b>만 떼서 봐요(어프로치 붙여 넣은 1퍼팅이 "퍼팅 잘함"으로 둔갑하는 걸 막아요). 드라이버도 M·TP를 빼고 <b style="color:var(--t)">티샷 생존율</b>로, <b style="color:var(--t)">멀리건 이득</b>까지 추정해 "진짜 내 점수"가 얼마인지 보여줘요.`)}
+  ${P(`그냥 총 퍼팅이 아니라 <b style="color:var(--t)">GIR홀 퍼팅</b>만 떼서 봐요(어프로치 붙여 넣은 1퍼팅이 "퍼팅 잘함"으로 둔갑하는 걸 막아요). 드라이버도 M·TP를 빼고 <b style="color:var(--t)">티샷 생존율</b>로 봐서 "진짜 내 실력"이 얼마인지 보여줘요.`)}
 
   ${S('🧭 그래서 이렇게 안내해요')}
-  ${P(`💊 <b style="color:var(--t)">오늘의 처방</b> — 4부서 중 가장 손해 큰 한 곳만 콕 집어줘요.`)}
+  ${P(`💊 <b style="color:var(--t)">오늘의 처방</b> — 라운드 분석에서 가장 손해 큰 한 곳만 콕 집어줘요.`)}
   ${P(`💥 <b style="color:var(--t)">큰 실수의 원인</b> — 더블보기↑가 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.`)}
-  ${P(`🎯 <b style="color:var(--t)">잠재력 vs 평균</b> — 둘의 차이는 대부분 '기복'. 줄일 수 있는 점수예요.`)}
-  ${P(`🔄 <b style="color:var(--t)">멀리건 이득</b> — 멀리건이 없었다면 몇 타였을지 추정해요.`)}
+  ${P(`📈 <b style="color:var(--t)">기복 추세</b> — 라운드를 거듭할수록 점수가 일정해지는지 봐요.`)}
 
   <div style="margin-top:16px;padding:12px 14px;background:#0d2e1a;border:1px solid var(--g);border-radius:12px;font-size:13px;color:var(--g);line-height:1.6;font-weight:600">숫자를 보지 말고, 숫자가 가리키는 <b>다음 한 타</b>를 보세요. 그게 온그린의 전부예요. 🟢</div>
   <div style="margin-top:10px;font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준</div>`;
