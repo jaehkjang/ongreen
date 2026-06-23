@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.10.0';
+const APP_VERSION = 'v12.10.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -54,6 +54,8 @@ const vsL = v => v === 0 ? 'E' : v > 0 ? '+' + v : String(v);
 const pC = v => v < 0 ? 'gp' : v > 0 ? 'rp' : 'ep';
 function cls(s, p) { if (!s) return 'e'; const d = s - p; return d <= -2 ? 'eag' : d === -1 ? 'bir' : d === 0 ? 'par' : d === 1 ? 'bog' : d === 2 ? 'dbl' : 'wrs'; }
 function showPg(id) { document.querySelectorAll('.page').forEach(p => p.classList.remove('on')); Q('pg-' + id).classList.add('on'); }
+// 현재 보이는 페이지 id(예: 'home','set','stat'). 백그라운드 데이터 갱신이 사용자가 보던 화면을 함부로 바꾸지 않도록 판단에 씀.
+function curPg() { const p = document.querySelector('.page.on'); return p ? p.id.replace('pg-', '') : ''; }
 function cm(id) { Q(id).classList.remove('on'); }
 function om(id) { Q(id).classList.add('on'); }
 function load(msg) { Q('ldm').textContent = msg || '불러오는 중...'; Q('ld').classList.add('on'); }
@@ -136,7 +138,9 @@ async function loadAll(silent) {
   // 네트워크 단절: 로그인은 유지하고 캐시 데이터를 그대로 보여줌(튕기지 않음)
   if (rr && rr.__net) {
     setUserLabels();
-    renderHome(); showPg('home'); goHome(); hide();
+    // 사용자가 그새 다른 화면(설정·관리자·통계 등)으로 이동했으면 그 화면을 유지하고 홈은 뒤에서만 갱신.
+    if (['home', 'login', ''].includes(curPg())) goHome(); else renderHome();
+    hide();
     if (!silent) toast('오프라인 상태예요 — 저장된 기록을 표시합니다');
     maybeShowGuidePopup();   // 첫 로그인이면 사용 설명서 팝업(한 번만)
     return;
@@ -150,8 +154,9 @@ async function loadAll(silent) {
   setUserLabels();
   if (A.isAdm) refreshNotes();  // 관리자 알림은 뒤에서 채움(홈 표시를 막지 않음)
 
-  renderHome(); showPg('home');
-  goHome();
+  // 백그라운드 갱신이 끝나도 사용자가 보던 화면을 가로채지 않음 — 홈/로그인 상태일 때만 홈으로.
+  // (예전엔 무조건 홈으로 튕겨, 로딩 중 설정·관리자 화면을 열면 자꾸 라운드 목록으로 되돌아가는 버그가 있었음)
+  if (['home', 'login', ''].includes(curPg())) goHome(); else renderHome();
   hide();
   maybeShowGuidePopup();   // 첫 로그인이면 사용 설명서 팝업(한 번만)
 }
