@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.9.0';
+const APP_VERSION = 'v12.10.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -192,16 +192,23 @@ async function goAdmNotes() {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+// ── 🚦 진단 신호등 계산식 (단일 소스) ──
+// 공지(통계 가이드)·관리자 설정·사용자 통계 화면이 모두 이 함수를 끌어다 씁니다.
+// 기준값(BENCH)이 바뀌면 세 곳의 설명이 함께 자동 갱신돼 서로 어긋날 일이 없습니다.
+function benchFormulaHTML() {
+  const b = BENCH;
+  return `<div style="font-size:13px;color:var(--t2);line-height:1.7">
+    신호등은 <b style="color:var(--g)">🟢 좋음</b> / <b style="color:var(--a)">🟡 양호</b> / <b style="color:var(--r)">🔴 부족</b> 3단계입니다.<br><br>
+    <b style="color:var(--t)">🚗 드라이버 — 티샷 생존율</b><br>생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀. 🟢 ${b.survGood}%↑ · 🟡 ${b.survOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀↑이면 한 단계 강등.<br><span style="color:var(--t3)">※ 함께 보이는 <b>페어웨이%</b> = 티샷이 페어웨이에 떨어진 홀(FIR) ÷ 파4·5홀. M·TP로 살린 홀은 제외합니다. 등급 판정에는 쓰지 않는 참고 지표예요.</span><br><br>
+    <b style="color:var(--t)">🎯 아이언 — GIR(그린 적중률)</b><br>정규타수(파−2) 안에 그린 올린 홀 비율. 🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.<br><br>
+    <b style="color:var(--t)">⛳ 숏게임 — 스크램블링</b><br>그린 놓친 홀 중 파 이하로 막은 비율. 🟢 ${b.scrGood}%↑ · 🟡 ${b.scrBad}%↑ · 🔴 그 미만.<br><br>
+    <b style="color:var(--t)">🍩 퍼팅 — GIR홀 퍼팅(순수 퍼팅력)</b><br>정규로 올린 홀의 홀당 퍼팅으로 판정(총 퍼팅은 GIR에 좌우돼 제외). 🟢 ${b.gpGood}개↓ · 🟡 ${b.gpBad}개↓ · 🔴 그 초과. <span style="color:var(--t3)">(GIR홀이 없으면 총 퍼팅 ${b.puttGood}/${b.puttBad}개로 폴백)</span></div>`;
+}
+
 // ── 설정 → 📊 분석 기준 : 모두 설명 보기 / 관리자만 수정 ──
 function renderBenchSettings() {
   const b = BENCH, box = Q('bench-box'); if (!box) return;
-  const expl = `<div style="font-size:13px;color:var(--t2);line-height:1.7">
-    신호등은 <b style="color:var(--g)">🟢 좋음</b> / <b style="color:var(--a)">🟡 양호</b> / <b style="color:var(--r)">🔴 부족</b> 3단계입니다.<br><br>
-    <b style="color:var(--t)">🚗 드라이버 — 티샷 생존율</b><br>생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀. 🟢 ${b.survGood}%↑ · 🟡 ${b.survOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀↑이면 한 단계 강등.<br><br>
-    <b style="color:var(--t)">🎯 아이언 — GIR(그린 적중률)</b><br>🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.<br><br>
-    <b style="color:var(--t)">⛳ 숏게임 — 스크램블링</b><br>그린 놓친 홀 중 파 이하로 막은 비율. 🟢 ${b.scrGood}%↑ · 🟡 ${b.scrBad}%↑ · 🔴 그 미만.<br><br>
-    <b style="color:var(--t)">🍩 퍼팅 — GIR홀 퍼팅(순수 퍼팅력)</b><br>정규로 올린 홀의 홀당 퍼팅으로 판정(총 퍼팅은 GIR에 좌우돼 제외). 🟢 ${b.gpGood}개↓ · 🟡 ${b.gpBad}개↓ · 🔴 그 초과. <span style="color:var(--t3)">(GIR홀이 없으면 총 퍼팅 ${b.puttGood}/${b.puttBad}개로 폴백)</span></div>`;
-  let html = expl;
+  let html = benchFormulaHTML();
   if (A.isAdm) {
     const f = (id, label, val) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0"><label style="font-size:13px;color:var(--t2);flex:1">${label}</label><input id="bn-${id}" type="number" inputmode="decimal" step="any" value="${val}" style="width:84px;text-align:center;padding:8px;border-radius:8px;border:1.5px solid var(--bd);background:var(--bg3);color:var(--t);font-size:15px;font-weight:700"></div>`;
     html += `<div class="msep"></div><div style="font-size:12px;color:var(--a);font-weight:700;margin-bottom:6px">🔧 관리자 — 기준값 수정 (전체 적용)</div>`
@@ -789,7 +796,7 @@ function analyze(rounds) {
       dst === 'g' ? `티샷에서 공을 거의 잃지 않습니다. 드라이버 안정성이 좋아요. (페어웨이 ${adjFir}%)` :
       dst === 'y' ? `대체로 살리지만 가끔 공을 잃습니다. 페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀.` :
       `티샷에서 공을 자주 잃습니다(OB/해저드 ${nf(teeLostPer)}홀). 스코어 손실의 큰 원인입니다.`,
-      `생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀 · M=벌타 없이 다시 침, TP=벌타 받고 진행 · 둘 다 "공 잃음"으로 동일 처리`),
+      `생존율 = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀 · M=벌타 없이 다시 침, TP=벌타 받고 진행 · 둘 다 "공 잃음"으로 동일 처리 · 페어웨이 ${adjFir}% = 티샷이 페어웨이에 떨어진 비율(파4·5홀 중·M·TP로 살린 홀 제외)으로 등급엔 안 쓰는 참고 지표`),
     S(girPct >= BENCH.girGood ? 'g' : girPct < BENCH.girBad ? 'r' : 'y', '🎯', '아이언(GIR)',
       `GIR ${girPct}%`,
       girPct >= BENCH.girGood ? `그린 적중률이 높습니다. 아이언으로 기회를 잘 만들고 있어요.` :
@@ -1091,7 +1098,11 @@ function renderStat(m) {
     h += `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 4px">💡 추정 핸디 = 최근 20R 중 좋은 라운드의 오버파 평균(간이). 코스 난이도 미반영.</div>`;
 
     // ── 진단 신호등 ──
+    // 진단 카드 + 계산식(접이식). 공지·설정과 같은 benchFormulaHTML() 단일 소스를 써서 설명이 어긋나지 않음.
     h += `<div class="lbl">🚦 진단 (전체 라운드)</div>${analysisHTML(aAll)}`;
+    h += `<details style="margin:8px 2px 0;background:var(--bg2);border:.5px solid var(--bd);border-radius:12px;padding:10px 12px">
+      <summary style="font-size:12px;font-weight:700;color:var(--t2);cursor:pointer;list-style:none">🧮 진단 신호등 계산식 보기</summary>
+      <div style="margin-top:8px">${benchFormulaHTML()}</div></details>`;
 
     // ── 발전 추세 (과거의 나와 비교) ──
     h += `<div class="lbl">📈 발전 추세 (과거의 나와 비교)</div><div id="trend-wrap">${trendWrapHTML()}</div>`;
@@ -1310,18 +1321,13 @@ function guideScorecardHTML() {
 // ── 통계 분석 지표 설명(자동 생성) : 각 지표가 무엇을 뜻하는지 ──
 // 신호등 기준값(BENCH)을 그대로 끌어와 기준이 바뀌면 설명도 함께 갱신됩니다.
 function guideStatsHTML() {
-  const b = BENCH;
   const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
   const it = (name, desc) => `<div style="margin:6px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.5">${desc}</div></div>`;
   return `
   <p style="color:var(--t2);font-size:13px;line-height:1.6"><b>통계</b> 탭에서 자동 계산되는 지표들의 뜻이에요.</p>
 
-  ${S('🚦 진단 신호등')}
-  <div style="font-size:12px;color:var(--t2);line-height:1.5;margin-bottom:3px"><b style="color:var(--g)">🟢좋음</b>·<b style="color:var(--a)">🟡양호</b>·<b style="color:var(--r)">🔴부족</b> 3단계(기준은 설정에서 조정).</div>
-  ${it('🚗 드라이버 생존율', `(파4·5홀 − M·TP홀) ÷ 파4·5홀 = 티샷에서 공 안 잃은 비율. 🟢${b.survGood}↑·🟡${b.survOk}↑(%). OB/해저드 ${b.tpDemote}홀↑이면 강등.`)}
-  ${it('🎯 아이언 GIR', `정규타수(파−2) 안에 그린 올린 비율. 🟢${b.girGood}↑·🟡${b.girBad}↑(%).`)}
-  ${it('⛳ 숏게임 스크램블', `그린 놓친 홀을 파 이하로 막은 비율(높을수록 좋음). 🟢${b.scrGood}↑·🟡${b.scrBad}↑(%).`)}
-  ${it('🍩 퍼팅', `GIR홀 퍼팅(정규로 올린 홀의 홀당 퍼팅·순수 퍼팅력)으로 판정. 🟢${b.gpGood}↓·🟡${b.gpBad}↓(개/홀). 총 퍼팅은 GIR에 좌우돼 등급에서 제외.`)}
+  ${S('🚦 진단 신호등 — 계산식')}
+  ${benchFormulaHTML()}
 
   ${S('📋 요약 · 발전')}
   ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
