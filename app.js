@@ -8,6 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
+const APP_VERSION = 'v12.13.0';
 const APP_VERSION = 'v12.12.2';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
@@ -1231,13 +1232,16 @@ function renderAdmOffList() {
   if (q) list = all.filter(c => c.name.includes(q) || (c.addr || '').includes(q));
   else if (_admOffOpen) list = all;
   else { listEl.innerHTML = `<div style="color:var(--t3);font-size:12px;padding:8px 2px">검색하거나 "전체 ${all.length}"를 눌러 펼치세요</div>`; return; }
-  listEl.innerHTML = list.map(c => `<div style="padding:12px 0;border-bottom:.5px solid var(--bd)">
+  // 결과 총 개수 표시 — 검색 시 "검색 결과 N개", 전체 펼침 시 "전체 N개"
+  const cnt = `<div style="color:var(--t2);font-size:12px;font-weight:600;padding:4px 2px 8px">${q ? '🔍 검색 결과' : '전체'} ${list.length}개</div>`;
+  if (!list.length) { listEl.innerHTML = cnt + `<div style="color:var(--t2);font-size:13px;padding:8px 2px">검색 결과 없음</div>`; return; }
+  listEl.innerHTML = cnt + (list.map(c => `<div style="padding:12px 0;border-bottom:.5px solid var(--bd)">
     <div style="font-size:14px;font-weight:700;color:var(--t);margin-bottom:4px">🗺️ ${c.name}</div>
     <div style="font-size:11px;color:var(--t2);margin-bottom:8px">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')}</div>
     <div style="display:flex;gap:6px">
       <button onclick="openEditCourse('${c.name}')" style="flex:1;background:#1a2e5a;border:1px solid var(--b);border-radius:8px;color:#7dd4ff;font-size:12px;font-weight:600;cursor:pointer;padding:7px">✏️ 수정</button>
       <button onclick="delCourse('${c.name}')" style="flex:1;background:#3d1a1a;border:1px solid #6a2020;border-radius:8px;color:var(--r);font-size:12px;font-weight:600;cursor:pointer;padding:7px">🗑 삭제</button>
-    </div></div>`).join('') || `<div style="color:var(--t2);font-size:13px;padding:8px 2px">검색 결과 없음</div>`;
+    </div></div>`).join(''));
 }
 
 async function admLoadUsers() {
