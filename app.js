@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.16.1';
+const APP_VERSION = 'v12.17.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -450,7 +450,7 @@ function renderSC() {
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
     const teeLbl = tpv ? 'TP' : 'M', teeCls = mm ? 'om' : tpv ? 'otp' : '';
     const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
-    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
+    if (ro) { html += `<div class="hr" onclick="holeDetail(${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
     else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht">${firCell}<button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button><button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
   }
   Q('sc-body').innerHTML = html; updFt();
@@ -477,6 +477,35 @@ function updFt() {
   Q('f-g').textContent = A.sc.gir.filter(Boolean).length; Q('f-p').textContent = A.sc.putts.reduce((a, b) => a + b, 0);
   const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
   Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
+}
+// ── 홀 상세: 읽기 전용 스코어카드에서 홀을 누르면 그 홀에 내가 기록한 값을 보여준다 ──
+function holeDetail(i) {
+  const h = getH();
+  const par = h[i], sc = A.sc.scores[i] || 0;
+  const gg = A.sc.gir[i], ff = A.sc.fir[i], pp = A.sc.putts[i] || 0;
+  const mm = A.sc.mulli[i] || 0, tpv = (A.sc.tp && A.sc.tp[i]) || 0;
+  const d = sc - par;
+  const name = !sc ? '미입력'
+    : d <= -2 ? '이글 이하' : d === -1 ? '버디' : d === 0 ? '파'
+    : d === 1 ? '보기' : d === 2 ? '더블보기' : '트리플보기 이상';
+  const row = (k, v) => `<div class="hd-row"><span style="color:var(--t2)">${k}</span><span>${v}</span></div>`;
+  const firRow = par === 3
+    ? row('🚗 티샷 (FIR)', '<span style="color:var(--t3)">파3 · 해당 없음</span>')
+    : row('🚗 티샷 (FIR)', ff ? '<b style="color:#ffd060">페어웨이 ⭕</b>' : '<span style="color:var(--t2)">놓침 ❌</span>');
+  const girRow = row('🎯 그린 (GIR)', gg ? '<b style="color:#7dd4ff">온그린 ⭕</b>' : '<span style="color:var(--t2)">놓침 ❌</span>');
+  const puttRow = row('🍩 퍼팅 수', `<b>${pp}</b>퍼팅${pp >= 3 ? ' <span style="color:var(--a)">(3퍼팅↑)</span>' : ''}`);
+  const teeTxt = mm ? '<b style="color:#ff8a80">멀리건 (M)</b>'
+    : tpv ? '<b style="color:#ffbf5a">벌타 진행 · TP (OB·해저드)</b>'
+    : '<span style="color:var(--t3)">기록 없음</span>';
+  const teeRow = row('⛳ 티샷 사고', teeTxt);
+  Q('hd-t').textContent = `${i + 1}번 홀 · 파${par}`;
+  Q('hd-body').innerHTML = `
+    <div style="text-align:center;margin-bottom:16px">
+      <div class="hv ${sc ? cls(sc, par) : 'e'}" style="margin:0 auto 8px">${sc || '-'}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--t)">${name}${sc ? ` · 파 대비 ${vsL(d)}` : ''}</div>
+    </div>
+    <div class="hd-card">${firRow}${girRow}${puttRow}${teeRow}</div>`;
+  om('m-hd');
 }
 // ── 스코어카드 원터치 공유 (저장 완료된 라운드만) ──
 function shareRound(id) {
