@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.10.1';
+const APP_VERSION = 'v12.11.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -186,7 +186,7 @@ async function refreshNotes() {
 // ════════════════════════════════════════
 function goHome() { showPg('home'); renderHome(); document.querySelector('.tab .tb:first-child')?.classList.add('on'); document.querySelector('.tab .tb:last-child')?.classList.remove('on'); }
 function goStat() { showPg('stat'); renderStat(0); document.querySelector('.tab .tb:last-child')?.classList.add('on'); document.querySelector('.tab .tb:first-child')?.classList.remove('on'); }
-function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); }
+function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); if (A.isAdm) renderAdmOfficial(); }
 // 홈 상단 노란 알림 배너 → 설정의 관리자 "골프장 변경 알림" 메뉴로 바로 이동.
 // 알림 목록(누가·어느 코스·어느 구성을 어떻게 고쳤는지)을 자동으로 펼치고 그 위치로 스크롤한다.
 async function goAdmNotes() {
@@ -734,7 +734,7 @@ async function submitCourseForm() {
     const i = A.official.findIndex(x => x.name === _editOldName || x.name === name);
     if (i >= 0) A.official[i] = { ...c }; else A.official.unshift({ ...c });
     toast('✅ 수정됐어요: ' + name); cm('m-cs'); renderCourses();
-    if (A.isAdm) admLoadOfficial();
+    if (A.isAdm && _admOffLoaded) renderAdmOfficial();   // 마지막으로 보던 목록(검색어·펼침 상태) 유지
   } else {
     A.official.unshift({ ...c });
     cm('m-cs'); toast('✅ 등록됐어요: ' + name);
@@ -745,7 +745,7 @@ async function submitCourseForm() {
 async function delCourse(name) {                 // 관리자만 호출 (버튼이 관리자에게만 보임)
   if (!confirm(`"${name}" 골프장을 삭제할까요? 목록에서 영구 삭제됩니다.`)) return;
   const r = await callAPI(() => API.deleteCourse(name));
-  if (r.ok) { A.official = A.official.filter(c => c.name !== name); renderCourses(); if (A.isAdm) admLoadOfficial(); toast('✅ 삭제 완료'); }
+  if (r.ok) { A.official = A.official.filter(c => c.name !== name); renderCourses(); if (A.isAdm && _admOffLoaded) renderAdmOfficial(); toast('✅ 삭제 완료'); }   // 마지막으로 보던 목록 유지
   else { const e = explainError(r); toast('❌ ' + e.msg); }
 }
 
@@ -1196,18 +1196,27 @@ async function admLoadOfficial() {
   _admOffLoaded = true; _admOffOpen = false;
   renderAdmOfficial();
 }
-function admOffToggle() { _admOffOpen = !_admOffOpen; renderAdmOfficial(); }
+function admOffToggle() {
+  if (!_admOffLoaded) { admLoadOfficial(); return; }   // 아직 안 불러왔으면 이 버튼으로도 불러오기
+  _admOffOpen = !_admOffOpen; renderAdmOfficial();
+}
 function renderAdmOfficial() {
-  const el = Q('adm-off'); if (!el || !_admOffLoaded) return;
+  const el = Q('adm-off'); if (!el) return;
   const q = (Q('adm-off-q')?.value || '').trim();
   const all = A.official || [];
+  // 검색창은 불러오기 전에도 항상 보이게 한다(처음부터 검색 UI 노출).
   const head = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
     <div class="sbar" style="flex:1;margin:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--t2)" stroke-width="2"/><path d="M16.5 16.5L21 21" stroke="var(--t2)" stroke-width="2" stroke-linecap="round"/></svg><input id="adm-off-q" placeholder="골프장 검색..." value="${q}" oninput="renderAdmOfficial()"></div>
-    <button onclick="admOffToggle()" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:10px;color:var(--t);font-size:12px;font-weight:600;cursor:pointer;padding:10px 12px;white-space:nowrap">${_admOffOpen ? '접기' : `전체 ${all.length}`}</button></div>`;
+    <button onclick="admOffToggle()" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:10px;color:var(--t);font-size:12px;font-weight:600;cursor:pointer;padding:10px 12px;white-space:nowrap">${!_admOffLoaded ? '불러오기' : (_admOffOpen ? '접기' : `전체 ${all.length}`)}</button></div>`;
+  const refocus = () => { const inp = Q('adm-off-q'); if (inp && q) { inp.focus(); inp.setSelectionRange(q.length, q.length); } };
+  if (!_admOffLoaded) {   // 아직 불러오기 전 — 검색창만 보여주고 안내
+    el.innerHTML = head + `<div style="color:var(--t3);font-size:12px;padding:8px 2px">위 "골프장 목록 불러오기"를 누르면 목록이 나와요</div>`;
+    refocus(); return;
+  }
   let list;
   if (q) list = all.filter(c => c.name.includes(q) || (c.addr || '').includes(q));
   else if (_admOffOpen) list = all;
-  else { el.innerHTML = head + `<div style="color:var(--t3);font-size:12px;padding:8px 2px">검색하거나 "전체 ${all.length}"를 눌러 펼치세요</div>`; return; }
+  else { el.innerHTML = head + `<div style="color:var(--t3);font-size:12px;padding:8px 2px">검색하거나 "전체 ${all.length}"를 눌러 펼치세요</div>`; refocus(); return; }
   const rows = list.map(c => `<div style="padding:12px 0;border-bottom:.5px solid var(--bd)">
     <div style="font-size:14px;font-weight:700;color:var(--t);margin-bottom:4px">🗺️ ${c.name}</div>
     <div style="font-size:11px;color:var(--t2);margin-bottom:8px">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')}</div>
@@ -1216,7 +1225,7 @@ function renderAdmOfficial() {
       <button onclick="delCourse('${c.name}')" style="flex:1;background:#3d1a1a;border:1px solid #6a2020;border-radius:8px;color:var(--r);font-size:12px;font-weight:600;cursor:pointer;padding:7px">🗑 삭제</button>
     </div></div>`).join('') || `<div style="color:var(--t2);font-size:13px;padding:8px 2px">검색 결과 없음</div>`;
   el.innerHTML = head + rows;
-  const inp = Q('adm-off-q'); if (inp && q) { inp.focus(); inp.setSelectionRange(q.length, q.length); }
+  refocus();
 }
 
 async function admLoadUsers() {
@@ -1359,6 +1368,60 @@ function guideStatsHTML() {
 }
 
 // ════════════════════════════════════════
+// 제스처: 화면을 오른쪽으로 슬라이드하면 뒤로 (iOS 스타일) + 모달 배경 탭으로 닫기
+// ════════════════════════════════════════
+// 페이지별 "뒤로" 동작. 뒤로 갈 곳이 없는 화면(홈·통계·로그인)은 등록하지 않음.
+const BACK_ACTIONS = { course: goHome, sc: scBack, set: goHome, notice: goHome };
+function initSwipeBack() {
+  const app = document.querySelector('.app');
+  if (!app || app._swipeBackReady) return;
+  app._swipeBackReady = true;
+  let active = false, sx = 0, sy = 0, dx = 0, dir = 0, pageEl = null, action = null;
+  const W = () => window.innerWidth || 430;
+  app.addEventListener('touchstart', e => {
+    active = false;
+    if (e.touches.length !== 1) return;
+    if (document.querySelector('.mo.on')) return;          // 모달이 떠 있으면 무시
+    if (e.target.closest('.cc-wrap')) return;              // 골프장 카드(자체 가로 스와이프)에서 시작하면 양보
+    action = BACK_ACTIONS[curPg()];
+    if (!action) return;                                   // 뒤로 갈 화면이 아님
+    pageEl = Q('pg-' + curPg());
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; dir = 0; active = true;
+  }, { passive: true });
+  app.addEventListener('touchmove', e => {
+    if (!active) return;
+    dx = e.touches[0].clientX - sx; const dy = e.touches[0].clientY - sy;
+    if (!dir) { if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; dir = Math.abs(dx) > Math.abs(dy) ? 1 : 2; }
+    if (dir === 2) { active = false; return; }              // 세로 스크롤이면 양보
+    if (dx <= 0) { pageEl.style.transform = ''; pageEl.style.opacity = ''; return; }  // 오른쪽으로 끄는 동작만
+    pageEl.style.transition = 'none';
+    pageEl.style.transform = `translateX(${dx}px)`;
+    pageEl.style.opacity = String(Math.max(0.4, 1 - dx / W()));
+  }, { passive: true });
+  const finish = () => {
+    if (!active) return; active = false;
+    const el = pageEl; if (!el) return;
+    el.style.transition = 'transform .2s ease, opacity .2s ease';
+    if (dir === 1 && dx > W() * 0.33) {                     // 충분히 끌었으면 뒤로 완료
+      el.style.transform = `translateX(${W()}px)`; el.style.opacity = '0';
+      setTimeout(() => { action(); el.style.transition = el.style.transform = el.style.opacity = ''; }, 180);
+    } else {                                                // 아니면 제자리 복귀
+      el.style.transform = ''; el.style.opacity = '';
+      setTimeout(() => { el.style.transition = ''; }, 200);
+    }
+  };
+  app.addEventListener('touchend', finish);
+  app.addEventListener('touchcancel', finish);
+}
+// 아래에서 위로 올라오는 모달(.mo): 뒤 배경을 누르면 닫는다.
+function initModalBackdrop() {
+  document.querySelectorAll('.mo').forEach(mo => {
+    if (mo._bdReady) return; mo._bdReady = true;
+    mo.addEventListener('click', e => { if (e.target === mo) cm(mo.id); });   // 시트(.ms) 안쪽 클릭은 통과
+  });
+}
+
+// ════════════════════════════════════════
 // 시작 (버전 도장 확인 + 자동 로그인)
 // ════════════════════════════════════════
 async function checkVersion() {
@@ -1372,6 +1435,8 @@ async function checkVersion() {
 }
 
 (async () => {
+  initSwipeBack();      // 화면 슬라이드로 뒤로가기
+  initModalBackdrop();  // 모달 배경 탭으로 닫기
   checkVersion();  // 비블로킹: 버전 배너는 응답이 오면 그때 표시(자동 로그인을 막지 않음)
   const s = JSON.parse(localStorage.getItem('og_s') || '{}');
   if (s.u && s.token) {
