@@ -144,6 +144,11 @@
         <button class="btn btn-y" onclick="admLoadUsers()" style="width:100%;margin-bottom:10px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:10px;color:var(--t);font-size:14px;font-weight:600;cursor:pointer;padding:11px">사용자 목록 불러오기</button>
         <div id="adm-usr"></div>
       </div>
+      <div class="adm">
+        <div class="adt">📤 내 스코어카드 내보내기</div>
+        <div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:10px">내 전체 라운드를 홀 번호·홀별 파 구성까지 담아 CSV 파일로 받습니다. 구글시트에서 <b>파일 → 가져오기</b>로 열 수 있어요.</div>
+        <button class="btn btn-g" onclick="exportScorecards()" style="width:100%;background:#0d2e1a;border:1.5px solid var(--g);border-radius:10px;color:var(--g);font-size:14px;font-weight:600;cursor:pointer;padding:11px">📥 구글시트용 CSV 내려받기</button>
+      </div>
     </div>
     <div class="ver-tag" id="ver-tag"></div>
   </div>
@@ -242,7 +247,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.11.0"></script>
-<script src="app.js?v=12.11.0"></script>
+<script src="api.js?v=12.12.0"></script>
+<script src="app.js?v=12.12.0"></script>
 </body>
 </html>

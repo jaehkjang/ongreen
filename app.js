@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.11.0';
+const APP_VERSION = 'v12.12.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1248,6 +1248,76 @@ async function admDelUser(u) {
   if (!confirm(`"${u}" 님을 삭제할까요? 라운드 기록도 함께 삭제됩니다.`)) return;
   const r = await callAPI(() => API.deleteUser(u));
   if (r.ok) { toast('✅ 삭제 완료'); admLoadUsers(); } else toast('❌ 실패');
+}
+
+// ════════════════════════════════════════
+// 📤 스코어카드 내보내기 (구글시트용 CSV)
+// 관리자가 자기 전체 라운드를 한 파일로 받아 구글시트(파일→가져오기)·엑셀 등으로 열 수 있게.
+// 서버를 거치지 않고 메모리의 A.rounds 로 즉시 생성합니다(API.VERSION 무관·백엔드 변경 없음).
+// 홀 번호와 홀별 파 구성을 반드시 함께 적습니다.
+// ════════════════════════════════════════
+function csvCell(v) {                            // CSV 한 칸 안전 처리(콤마·따옴표·줄바꿈 → 따옴표로 감쌈)
+  const s = (v === null || v === undefined) ? '' : String(v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function exportScorecards() {
+  const rounds = (A.rounds || []).filter(r => !r.isDraft);   // 작성중(임시저장)은 제외
+  if (!rounds.length) { toast('내보낼 라운드가 없어요'); return; }
+
+  const rows = [];
+  const push = arr => rows.push(arr.map(csvCell).join(','));
+  const blank = () => rows.push('');
+  const sum = a => a.reduce((x, y) => x + (+y || 0), 0);
+  const today = new Date().toISOString().split('T')[0];
+
+  push(['온그린 스코어카드 내보내기']);
+  push(['사용자', A.u]);
+  push(['내보낸 날짜', today.replaceAll('-', '.')]);
+  push(['총 라운드', rounds.length + 'R']);
+  blank();
+
+  rounds.forEach((r, idx) => {
+    const pars = roundPars(r);                   // 그 라운드에 박제된 홀별 파(18칸)
+    const sc = r.scores || [], pu = r.puttsArr || [], gi = r.girArr || [], fi = r.firArr || [], mu = r.mulliArr || [], tp = r.tpArr || [];
+    const at18 = (arr, i) => (arr[i] === undefined || arr[i] === null) ? '' : arr[i];
+
+    push([`■ 라운드 ${idx + 1}`]);
+    push(['골프장', r.courseName || '', '코스 구성', r.courseLbl || '']);
+    push(['날짜', r.date || '', '날씨', r.weather || '']);
+    push(['동반자', r.partner || '', '메모', r.memo || '']);
+    push(['총타수', r.score, '파대비', vsL(r.vs)]);
+    push(['FIR(%)', r.fir, 'GIR(%)', r.gir, '총퍼팅', r.putts, '멀리건', r.mulligan || 0, '트러블샷', r.tpCount || 0]);
+
+    // ── 홀 테이블 (홀 번호 + 홀별 파 구성 포함) ──
+    const holeHdr = ['']; for (let i = 0; i < 18; i++) holeHdr.push('홀' + (i + 1)); holeHdr.push('합계');
+    push(holeHdr);
+    push(['파', ...pars.slice(0, 18), sum(pars)]);
+    push(['스코어', ...Array.from({ length: 18 }, (_, i) => at18(sc, i)), r.score]);
+    push(['퍼팅', ...Array.from({ length: 18 }, (_, i) => at18(pu, i)), r.putts]);
+    push(['GIR', ...Array.from({ length: 18 }, (_, i) => gi[i] ? 'O' : ''), gi.filter(Boolean).length]);
+    push(['FIR', ...Array.from({ length: 18 }, (_, i) => pars[i] === 3 ? '-' : (fi[i] ? 'O' : '')), fi.filter(Boolean).length]);
+    push(['멀리건', ...Array.from({ length: 18 }, (_, i) => mu[i] ? 'O' : ''), r.mulligan || 0]);
+    push(['트러블샷', ...Array.from({ length: 18 }, (_, i) => tp[i] ? 'O' : ''), r.tpCount || 0]);
+    blank();
+  });
+
+  const csv = '﻿' + rows.join('\r\n');      // BOM: 구글시트/엑셀 한글 깨짐 방지
+  downloadCSV(csv, `온그린_스코어카드_${A.u}_${today}.csv`);
+}
+function downloadCSV(text, filename) {
+  let url = '';
+  try {
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+    url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    toast('📥 CSV를 내려받았어요 — 구글시트 [파일→가져오기]로 열어요');
+  } catch (e) {                                  // 일부 모바일: 다운로드가 막히면 새 탭으로 폴백
+    try { if (url) window.open(url, '_blank'); else throw e; }
+    catch (e2) { toast('❌ 내보내기에 실패했어요'); }
+  }
 }
 
 // ════════════════════════════════════════
