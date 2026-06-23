@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.11.0';
+const APP_VERSION = 'v12.12.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1233,7 +1233,7 @@ async function admLoadUsers() {
   const r = await callAPI(() => API.getUsers());
   if (!r.users || !r.users.length) { el.innerHTML = '<div style="color:var(--t2);font-size:13px">없음</div>'; return; }
   el.innerHTML = r.users.map(u => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:.5px solid var(--bd)">
-    <div><div style="font-size:14px;font-weight:600;color:var(--t)">👤 ${u.username}</div><div style="font-size:11px;color:var(--t2)">${u.at} · ${u.rounds}라운드</div></div>
+    <div><div style="font-size:14px;font-weight:600;color:var(--t)">👤 ${u.username}</div><div style="font-size:11px;color:var(--t2)">🕒 마지막 접속 ${u.at || '기록 없음'} · ${u.rounds}라운드</div></div>
     ${u.username === A.u ? '<span style="color:var(--a);font-size:11px">👑 나</span>' : `<div style="display:flex;gap:6px">
       <button onclick="admResetPin('${u.username}')" style="background:#1a3a28;border:1px solid var(--g);border-radius:8px;color:var(--g);font-size:11px;font-weight:600;cursor:pointer;padding:5px 10px">🔑 PIN</button>
       <button onclick="admDelUser('${u.username}')" style="background:#3d1a1a;border:1px solid #6a2020;border-radius:8px;color:var(--r);font-size:11px;font-weight:600;cursor:pointer;padding:5px 10px">삭제</button>
