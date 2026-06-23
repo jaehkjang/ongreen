@@ -37,7 +37,9 @@ let BENCH = { survGood: 70, survOk: 60, tpDemote: 3, puttGood: 32, puttBad: 36, 
 //   · id 가 클수록 최신(맨 위). 글 본문만 자동 갱신될 때는 id 를 그대로 두어 불필요한 알림을 막습니다.
 //   · 진짜 새 공지를 추가할 때만 id 를 올리세요(그래야 사용자에게 NEW 알림이 뜸).
 const NOTICE_GUIDE_ID = 3;   // 첫 로그인 팝업으로 띄울 "사용 설명서" 글 id
+const NOTICE_UPDATE_ID = 4;  // 앱 업데이트 때 띄울 "업데이트 소식" 글 id (글을 새로 만들지 않고 이 하나만 갱신)
 const NOTICES = [
+  { id: 4, date: '2026.06.23', cat: '업데이트', pin: true, title: '📣 업데이트 소식', body: updateNewsHTML },
   { id: 3, date: '2026.06.22', cat: '설명서', pin: true, title: '📖 사용 설명서 — 스코어카드 작성', body: guideScorecardHTML },
   { id: 2, date: '2026.06.22', cat: '설명서', pin: true, title: '📊 통계 분석 — 지표 설명', body: guideStatsHTML },
   { id: 1, date: '2026.06.22', cat: '공지', title: '🎉 온그린에 오신 걸 환영합니다', body:
@@ -142,7 +144,7 @@ async function loadAll(silent) {
     if (['home', 'login', ''].includes(curPg())) goHome(); else renderHome();
     hide();
     if (!silent) toast('오프라인 상태예요 — 저장된 기록을 표시합니다');
-    maybeShowGuidePopup();   // 첫 로그인이면 사용 설명서 팝업(한 번만)
+    maybeShowStartupPopup();   // 첫 로그인=설명서 / 업데이트되면 변경 내용 팝업(각각 한 번만)
     return;
   }
 
@@ -158,7 +160,7 @@ async function loadAll(silent) {
   // (예전엔 무조건 홈으로 튕겨, 로딩 중 설정·관리자 화면을 열면 자꾸 라운드 목록으로 되돌아가는 버그가 있었음)
   if (['home', 'login', ''].includes(curPg())) goHome(); else renderHome();
   hide();
-  maybeShowGuidePopup();   // 첫 로그인이면 사용 설명서 팝업(한 번만)
+  maybeShowStartupPopup();   // 첫 로그인=설명서 / 업데이트되면 변경 내용 팝업(각각 한 번만)
 }
 function setUserLabels() {
   Q('h-user').textContent = '👤 ' + A.u;
@@ -1255,18 +1257,30 @@ async function admDelUser(u) {
 // ════════════════════════════════════════
 function latestNoticeId() { return NOTICES.reduce((m, n) => Math.max(m, n.id), 0); }
 function noticeSeenId() { return parseInt(localStorage.getItem('og_notice_seen') || '0', 10) || 0; }
-function unreadNoticeCount() { const s = noticeSeenId(); return NOTICES.filter(n => n.id > s).length; }
+// 업데이트 소식(단일 글)은 id 가 그대로라도 APP_VERSION 이 바뀌면 "새 글"로 취급 → 배지가 다시 뜸.
+function updatePending() { return localStorage.getItem('og_update_seen') !== APP_VERSION; }
+function unreadNoticeCount() {
+  const s = noticeSeenId();
+  const newPosts = NOTICES.filter(n => n.id > s && n.id !== NOTICE_UPDATE_ID).length;  // 새로 추가된 글
+  return newPosts + (updatePending() ? 1 : 0);   // 업데이트 소식은 버전 기준으로 NEW 판정
+}
 function updateNoticeBadge() {
   const b = Q('nb'); if (!b) return;
   const c = unreadNoticeCount();
   b.textContent = c > 9 ? '9+' : c; b.style.display = c ? 'flex' : 'none';
 }
-function markNoticesSeen() { localStorage.setItem('og_notice_seen', String(latestNoticeId())); updateNoticeBadge(); }
+// 게시판을 열면 모두 읽음 처리 — 글 id 기준과 업데이트 버전 기준을 함께 갱신해 배지를 지움.
+function markNoticesSeen() {
+  localStorage.setItem('og_notice_seen', String(latestNoticeId()));
+  localStorage.setItem('og_update_seen', APP_VERSION);
+  updateNoticeBadge();
+}
 function noticeBodyHTML(n) { return typeof n.body === 'function' ? n.body() : n.body; }
 
 function goNotice() { showPg('notice'); renderNotices(); }
 function renderNotices() {
   const seen = noticeSeenId();                 // 표시는 "보기 전" 기준으로 NEW 판정
+  const updNew = updatePending();              // 업데이트 소식 NEW 여부도 읽음 처리 전 기준으로 고정
   const el = Q('notice-body'); if (!el) return;
   const chip = c => {
     const co = c === '설명서' ? 'var(--b)' : 'var(--a)';
@@ -1275,7 +1289,7 @@ function renderNotices() {
   let h = `<div class="lbl">📢 공지 게시판</div>
     <p style="font-size:12px;color:var(--t3);margin:-2px 2px 12px;line-height:1.6">읽기 전용입니다. 📌 표시 글은 기능이 바뀌면 늘 최신으로 자동 갱신돼요.</p>`;
   NOTICES.forEach(n => {
-    const isNew = n.id > seen;
+    const isNew = n.id === NOTICE_UPDATE_ID ? updNew : n.id > seen;
     h += `<div class="rc" onclick="openNotice(${n.id})">
       <div style="display:flex;align-items:center;gap:8px">
         ${chip(n.cat)}
@@ -1294,11 +1308,40 @@ function openNotice(id) {
   Q('notice-read').innerHTML = noticeBodyHTML(n);
   om('m-notice');
 }
-// 첫 로그인(이 기기에서 처음)일 때만 사용 설명서를 팝업으로 띄움. 한 번 닫으면 다시 안 뜸.
-function maybeShowGuidePopup() {
-  if (localStorage.getItem('og_guide_seen')) return;
-  localStorage.setItem('og_guide_seen', '1');   // 한 번 띄우면 끝(닫는 방식 무관)
-  openNotice(NOTICE_GUIDE_ID);
+// 시작 팝업: ① 이 기기 첫 로그인엔 "사용 설명서"를, ② 그 뒤 앱이 업데이트되면 "업데이트 소식"을
+// 각각 한 번씩 팝업으로 띄움(관리자 포함). 닫는 방식과 무관하게 같은 상황에선 다시 뜨지 않음.
+function maybeShowStartupPopup() {
+  if (!localStorage.getItem('og_guide_seen')) {
+    // 이 기기 첫 로그인 — 사용 설명서 한 번. 첫 설치는 이미 최신이라 업데이트 팝업은 생략.
+    localStorage.setItem('og_guide_seen', '1');
+    localStorage.setItem('og_update_popped', APP_VERSION);
+    openNotice(NOTICE_GUIDE_ID);
+    return;
+  }
+  if (localStorage.getItem('og_update_popped') !== APP_VERSION) {
+    // 앱이 업데이트됨 — 변경 내용(버전 포함)을 한 번. 배지는 게시판을 열 때(markNoticesSeen) 사라짐.
+    localStorage.setItem('og_update_popped', APP_VERSION);
+    openNotice(NOTICE_UPDATE_ID);
+  }
+}
+
+// ── 업데이트 소식 본문(단일 글) ──
+// 앱이 업데이트될 때마다 "이 함수만" 최신 변경 내용으로 고쳐 주세요. 글을 새로 추가하지 않아
+// 게시판엔 항상 이 한 글만 남고, APP_VERSION 이 바뀌면 팝업·배지로 사용자에게 자동 알립니다.
+// 맨 위·아래에 버전 번호를 작게 표시합니다.
+function updateNewsHTML() {
+  const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
+  const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
+  return `
+  <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
+  <p style="color:var(--t2);font-size:13px;line-height:1.6">앱이 새로 업데이트됐어요. 이번에 바뀐 내용이에요.</p>
+
+  ${S('📣 이번 업데이트')}
+  ${li('앱이 <b>업데이트되면</b> 바뀐 내용을 <b>팝업</b>으로 한 번 보여드려요(관리자 포함). 닫으면 다시 뜨지 않아요.')}
+  ${li('이 <b>업데이트 소식</b> 글 하나가 늘 <b>최신 변경 내용</b>으로 갱신돼요 — 글이 계속 쌓이지 않습니다.')}
+  ${li('새 업데이트가 있으면 홈 <b>📢</b> 아이콘에 빨간 알림이 떠요. 공지 게시판을 한 번 열면 사라집니다.')}
+
+  <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
 
 // ── 사용 설명서 본문(자동 생성) : 스코어카드 작성 위주 ──
