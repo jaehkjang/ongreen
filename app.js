@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.16.0';
+const APP_VERSION = 'v12.16.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -450,8 +450,8 @@ function renderSC() {
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
     const teeLbl = tpv ? 'TP' : 'M', teeCls = mm ? 'om' : tpv ? 'otp' : '';
     const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
-    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht"><span class="htg ${gg ? 'og' : ''}">GIR</span>${firCell}<span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
-    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht"><button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button>${firCell}<button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
+    if (ro) { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
+    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht">${firCell}<button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button><button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
   }
   Q('sc-body').innerHTML = html; updFt();
   if (!ro) { const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false; }
@@ -1027,9 +1027,9 @@ function parCrossHTML(rounds) {
     return `<div class="cb" style="margin-bottom:10px;padding:12px 14px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><span style="font-size:14px;font-weight:700;color:var(--t)">${lbl}</span><span style="font-size:16px;font-weight:800;color:${vc}">${vsA >= 0 ? '+' : ''}${vsA.toFixed(2)} <span style="font-size:11px;color:var(--t3);font-weight:600">타/홀</span></span></div>
       <div style="display:flex;gap:16px;font-size:12px;color:var(--t2);flex-wrap:wrap">
-        <span>🎯 GIR <b style="color:var(--t)">${pct(t.gir, t.n)}%</b></span>
         ${showFir ? `<span>🚗 FIR <b style="color:var(--t)">${firTxt == null ? '-' : firTxt + '%'}</b></span>` : `<span style="color:var(--t3)">티샷이 곧 그린샷</span>`}
-        <span>🥏 퍼팅 <b style="color:var(--t)">${puttTxt == null ? '-' : puttTxt + '<span style="font-size:10px;color:var(--t3);font-weight:600">개/홀</span>'}</b></span>
+        <span>🎯 GIR <b style="color:var(--t)">${pct(t.gir, t.n)}%</b></span>
+        <span>🍩 퍼팅 <b style="color:var(--t)">${puttTxt == null ? '-' : puttTxt + '<span style="font-size:10px;color:var(--t3);font-weight:600">개/홀</span>'}</b></span>
       </div></div>`;
   };
   return card('파3', T[3], false) + card('파4', T[4], true) + card('파5', T[5], true);
