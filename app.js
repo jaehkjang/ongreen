@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.15.0';
+const APP_VERSION = 'v12.16.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1006,13 +1006,14 @@ function blowupCauseHTML(rounds) {
 
 // ── 파 종류별 × 부서 교차: 파3는 GIR, 파4·5는 FIR/GIR과 함께 파 대비를 본다 ──
 function parCrossHTML(rounds) {
-  const T = { 3: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0 }, 4: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0 }, 5: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0 } };
+  const T = { 3: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 }, 4: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 }, 5: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 } };
   rounds.forEach(r => {
-    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], fi = r.firArr || [];
+    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], fi = r.firArr || [], pa = r.puttsArr || [];
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!(s > 0)) continue;
       const p = hp[i] || 4; const t = T[p]; if (!t) continue;
       t.n++; t.vs += s - p; if (gi[i]) t.gir++;
+      const pt = pa[i] || 0; if (pt > 0) { t.putt += pt; t.puttN++; }
       if (p > 3) { t.firN++; if (fi[i]) t.fir++; }
     }
   });
@@ -1022,11 +1023,13 @@ function parCrossHTML(rounds) {
     const vsA = t.vs / t.n;
     const vc = vsA > 0.05 ? 'var(--r)' : vsA < -0.05 ? 'var(--g)' : 'var(--t)';
     const firTxt = pct(t.fir, t.firN);
+    const puttTxt = t.puttN ? (t.putt / t.puttN).toFixed(2) : null;
     return `<div class="cb" style="margin-bottom:10px;padding:12px 14px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><span style="font-size:14px;font-weight:700;color:var(--t)">${lbl}</span><span style="font-size:16px;font-weight:800;color:${vc}">${vsA >= 0 ? '+' : ''}${vsA.toFixed(2)} <span style="font-size:11px;color:var(--t3);font-weight:600">타/홀</span></span></div>
-      <div style="display:flex;gap:16px;font-size:12px;color:var(--t2)">
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--t2);flex-wrap:wrap">
         <span>🎯 GIR <b style="color:var(--t)">${pct(t.gir, t.n)}%</b></span>
         ${showFir ? `<span>🚗 FIR <b style="color:var(--t)">${firTxt == null ? '-' : firTxt + '%'}</b></span>` : `<span style="color:var(--t3)">티샷이 곧 그린샷</span>`}
+        <span>🥏 퍼팅 <b style="color:var(--t)">${puttTxt == null ? '-' : puttTxt + '<span style="font-size:10px;color:var(--t3);font-weight:600">개/홀</span>'}</b></span>
       </div></div>`;
   };
   return card('파3', T[3], false) + card('파4', T[4], true) + card('파5', T[5], true);
@@ -1121,7 +1124,7 @@ function toggleRoundAna(id) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
   const box = Q('rana-box'), btn = Q('rana-btn'); if (!box) return;
   if (box.style.display === 'block') { box.style.display = 'none'; if (btn) btn.textContent = '🔍 이 라운드 분석'; }
-  else { const a = analyze([r]); box.innerHTML = analysisHTML(a) + prescriptionHTML(a); box.style.display = 'block'; if (btn) btn.textContent = '🔍 분석 닫기'; }
+  else { const a = analyze([r]); box.innerHTML = analysisHTML(a) + `<div class="lbl">파 종류별 (부서 교차)</div>${parCrossHTML([r])}` + prescriptionHTML(a); box.style.display = 'block'; if (btn) btn.textContent = '🔍 분석 닫기'; }
 }
 
 // ── 신호등 기준: "내 평균 대비" ──
