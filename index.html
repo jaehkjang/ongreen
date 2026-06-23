@@ -225,6 +225,13 @@
   <button class="mno" onclick="cm('m-det')">닫기</button>
 </div></div>
 
+<!-- 모달: 홀 상세 (읽기 전용 스코어카드에서 홀을 누르면 그 홀 기록을 보여줌) -->
+<div class="mo" id="m-hd"><div class="ms">
+  <div class="mh"></div><div class="mt" id="hd-t"></div>
+  <div id="hd-body"></div>
+  <button class="mno" onclick="cm('m-hd')">닫기</button>
+</div></div>
+
 <!-- 모달: 공지/설명서 읽기 -->
 <div class="mo" id="m-notice"><div class="ms">
   <div class="mh"></div><div class="mt" id="notice-t"></div>
@@ -254,7 +261,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.16.1"></script>
-<script src="app.js?v=12.16.1"></script>
+<script src="api.js?v=12.17.1"></script>
+<script src="app.js?v=12.17.1"></script>
 </body>
 </html>
