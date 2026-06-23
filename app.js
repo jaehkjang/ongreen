@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.17.0';
+const APP_VERSION = 'v12.17.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1009,12 +1009,12 @@ function weaknessHTML(a, rounds) {
 function blowupCauseHTML(rounds) {
   let big = 0, teeC = 0, puttC = 0, missC = 0;
   rounds.forEach(r => {
-    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], pa = r.puttsArr || [], mu = r.mulliArr || [], tp = r.tpArr || [];
+    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], pa = r.puttsArr || [], tp = r.tpArr || [];
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!(s > 0)) continue;
       const par = hp[i] || 4; if (s - par < 2) continue;     // 더블보기 이상만
       big++;
-      const tee = (mu[i] || 0) || (tp[i] || 0);              // 티샷 사고(OB·해저드)
+      const tee = (tp[i] || 0);                              // 티샷 사고(OB·해저드 벌타). 멀리건은 벌타가 안 들어가 제외
       if (tee) teeC++;
       if ((pa[i] || 0) >= 3) puttC++;                        // 3퍼팅 이상
       if (!gi[i] && !tee) missC++;                           // 그린 미스(티샷 사고는 위에서 집계해 중복 제외)
