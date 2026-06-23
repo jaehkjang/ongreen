@@ -9,6 +9,7 @@
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
 const APP_VERSION = 'v12.13.0';
+const APP_VERSION = 'v12.12.2';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -188,7 +189,7 @@ async function refreshNotes() {
 // ════════════════════════════════════════
 function goHome() { showPg('home'); renderHome(); document.querySelector('.tab .tb:first-child')?.classList.add('on'); document.querySelector('.tab .tb:last-child')?.classList.remove('on'); }
 function goStat() { showPg('stat'); renderStat(0); document.querySelector('.tab .tb:last-child')?.classList.add('on'); document.querySelector('.tab .tb:first-child')?.classList.remove('on'); }
-function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); if (A.isAdm) renderAdmOfficial(); }
+function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); if (A.isAdm) { if (_admOffLoaded) renderAdmOfficial(); else admLoadOfficial(); } }   // 관리자는 설정을 열 때 목록을 미리 불러와 바로 검색되게(불러오기→재검색 불필요)
 // 홈 상단 노란 알림 배너 → 설정의 관리자 "골프장 변경 알림" 메뉴로 바로 이동.
 // 알림 목록(누가·어느 코스·어느 구성을 어떻게 고쳤는지)을 자동으로 펼치고 그 위치로 스크롤한다.
 async function goAdmNotes() {
@@ -1190,13 +1191,16 @@ async function admClearNotes() {
 
 let _admOffLoaded = false, _admOffOpen = false;
 async function admLoadOfficial() {
-  const el = Q('adm-off'); el.innerHTML = '<div style="color:var(--t2);font-size:13px">불러오는 중...</div>';
+  const el = Q('adm-off');
+  const prevQ = Q('adm-off-q')?.value || '';   // 불러오는 동안 입력해 둔 검색어를 잃지 않도록 보관(다시 검색할 필요 없게)
+  el.innerHTML = '<div style="color:var(--t2);font-size:13px">불러오는 중...</div>';
   const r = await callAPI(() => API.getCourses());
   const list = (r && r.courses) || [];
   if (!list.length) { el.innerHTML = '<div style="color:var(--t2);font-size:13px">공식 코스 없음</div>'; return; }
   A.official = list.map(c => ({ ...c, status: 'official' }));
   _admOffLoaded = true; _admOffOpen = false;
   renderAdmOfficial();
+  if (prevQ) { const qi = Q('adm-off-q'); if (qi) { qi.value = prevQ; renderAdmOffList(); } }   // 보관해 둔 검색어 복원 후 바로 결과 표시
 }
 function admOffToggle() {
   if (!_admOffLoaded) { admLoadOfficial(); return; }   // 아직 안 불러왔으면 이 버튼으로도 불러오기
@@ -1417,7 +1421,7 @@ function updateNewsHTML() {
   <p style="color:var(--t2);font-size:13px;line-height:1.6">앱이 새로 업데이트됐어요. 이번에 바뀐 내용이에요.</p>
 
   ${S('📣 이번 업데이트')}
-  ${li('앱이 <b>업데이트되면</b> 바뀐 내용을 <b>팝업</b>으로 한 번 보여드려요(관리자 포함). 닫으면 다시 뜨지 않아요.')}
+  ${li('앱이 <b>업데이트되면</b> 바뀐 내용을 <b>팝업</b>으로 한 번 보여드려요. 닫으면 다시 뜨지 않아요.')}
   ${li('이 <b>업데이트 소식</b> 글 하나가 늘 <b>최신 변경 내용</b>으로 갱신돼요 — 글이 계속 쌓이지 않습니다.')}
   ${li('새 업데이트가 있으면 홈 <b>📢</b> 아이콘에 빨간 알림이 떠요. 공지 게시판을 한 번 열면 사라집니다.')}
 
