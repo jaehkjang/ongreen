@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.17.1';
+const APP_VERSION = 'v12.17.2';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -368,8 +368,8 @@ function openDet(id) {
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
     <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin-bottom:6px">🔍 이 라운드 분석</button>
     <div id="rana-box" style="display:none;margin-bottom:8px"></div>
-    <div class="cb"><div class="cbt">홀별 스코어</div>
-      ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
+    <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
+      ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div onclick="holeDetail(${id},${i})" style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
     ${courseCompareHTML(r)}
     <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
@@ -450,7 +450,7 @@ function renderSC() {
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
     const teeLbl = tpv ? 'TP' : 'M', teeCls = mm ? 'om' : tpv ? 'otp' : '';
     const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
-    if (ro) { html += `<div class="hr" onclick="holeDetail(${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
+    if (ro) { html += `<div class="hr" onclick="holeDetail(${A.sc.eid},${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
     else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht">${firCell}<button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button><button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
   }
   Q('sc-body').innerHTML = html; updFt();
@@ -478,12 +478,14 @@ function updFt() {
   const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
   Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
 }
-// ── 홀 상세: 읽기 전용 스코어카드에서 홀을 누르면 그 홀에 내가 기록한 값을 보여준다 ──
-function holeDetail(i) {
-  const h = getH();
-  const par = h[i], sc = A.sc.scores[i] || 0;
-  const gg = A.sc.gir[i], ff = A.sc.fir[i], pp = A.sc.putts[i] || 0;
-  const mm = A.sc.mulli[i] || 0, tpv = (A.sc.tp && A.sc.tp[i]) || 0;
+// ── 홀 상세: 라운드의 한 홀에 내가 기록한 값(점수·FIR·GIR·퍼팅·티샷 사고)을 보여준다 ──
+// 진입: 라운드 상세 모달의 "홀별 스코어" 격자, 그리고 읽기 전용 스코어카드의 홀 행.
+function holeDetail(id, i) {
+  const r = A.rounds.find(x => x.id === id); if (!r) return;
+  const hp = roundPars(r);
+  const par = hp[i] || 4, sc = (r.scores || [])[i] || 0;
+  const gg = (r.girArr || [])[i], ff = (r.firArr || [])[i], pp = (r.puttsArr || [])[i] || 0;
+  const mm = (r.mulliArr || [])[i] || 0, tpv = (r.tpArr || [])[i] || 0;
   const d = sc - par;
   const name = !sc ? '미입력'
     : d <= -2 ? '이글 이하' : d === -1 ? '버디' : d === 0 ? '파'
