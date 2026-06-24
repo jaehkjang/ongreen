@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.18.0';
+const APP_VERSION = 'v12.18.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1273,6 +1273,11 @@ function sig(val, avg, betterLow, margin, n) {
   return good ? 'var(--g)' : bad ? 'var(--r)' : 'var(--a)';
 }
 function dot(c) { return c ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:4px;vertical-align:middle"></span>` : ''; }
+
+// 통계 [전체] 탭의 하위 카테고리: 0 스코어 · 1 정확도·퍼팅 · 2 진단 · 3 추세·기록
+let _statSub = 0;
+const STAT_SUBS = ['스코어', '정확도·퍼팅', '진단', '추세·기록'];
+function setStatSub(s) { _statSub = s; renderStat(0); }
 
 function renderStat(m) {
   const el = Q('st-body'); const rounds = A.rounds.filter(r => !r.isDraft);
