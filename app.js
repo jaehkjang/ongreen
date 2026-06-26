@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.19.0';
+const APP_VERSION = 'v12.20.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -28,8 +28,8 @@ let A = {
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
 
 // ── 분석 기준값(신호등) · 관리자가 설정에서 수정 → 서버 공유. 서버 없으면 이 기본값 ──
-let BENCH = { firGood: 60, firOk: 35, tpDemote: 3, puttGood: 32, puttBad: 36, girGood: 50, girBad: 28,
-              gpGood: 1.9, gpBad: 2.05, scrGood: 40, scrBad: 25 };  // gp=GIR홀 퍼팅(개/홀·순수 퍼팅력) · scr=스크램블링(%)
+let BENCH = { firGood: 60, firOk: 35, tpDemote: 3, puttGood: 33, puttBad: 36, threeGood: 2, threeBad: 3.5,
+              girGood: 40, girBad: 21, scrGood: 34, scrBad: 21 };  // putt=라운드 퍼팅(개/R) · three=3퍼팅(회/R) · gir/scr=%(적중·스크램블)
 
 // ── 📢 공지 게시판 (읽기 전용) ──
 // 사용자는 읽기만 합니다. 새 글(id가 마지막으로 본 id보다 큼)이 있으면 홈의 📢 배지에 알림이 뜹니다.
@@ -209,7 +209,7 @@ function benchFormulaHTML() {
     <b style="color:var(--t)">🚗 드라이버 — 페어웨이%(FIR)</b><br>페어웨이% = 티샷이 페어웨이에 떨어진 홀(FIR) ÷ 파4·5홀. M·TP로 살린 홀은 제외. 🟢 ${b.firGood}%↑ · 🟡 ${b.firOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀↑이면 한 단계 강등.<br><span style="color:var(--t3)">※ 함께 보이는 <b>생존율</b> = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀. 공을 잃지 않은 비율로, 등급 판정에는 쓰지 않는 보조 지표예요.</span><br><br>
     <b style="color:var(--t)">🎯 아이언 — GIR(그린 적중률)</b><br>정규타수(파−2) 안에 그린 올린 홀 비율. 🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.<br><br>
     <b style="color:var(--t)">⛳ 숏게임 — 스크램블링</b><br>그린 놓친 홀 중 파 이하로 막은 비율. 🟢 ${b.scrGood}%↑ · 🟡 ${b.scrBad}%↑ · 🔴 그 미만.<br><br>
-    <b style="color:var(--t)">🍩 퍼팅 — GIR홀 퍼팅(순수 퍼팅력)</b><br>정규로 올린 홀의 홀당 퍼팅으로 판정(총 퍼팅은 GIR에 좌우돼 제외). 🟢 ${b.gpGood}개↓ · 🟡 ${b.gpBad}개↓ · 🔴 그 초과. <span style="color:var(--t3)">(GIR홀이 없으면 총 퍼팅 ${b.puttGood}/${b.puttBad}개로 폴백)</span></div>`;
+    <b style="color:var(--t)">🍩 퍼팅 — 라운드 퍼팅 + 3퍼팅</b><br>라운드 퍼팅 수(홀당 평균·거리감)와 3퍼팅 빈도(큰 실수) 중 <b>나쁜 쪽</b>으로 판정. 🟢 ${b.puttGood}개↓ <b>그리고</b> 3퍼팅 ${b.threeGood}회↓ · 🔴 ${b.puttBad}개 초과 <b>또는</b> 3퍼팅 ${b.threeBad}회 초과 · 🟡 그 사이.<br><span style="color:var(--t3)">※ <b>GIR홀 퍼팅</b>(정규로 올린 홀의 순수 퍼팅력)은 등급엔 안 쓰고 참고용으로 함께 보여줘요.</span></div>`;
 }
 
 // ── 설정 → 📊 분석 기준 : 모두 설명 보기 / 관리자만 수정 ──
@@ -226,17 +226,17 @@ function renderBenchSettings() {
       + f('girBad', '아이언 GIR 부족(%)', b.girBad)
       + f('scrGood', '숏게임 스크램블 좋음(%)', b.scrGood)
       + f('scrBad', '숏게임 스크램블 부족(%)', b.scrBad)
-      + f('gpGood', 'GIR홀 퍼팅 좋음(개/홀 이하)', b.gpGood)
-      + f('gpBad', 'GIR홀 퍼팅 부족(개/홀 초과)', b.gpBad)
-      + f('puttGood', '총 퍼팅 폴백 좋음(개 이하)', b.puttGood)
-      + f('puttBad', '총 퍼팅 폴백 부족(개 초과)', b.puttBad)
+      + f('puttGood', '퍼팅 라운드 좋음(개 이하)', b.puttGood)
+      + f('puttBad', '퍼팅 라운드 부족(개 초과)', b.puttBad)
+      + f('threeGood', '3퍼팅 좋음(회/라운드 이하)', b.threeGood)
+      + f('threeBad', '3퍼팅 부족(회/라운드 초과)', b.threeBad)
       + `<div id="bench-msg" style="font-size:12px;min-height:16px;margin:8px 0"></div>`
       + `<button class="btn btn-g" onclick="saveBench()" style="width:100%">기준 저장 (전체 반영)</button>`;
   }
   box.innerHTML = html;
 }
 async function saveBench() {
-  const ids = ['firGood', 'firOk', 'tpDemote', 'puttGood', 'puttBad', 'girGood', 'girBad', 'gpGood', 'gpBad', 'scrGood', 'scrBad'];
+  const ids = ['firGood', 'firOk', 'tpDemote', 'puttGood', 'puttBad', 'threeGood', 'threeBad', 'girGood', 'girBad', 'scrGood', 'scrBad'];
   const nb = {}; for (const id of ids) { const v = parseFloat(Q('bn-' + id).value); if (!isNaN(v)) nb[id] = v; }
   const msg = Q('bench-msg'); msg.style.color = 'var(--t2)'; msg.textContent = '저장 중...';
   const r = await callAPI(() => API.setBench(nb));
@@ -825,12 +825,12 @@ function analyze(rounds) {
   // 생존율(survPct)은 등급에 안 쓰고 보조 숫자로만 표시.
   let dst = adjFir >= BENCH.firGood ? 'g' : adjFir >= BENCH.firOk ? 'y' : 'r';
   if (teeLostPer >= BENCH.tpDemote) dst = dst === 'g' ? 'y' : 'r';
-  // 퍼팅 등급은 GIR홀 퍼팅(순수 퍼팅력)으로 판정 — 총 퍼팅은 GIR에 크게 좌우돼 교란되므로 등급에서 제외.
-  // 단, GIR홀이 하나도 없으면(초보 등) 총 퍼팅으로 폴백.
+  // 퍼팅 등급 = 라운드 퍼팅 수(홀당 평균·거리감) + 3퍼팅 빈도(큰 실수) 중 나쁜 쪽.
+  // 잘 굴려도 3퍼팅이 잦으면 스코어가 새므로 둘을 함께 본다. GIR홀 퍼팅은 참고용으로만 표시.
   const hasGP = girPuttN > 0;
-  const putStatus = hasGP
-    ? (girPuttAvg <= BENCH.gpGood ? 'g' : girPuttAvg > BENCH.gpBad ? 'r' : 'y')
-    : (puttAvg <= BENCH.puttGood ? 'g' : puttAvg > BENCH.puttBad ? 'r' : 'y');
+  const grdLow = (v, g, b) => v <= g ? 'g' : v > b ? 'r' : 'y';     // 낮을수록 좋은 지표(퍼팅·3퍼팅)
+  const worse = (a, b) => (a === 'r' || b === 'r') ? 'r' : (a === 'y' || b === 'y') ? 'y' : 'g';
+  const putStatus = worse(grdLow(puttAvg, BENCH.puttGood, BENCH.puttBad), grdLow(threeAvg, BENCH.threeGood, BENCH.threeBad));
   const scrStatus = missGreen ? (scrPct >= BENCH.scrGood ? 'g' : scrPct < BENCH.scrBad ? 'r' : 'y') : 'g';
   const S = (status, icon, area, value, msg, note) => ({ status, icon, area, value, msg, note });
   // 표시 순서: 드라이버(티샷) → 아이언(어프로치) → 숏게임 → 퍼팅
@@ -855,12 +855,11 @@ function analyze(rounds) {
       `그린 미스 후 회복은 보통입니다. 어프로치를 더 붙이면 스코어가 줄어요.`,
       `스크램블링 = 그린 놓친 홀 중 파 이하로 막은 비율(높을수록 좋음). 라운드당 그린 미스 ${nf(missAvg)}홀.`),
     S(putStatus, '🍩', '퍼팅',
-      hasGP ? `GIR홀 ${nf(girPuttAvg)}개 · 총 ${nf(puttAvg)} · 3퍼팅 ${nf(threeAvg)}홀` : `총 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}홀`,
-      putStatus === 'g' ? (hasGP ? `GIR홀에서 ${nf(girPuttAvg)}퍼팅 — 순수 퍼팅력이 좋습니다.` : `퍼팅 수가 적습니다. 그린에서 타수를 잘 지키고 있어요.`) :
-      putStatus === 'r' ? `퍼팅이 많습니다(${hasGP ? `GIR홀 ${nf(girPuttAvg)}퍼팅` : `총 ${nf(puttAvg)}개`}). 쓰리퍼팅 ${nf(threeAvg)}홀 — 첫 퍼트 거리감이 주 원인일 가능성이 큽니다.` :
-      `퍼팅 보통. 쓰리퍼팅이 라운드당 ${nf(threeAvg)}홀 — 여기서 타수가 새고 있습니다.`,
-      hasGP ? `등급은 GIR홀(정규로 올린 홀) 퍼팅 ${nf(girPuttAvg)}개로 판정 — 총 퍼팅은 GIR에 크게 좌우돼 등급에서 제외했습니다.`
-            : `GIR홀이 없어 총 퍼팅 평균으로 판정했습니다(적을수록 좋음).`)
+      `라운드 ${nf(puttAvg)}개 (홀당 ${nf(puttAvg / 18)}) · 3퍼팅 ${nf(threeAvg)}회${hasGP ? ` · GIR홀 ${nf(girPuttAvg)}` : ''}`,
+      putStatus === 'g' ? `퍼팅이 안정적입니다. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회로 그린에서 타수를 잘 지키고 있어요.` :
+      putStatus === 'r' ? `퍼팅에서 타수가 샙니다. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회 — 첫 퍼트 거리감(롱퍼트)을 줄이는 게 급선무입니다.` :
+      `퍼팅 보통. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회 — 여기서 조금씩 타수가 새고 있어요.`,
+      `등급 = 라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도 중 나쁜 쪽으로 판정 · 🟢 ${BENCH.puttGood}개↓ 그리고 3퍼팅 ${BENCH.threeGood}회↓ · 🔴 ${BENCH.puttBad}개 초과 또는 3퍼팅 ${BENCH.threeBad}회 초과${hasGP ? ` · (GIR홀 퍼팅 ${nf(girPuttAvg)}개는 순수 퍼팅력 참고용 — 등급엔 미반영)` : ''}`)
   ];
   return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, scrPct, missGreen, scrSave, missAvg, sig };
 }
@@ -1666,7 +1665,7 @@ function guideStatsHTML() {
 
   ${S('정확도 · 쇼트게임')}
   ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
-  ${it('GIR홀 퍼팅 · 3퍼팅 · 1퍼팅율 · 퍼팅 분포', '그린 정규로 올린 홀 퍼팅(순수 퍼팅력) / 3퍼팅 수 / 1퍼팅 비율 / 1·2·3·4+ 퍼팅 홀 수.')}
+  ${it('라운드 퍼팅 · 3퍼팅 · GIR홀 퍼팅 · 1퍼팅율 · 퍼팅 분포', '라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도가 퍼팅 등급을 정해요 / GIR홀 퍼팅은 순수 퍼팅력 참고용 / 1퍼팅 비율 / 1·2·3·4+ 퍼팅 홀 수.')}
   ${it('스크램블링', '그린 놓친 홀을 파 이하로 막은 비율(높을수록 좋음).')}
 
   ${S('🏆 기록 · 트로피')}
@@ -1696,7 +1695,7 @@ function philosophyHTML() {
   ${card('🔍', `① 점수가 아니라 '원인'을 본다`, `🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 4부서로 쪼개 신호등으로 진단해요. "90 쳤다"가 아니라 "숏게임이 🔴라서 90"을 말해줘요.`)}
   ${card('⚖️', '② 두 개의 잣대로 본다', `<b style="color:var(--t2)">세상 기준</b>으로 내 객관적 위치를, <b style="color:var(--t2)">내 평균</b>으로 오늘의 컨디션을 봐요.`)}
   ${card('📈', '③ 과거의 나와 경쟁한다', `남과 비교 대신 <b style="color:var(--t2)">성장 서사</b>로 동기를 만들어요. 발전 추세, 100·90·80 첫 돌파, 기복 추세로요.`)}
-  ${card('💎', `④ 운을 걷어낸 '순수 실력'을 잰다`, `GIR홀 퍼팅만 떼서(어프로치빨 1퍼팅 제외), 드라이버는 페어웨이%로 티샷 정확도를 보고 생존율로 사고를 보조해 진짜 실력을 봐요.`)}
+  ${card('💎', `④ 스코어에 직결되는 지표로 잰다`, `드라이버는 페어웨이%로 티샷 정확도를(생존율로 사고를 보조), 퍼팅은 라운드 퍼팅 수와 3퍼팅 빈도로 새는 타수를 직접 봐요. (GIR홀 퍼팅은 순수 퍼팅력 참고용)`)}
 
   <div style="font-size:13px;font-weight:800;color:var(--g);margin:16px 0 4px">🧭 그래서 이렇게 안내해요</div>
   ${card('💊', '오늘의 처방', `라운드 분석에서 가장 손해 큰 한 곳만 콕 집어줘요.`)}
