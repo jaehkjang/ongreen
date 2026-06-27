@@ -210,6 +210,15 @@
   <button class="mno" onclick="cm('m-edh')">취소</button>
 </div></div>
 
+<!-- 모달: 목록에서 바로 홀별 파만 수정 (공식 골프장 · 모두 공유) -->
+<div class="mo" id="m-pe"><div class="ms">
+  <div class="mh"></div><div class="mt" id="m-pe-t">파 수정</div>
+  <p style="text-align:center;color:var(--t2);font-size:12px;margin:-4px 0 12px">홀별 파만 고쳐서 모두에게 반영돼요 · 이름·주소는 안 바뀜</p>
+  <div id="pe-secs" style="max-height:340px;overflow-y:auto;margin-bottom:14px"></div>
+  <button class="mok" id="m-pe-btn" onclick="saveParEdit()">✅ 파 저장</button>
+  <button class="mno" onclick="cm('m-pe')">취소</button>
+</div></div>
+
 <!-- 모달: 삭제 확인 -->
 <div class="mo" id="m-del"><div class="ms">
   <div class="mh"></div><div class="mt">라운드 삭제</div>
@@ -261,7 +270,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.22.1"></script>
-<script src="app.js?v=12.22.1"></script>
+<script src="api.js?v=12.23.0"></script>
+<script src="app.js?v=12.23.0"></script>
 </body>
 </html>
