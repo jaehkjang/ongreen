@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.22.1';
+const APP_VERSION = 'v12.23.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -620,7 +620,7 @@ function renderCourses() {
         <div class="cc-name">${c.name}</div>
         <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
       </div>
-      <button onclick="openEditCourse('${c.id || c.name}')" title="코스 수정" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:8px;color:var(--t);font-size:13px;font-weight:600;cursor:pointer;padding:6px 9px">✏️</button>
+      <button onclick="openParEdit('${c.id || c.name}')" title="홀별 파 수정" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:8px;color:var(--t);font-size:13px;font-weight:600;cursor:pointer;padding:6px 9px;white-space:nowrap">✏️ 파수정</button>
       <span class="cbg off">✅ 공식</span>
     </div>
   </div>`;
@@ -631,6 +631,39 @@ function renderCourses() {
   if (recentList.length) html += `<div class="lbl" style="margin:4px 0 8px">🕘 최근 이용</div>` + recentList.map(card).join('');
   if (restList.length) html += `<div class="lbl" style="margin:14px 0 8px">가나다순</div>` + restList.map(card).join('');
   Q('cs-list').innerHTML = html;
+}
+
+// ── 목록에서 바로 "홀별 파만" 수정 (이름·주소·조합은 안 건드림 · 공식맵 모두 공유) ──
+// 카드 ✏️파수정 버튼 → 이 모달. 코스의 모든 레이아웃(전반·후반 등)을 한 번에 보여주고
+// +/- 로 파만 고쳐 API.saveCourse 로 공식맵 전체를 갱신한다. (관리자 아니어도 공유 반영)
+let _peKey = '';
+function openParEdit(key) {
+  const c = A.allCourses().find(x => x.id === key || x.name === key); if (!c) { toast('코스 없음'); return; }
+  _peKey = c.id || c.name;
+  Q('m-pe-t').textContent = c.name;
+  Q('pe-secs').innerHTML = (c.layouts || []).map((l, li) => {
+    const grid = (l.holes || []).map((p, i) => `<div style="text-align:center;background:var(--bg3);border-radius:10px;padding:8px 4px"><div style="font-size:10px;color:var(--t2);margin-bottom:4px">${i + 1}H</div><div style="display:flex;align-items:center;justify-content:center;gap:4px"><button onclick="adjPE(${li},${i},-1)" style="width:26px;height:26px;border-radius:50%;border:1.5px solid #6a6a6e;background:var(--bg3);color:#fff;cursor:pointer;font-size:14px">-</button><span id="pe-${li}-${i}" style="width:20px;text-align:center;font-size:16px;font-weight:700;color:var(--t)">${p}</span><button onclick="adjPE(${li},${i},1)" style="width:26px;height:26px;border-radius:50%;border:1.5px solid #6a6a6e;background:var(--bg3);color:#fff;cursor:pointer;font-size:14px">+</button></div></div>`).join('');
+    return `<div style="margin-bottom:14px"><div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:8px">${l.name} · 파${(l.holes || []).reduce((a, b) => a + b, 0)}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">${grid}</div></div>`;
+  }).join('');
+  om('m-pe');
+}
+function adjPE(li, i, d) { const el = Q(`pe-${li}-${i}`); if (!el) return; let v = parseInt(el.textContent) + d; if (v < 3) v = 3; if (v > 5) v = 5; el.textContent = v; }
+async function saveParEdit() {
+  const c = A.allCourses().find(x => x.id === _peKey || x.name === _peKey); if (!c) { toast('코스 없음'); return; }
+  const newLayouts = (c.layouts || []).map((l, li) => ({ ...l, holes: (l.holes || []).map((p, i) => { const el = Q(`pe-${li}-${i}`); return el ? parseInt(el.textContent) : p; }) }));
+  const updated = { ...c, layouts: newLayouts };
+  const btn = Q('m-pe-btn'); btn.disabled = true; btn.textContent = '저장 중...';
+  const r = await callAPI(() => API.saveCourse(updated, true, c.name));
+  btn.disabled = false; btn.textContent = '✅ 파 저장';
+  if (!r.ok) { const e = explainError(r); toast('❌ ' + e.msg); return; }
+  const i = A.official.findIndex(x => x.id === (c.id || c.name) || x.name === c.name);
+  if (i >= 0) A.official[i] = updated;
+  try {                                                       // 콜드 스타트용 캐시도 갱신
+    const cache = JSON.parse(localStorage.getItem('og_cache') || 'null') || {};
+    cache.official = A.official; localStorage.setItem('og_cache', JSON.stringify(cache));
+  } catch (e) {}
+  cm('m-pe'); toast('✅ 파가 모두에게 반영됐어요'); renderCourses();
+  if (A.isAdm && _admOffLoaded) renderAdmOfficial();
 }
 
 function selCourse(key) {
