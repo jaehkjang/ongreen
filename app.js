@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.22.0';
+const APP_VERSION = 'v12.22.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -18,7 +18,7 @@ const DEF = [
 
 // ── 앱 상태 (메모리; 세션만 localStorage에 백업) ──
 let A = {
-  u: '', isAdm: false,
+  u: '', isAdm: false, loaded: false,   // loaded: 서버에서 라운드를 "확실히" 받았는지 (저장 안전장치용)
   rounds: [], official: [...DEF], notes: [],
   allCourses() { return this.official; },                 // 코스는 공식 목록 하나뿐
   sc: { course: null, li: [0, 1], ro: false, eid: null, half: 0,
@@ -111,7 +111,7 @@ function logout() {
   if (!confirm('로그아웃 하시겠어요?')) return;
   localStorage.removeItem('og_s'); localStorage.removeItem('og_cache');
   API.setAuth('', '');
-  Object.assign(A, { u: '', isAdm: false, rounds: [], official: [...DEF], notes: [] });
+  Object.assign(A, { u: '', isAdm: false, loaded: false, rounds: [], official: [...DEF], notes: [] });
   Q('li-n').value = ''; Q('li-p').value = ''; showPg('login');
 }
 
@@ -149,9 +149,26 @@ async function loadAll(silent) {
   }
 
   if (br && br.ok && br.bench && typeof br.bench === 'object') Object.assign(BENCH, br.bench);  // 서버 기준값 반영(없으면 기본값 유지)
-  A.rounds = (rr && rr.rounds) || [];
-  A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(c => ({ ...c, status: 'official' })) : [...DEF];
-  try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {}  // 다음 실행 때 즉시 표시용 캐시
+
+  // ── 라운드: 서버가 "확실히 성공"(ok + rounds 배열)일 때만 교체. 그 외(서버 일시오류·이상 응답)엔
+  //    절대 빈 배열로 덮지 않는다. (서버 saveRounds_ 가 clearContents 라, 이후 빈 배열 저장 시 유실되므로)
+  const roundsOk = rr && rr.ok && Array.isArray(rr.rounds);
+  if (roundsOk) {
+    const server = rr.rounds;
+    // 서버엔 없고 로컬에만 있는 라운드(오프라인 입력 등)는 보존 → id 기준 병합 후 즉시 동기화
+    const localOnly = (A.rounds || []).filter(lr => lr && lr.id != null && !server.some(s => s && s.id === lr.id));
+    A.rounds = localOnly.length ? [...localOnly, ...server] : server;
+    A.loaded = true;
+    if (localOnly.length) callAPI(() => API.saveRounds(A.rounds));   // 미동기화분을 서버에 올림(이미 권위 데이터 확보)
+  } else if (!Array.isArray(A.rounds)) {
+    A.rounds = [];   // 이전 데이터가 아예 없을 때만 방어적 초기화
+  }
+  // ── 코스: 성공일 때만 교체, 실패 시 기존/캐시 보존 (빈 목록으로 덮지 않음)
+  A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(c => ({ ...c, status: 'official' }))
+                                                       : ((A.official && A.official.length) ? A.official : [...DEF]);
+  // ── 캐시는 "라운드를 성공적으로 받았을 때만" 갱신 (실패 응답으로 캐시를 비우지 않도록)
+  if (roundsOk) { try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {} }
+  else if (!silent) toast('⚠️ 기록 동기화 실패 — 저장된 기록을 그대로 표시합니다');
 
   setUserLabels();
   if (A.isAdm) refreshNotes();  // 관리자 알림은 뒤에서 채움(홈 표시를 막지 않음)
@@ -170,7 +187,7 @@ function setUserLabels() {
 }
 function logoutSilent() {
   localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); API.setAuth('', '');
-  Object.assign(A, { u: '', isAdm: false, rounds: [], official: [...DEF], notes: [] });
+  Object.assign(A, { u: '', isAdm: false, loaded: false, rounds: [], official: [...DEF], notes: [] });
   showPg('login'); toast('다시 로그인해주세요');
 }
 
@@ -311,6 +328,16 @@ function buildRound(isDraft) {
   };
 }
 
+// 라운드 전체를 서버에 덮어쓰기 전 안전장치 (★ 스코어카드 유실 방지 ★)
+//  ① 로컬 캐시는 "항상" 갱신 → 오프라인 입력·삭제도 보존되고 다음 실행에 반영됨
+//  ② 서버에서 권위 데이터(A.loaded)를 아직 못 받았으면 서버를 덮지 않는다 —
+//     서버 saveRounds_ 가 clearContents 라, 불완전한 A.rounds 로 덮으면 기존 기록이 통째로 날아간다.
+async function pushRounds() {
+  try { const c = JSON.parse(localStorage.getItem('og_cache') || 'null') || {}; c.rounds = A.rounds; localStorage.setItem('og_cache', JSON.stringify(c)); } catch (e) {}
+  if (!A.loaded) return { ok: false, __unsafe: true };   // 아직 서버 원본 미확보 → 덮어쓰기 금지(로컬엔 보존됨)
+  return await callAPI(() => API.saveRounds(A.rounds));
+}
+
 async function saveRound() {
   if (A.sc.ro) return;
   if (!A.sc.scores.filter(x => x > 0).length) { toast('스코어를 입력해주세요'); return; }
@@ -318,8 +345,8 @@ async function saveRound() {
   const btn = Q('sv'); btn.textContent = '저장 중...'; btn.disabled = true;
   if (A.sc.eid) { const i = A.rounds.findIndex(r => r.id === A.sc.eid); if (i >= 0) A.rounds[i] = rd; else A.rounds.unshift(rd); }
   else A.rounds.unshift(rd);
-  const r = await callAPI(() => API.saveRounds(A.rounds));
-  toast(r.ok ? '✅ 저장 완료' : '⚠️ 저장됐지만 동기화 실패');
+  const r = await pushRounds();
+  toast(r.ok ? '✅ 저장 완료' : (r.__unsafe ? '✅ 기기에 저장됨 · 연결 후 자동 동기화' : '⚠️ 저장됐지만 동기화 실패'));
   btn.textContent = '저장'; btn.disabled = false;
   A.sc.eid = null; A.sc.ro = false; A.sc.course = null; goHome();
 }
@@ -419,8 +446,8 @@ function askDel(id) { _delId = id; om('m-del'); }
 async function confirmDel() {
   cm('m-del'); if (!_delId) return;
   A.rounds = A.rounds.filter(r => r.id !== _delId);
-  const r = await callAPI(() => API.saveRounds(A.rounds));
-  toast(r.ok ? '삭제됐어요' : '⚠️ 삭제됐지만 동기화 실패');
+  const r = await pushRounds();
+  toast(r.ok ? '삭제됐어요' : (r.__unsafe ? '기기에서 삭제됨 · 연결 후 동기화' : '⚠️ 삭제됐지만 동기화 실패'));
   _delId = null; A.sc.eid = null; A.sc.ro = false; goHome();
 }
 
@@ -430,7 +457,7 @@ function scBack() {
       const draft = buildRound(true);
       if (A.sc.eid) { const i = A.rounds.findIndex(r => r.id === A.sc.eid); if (i >= 0) A.rounds[i] = draft; else A.rounds.unshift(draft); }
       else { A.sc.eid = draft.id; A.rounds.unshift(draft); }
-      callAPI(() => API.saveRounds(A.rounds));
+      pushRounds();
       toast('✏️ 임시저장됐어요');
     }
   }
