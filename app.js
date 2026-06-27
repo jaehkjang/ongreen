@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.20.1';
+const APP_VERSION = 'v12.21.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -638,9 +638,13 @@ function adjHP(i, d) {
   A.sc.holeEdits[ly.name][li] = v;
 }
 function startScoringFromPicker() {
-  // picker에서 조정한 홀별 파를 이번 라운드에만 적용 (공식 코스 데이터는 그대로 보존)
+  // picker에서 조정한 홀별 파를 이번 라운드에 적용하고, 공식맵(모두 공유)에도 반영한다.
   const src = A.sc.course; const [s0, s1] = A.sc.li;
   const pars = Array.from({ length: 18 }, (_, i) => { const el = Q('hp-' + i); return el ? parseInt(el.textContent) : (i < 9 ? src.layouts[s0].holes[i] : src.layouts[s1].holes[i - 9]); });
+  // 공식맵에 반영할 수정분: picker에서 만진 모든 레이아웃(holeEdits) + 지금 화면의 2개 (이름 키)
+  const edits = Object.assign({}, A.sc.holeEdits || {});
+  edits[src.layouts[s0].name] = pars.slice(0, 9);
+  edits[src.layouts[s1].name] = pars.slice(9, 18);
   const clone = { id: src.id, name: src.name, addr: src.addr, status: src.status,
     layouts: [ { name: src.layouts[s0].name, holes: pars.slice(0, 9) }, { name: src.layouts[s1].name, holes: pars.slice(9, 18) } ] };
   A.sc.course = clone; A.sc.li = [0, 1];
@@ -654,9 +658,15 @@ function startScoringFromPicker() {
   Q('sc-bnr').innerHTML = '';
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = 'block';
   cm('m-hl'); renderSC(); showPg('sc');
+
+  // 공식맵(모두 공유) 반영은 백그라운드로 — 스코어카드 진입을 막지 않음. 마스터와 다를 때만 저장.
+  persistParsToOfficial(src, edits).then(res => {
+    if (res.ok) toast('✅ 공식 코스 파가 모두에게 반영됐어요');
+    else if (res.ok === false) toast('⚠️ 공유 저장 실패 — 이 라운드엔 적용됨 (인터넷 확인)');
+  });
 }
 
-// ── 라운드 도중 "코스 수정" (홀별 파만 · 이 라운드에만 · 마스터 안 건드림) ──
+// ── 라운드 도중 "코스 수정" (홀별 파만) · 이 라운드 + 공식맵(모두 공유)에 함께 반영 ──
 let _ehTmp = [];
 function openEditHoles() {
   if (A.sc.ro || !A.sc.course) return;
@@ -675,28 +685,61 @@ function masterParsFor(course) {                 // 마스터 공식 파 18개 (
   if (!f || !s) return null;
   return [...f, ...s];
 }
+
+// ── 홀파 수정 → 공식맵(마스터)에 병합 저장 → 모두 공유 ──
+// 핵심: A.sc.course 는 선택한 2개 레이아웃만 가진 "클론"이라 그대로 보내면
+//       나머지 나인이 삭제된다. 반드시 마스터 "전체 코스"를 찾아 해당 레이아웃의
+//       holes 만 이름 매칭으로 갈아끼운 뒤 저장한다. (best-effort: 실패해도 라운드는 진행)
+// edits: { 레이아웃이름: [9홀 파], ... }
+// 반환: { ok:true } 저장됨 / { ok:false } 서버실패 / { unchanged } 마스터와 동일 / { skipped } 공식맵에 없음
+async function persistParsToOfficial(course, edits) {
+  const mi = A.official.findIndex(x => x.id === course.id || x.name === course.name);
+  if (mi < 0) return { skipped: true };                       // 공식맵에 없는 코스 → 건너뜀
+  const master = A.official[mi];
+  const newLayouts = master.layouts.map(l => ({ ...l, holes: (l.holes || []).slice() }));
+  let changed = false;
+  Object.keys(edits || {}).forEach(name => {
+    const np = edits[name]; if (!np || np.length !== 9) return;
+    const ly = newLayouts.find(l => l.name === name); if (!ly) return;   // 이름으로 해당 나인만 갱신
+    if (ly.holes.length !== 9 || ly.holes.some((p, i) => p !== np[i])) { ly.holes = np.slice(); changed = true; }
+  });
+  if (!changed) return { unchanged: true };                   // 마스터와 같으면 저장 안 함(불필요한 덮어쓰기 방지)
+  const updated = { ...master, layouts: newLayouts };
+  const r = await callAPI(() => API.saveCourse(updated, true, master.name));   // 전체 코스를 수정 저장
+  if (!r.ok) return { ok: false, err: r };
+  A.official[mi] = updated;                                   // 로컬 공식맵 즉시 갱신
+  try {                                                       // 콜드 스타트용 캐시도 갱신
+    const cache = JSON.parse(localStorage.getItem('og_cache') || 'null') || {};
+    cache.official = A.official; localStorage.setItem('og_cache', JSON.stringify(cache));
+  } catch (e) {}
+  return { ok: true };
+}
+
 async function applyEditHoles() {
   const newPars = Array.from({ length: 18 }, (_, i) => parseInt(Q('eh-' + i).textContent));
-  // 이 라운드 전용 클론에만 반영 (마스터는 건드리지 않음)
-  A.sc.course.layouts[0].holes = newPars.slice(0, 9);
-  A.sc.course.layouts[1].holes = newPars.slice(9, 18);
-  cm('m-edh'); renderSC(); toast('✅ 이 라운드의 홀 파가 수정됐어요');
+  const c = A.sc.course;
+  const before = masterParsFor(c);          // 변경 전 공식 파 (감사 로그 diff 기준 — 저장 전에 떠둔다)
+  // ① 이 라운드 클론에 즉시 반영 (입력 화면은 곧바로 갱신)
+  c.layouts[0].holes = newPars.slice(0, 9);
+  c.layouts[1].holes = newPars.slice(9, 18);
+  cm('m-edh'); renderSC();
 
-  // 마스터와 다르면 관리자에게 알림 (관리자 본인이 고친 건 제외)
-  // detail 에 "어느 코스 · 어느 구성(레이아웃 조합) · 몇 번 홀이 어떻게" 까지 담아
-  // 관리자가 알림만 보고도 무엇이 바뀌었는지 바로 알 수 있게 한다.
-  if (!A.isAdm) {
-    const mp = masterParsFor(A.sc.course);
-    if (mp) {
-      const c = A.sc.course;
-      const lname = i => (i < 9 ? c.layouts[0].name : c.layouts[1].name);   // 홀이 속한 레이아웃 이름
-      const diff = [];
-      newPars.forEach((p, i) => { if (p !== mp[i]) diff.push(`${lname(i)} ${(i % 9) + 1}번 P${mp[i]}→P${p}`); });
-      if (diff.length) {
-        const combo = `${c.layouts[0].name}+${c.layouts[1].name}`;          // 어느 구성(코스 조합)
-        const detail = `${c.name} (${combo}) · ${diff.slice(0, 4).join(', ')}${diff.length > 4 ? ` 외 ${diff.length - 4}곳` : ''}`;
-        callAPI(() => API.reportParChange(c.name, detail));
-      }
+  // ② 공식맵(모두 공유)에도 반영 — best-effort. 실패해도 이 라운드 입력은 계속 가능.
+  const edits = { [c.layouts[0].name]: newPars.slice(0, 9), [c.layouts[1].name]: newPars.slice(9, 18) };
+  const res = await persistParsToOfficial(c, edits);
+  if (res.ok) toast('✅ 공식 코스 파가 모두에게 반영됐어요');
+  else if (res.ok === false) toast('⚠️ 이 라운드엔 적용됐지만 공유 저장 실패 (인터넷 확인)');
+  else toast('✅ 이 라운드의 홀 파가 수정됐어요');               // unchanged / skipped
+
+  // ③ 감사 로그: 누가 무엇을 바꿨는지 관리자에게 기록 (이제 실제로 공식맵에 반영됨)
+  if (!A.isAdm && before && res.ok) {
+    const lname = i => (i < 9 ? c.layouts[0].name : c.layouts[1].name);   // 홀이 속한 레이아웃 이름
+    const diff = [];
+    newPars.forEach((p, i) => { if (p !== before[i]) diff.push(`${lname(i)} ${(i % 9) + 1}번 P${before[i]}→P${p}`); });
+    if (diff.length) {
+      const combo = `${c.layouts[0].name}+${c.layouts[1].name}`;          // 어느 구성(코스 조합)
+      const detail = `${c.name} (${combo}) · ${diff.slice(0, 4).join(', ')}${diff.length > 4 ? ` 외 ${diff.length - 4}곳` : ''} [반영됨]`;
+      callAPI(() => API.reportParChange(c.name, detail));
     }
   }
 }
