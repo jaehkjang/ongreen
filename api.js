@@ -16,8 +16,10 @@ const API = {
 
   // ── 내부: GET (읽기) ──
   async _get(action, extra) {
-    const p = new URLSearchParams(Object.assign({ action, u: this.u, token: this.token }, extra || {}));
-    const res = await fetch(this.URL + '?' + p.toString(), { mode: 'cors' });
+    // _(캐시버스터) + no-store: Apps Script GET 응답이 브라우저에 캐시되어
+    // ① 저장한 코스 파 변경이 다시 안 보이거나 ② 옛 라운드 데이터가 되살아나는 문제를 막는다.
+    const p = new URLSearchParams(Object.assign({ action, u: this.u, token: this.token, _: String(Date.now()) }, extra || {}));
+    const res = await fetch(this.URL + '?' + p.toString(), { mode: 'cors', cache: 'no-store' });
     return res.json();
   },
   // ── 내부: POST (쓰기) ──
