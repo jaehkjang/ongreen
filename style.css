@@ -90,9 +90,9 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 /* DIAGNOSIS (진단 신호등 카드) */
 .dgi{background:var(--bg2);border:.5px solid var(--bd);border-left:3px solid var(--t3);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .dgi.g{border-left-color:var(--g)}.dgi.y{border-left-color:var(--a)}.dgi.r{border-left-color:var(--r)}
-.dgi-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:3px}
-.dgi-t{font-size:13px;font-weight:700;color:var(--t);min-width:0}
-.dgi-v{font-size:12px;font-weight:700;text-align:right;flex-shrink:0}
+.dgi-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:3px}
+.dgi-t{font-size:13px;font-weight:700;color:var(--t);white-space:nowrap;flex-shrink:0}
+.dgi-v{font-size:12px;font-weight:700;text-align:right;min-width:0;word-break:keep-all}
 .dgi-v.g{color:var(--g)}.dgi-v.y{color:var(--a)}.dgi-v.r{color:var(--r)}
 .dgi-m{font-size:12px;color:var(--t2);line-height:1.5}
 .dgi-n{font-size:11px;color:var(--t2);line-height:1.55;margin-top:6px;padding-top:6px;border-top:.5px solid var(--bd);word-break:keep-all}
