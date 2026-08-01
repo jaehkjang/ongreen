@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.22.3';
+const APP_VERSION = 'v12.22.4';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -620,7 +620,7 @@ function renderCourses() {
         <div class="cc-name">${c.name}</div>
         <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
       </div>
-      <button onclick="openEditCourse('${c.id || c.name}')" title="코스 수정" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:8px;color:var(--t);font-size:13px;font-weight:600;cursor:pointer;padding:6px 9px">✏️</button>
+      <button onclick="openEditCourse('${c.id || c.name}')" title="코스 수정" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:8px;color:var(--t);font-size:13px;font-weight:600;cursor:pointer;padding:6px 12px;white-space:nowrap">수정</button>
       <span class="cbg off">✅ 공식</span>
     </div>
   </div>`;
