@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.22.4';
+const APP_VERSION = 'v12.22.5';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -170,6 +170,12 @@ async function loadAll(silent) {
   if (roundsOk) { try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {} }
   else if (!silent) toast('⚠️ 기록 동기화 실패 — 저장된 기록을 그대로 표시합니다');
 
+  // 과거 버그로 뒤바뀐 코스 조합 라벨을 박제된 파 기준으로 자동 복구(스코어·기록은 불변). 바뀐 게 있으면 서버에도 반영.
+  if (roundsOk && healRoundLabels()) {
+    pushRounds();
+    try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {}
+  }
+
   setUserLabels();
   if (A.isAdm) refreshNotes();  // 관리자 알림은 뒤에서 채움(홈 표시를 막지 않음)
 
@@ -314,7 +320,8 @@ function buildRound(isDraft) {
   const tot = A.sc.scores.reduce((a, b) => a + b, 0);
   return {
     id: A.sc.eid || Date.now(), isDraft: !!isDraft,
-    courseId: c.id, courseName: c.name, courseLbl: `${c.layouts[l0].name}+${c.layouts[l1].name}`, layoutIdx: [l0, l1],
+    courseId: c.id, courseName: c.name, courseLbl: `${c.layouts[l0].name}+${c.layouts[l1].name}`,
+    layoutIdx: [l0, l1], layoutNames: [c.layouts[l0].name, c.layouts[l1].name],   // ★ 실제 플레이한 나인 이름을 박제(인덱스에 의존 안 함 → 마스터 순서 바뀌어도 안 뒤바뀜)
     date: A.sc.date, weather: A.sc.wx, partner: A.sc.partner, memo: A.sc.memo,
     score: tot, vs: tot - par, par,
     putts: A.sc.putts.reduce((a, b) => a + b, 0),
@@ -353,9 +360,39 @@ async function saveRound() {
 
 function roundPars(r) {                          // 박제된 파 우선, 없으면 옛 라운드 호환용으로 마스터 참조
   if (r.holePars && r.holePars.length === 18) return r.holePars;
-  const c = A.allCourses().find(x => x.id === r.courseId);
-  const [l0, l1] = r.layoutIdx || [0, 1];
-  return c ? [...(c.layouts[l0]?.holes || []), ...(c.layouts[l1]?.holes || [])] : Array(18).fill(4);
+  const c = A.allCourses().find(x => x.id === r.courseId || x.name === r.courseName);
+  if (!c) return Array(18).fill(4);
+  // 이름으로 레이아웃을 찾고(마스터 순서가 바뀌어도 안전), 없으면 옛 방식(인덱스)로 폴백
+  const nm = (r.layoutNames && r.layoutNames.length === 2) ? r.layoutNames : (r.courseLbl && r.courseLbl.includes('+') ? r.courseLbl.split('+') : null);
+  const byName = n => (c.layouts.find(l => l.name === n) || {}).holes;
+  let h0 = nm ? byName(nm[0]) : null, h1 = nm ? byName(nm[1]) : null;
+  if (!h0 || !h1) { const [l0, l1] = r.layoutIdx || [0, 1]; h0 = c.layouts[l0]?.holes; h1 = c.layouts[l1]?.holes; }
+  return [...(h0 || Array(9).fill(4)), ...(h1 || Array(9).fill(4))];
+}
+
+// ── 과거 버그로 뒤바뀐 "코스 조합 라벨" 자동 복구 ────────────────────────────
+// 예전엔 저장된 layoutIdx(클론 기준 [0,1])로 마스터를 역참조해 레이아웃 이름을 구했는데,
+// 마스터의 실제 나인 순서와 다르면(예: 레이크+오션 → 오션+…) 라벨이 뒤바뀌었다.
+// 홀별 파(holePars)는 그날 그대로 박제돼 있으므로, 각 나인의 파를 마스터 레이아웃과 대조해
+// "어느 나인이었는지"를 되찾아 courseLbl/layoutNames 만 바로잡는다.
+//  · 스코어·퍼팅·GIR·FIR·파(점수/vs/par)는 절대 건드리지 않는다 (라벨 메타만 교정).
+//  · 파가 마스터와 정확히·유일하게 안 맞으면(그날 파를 손수 고쳤거나 애매하면) 건드리지 않는다.
+function healRoundLabels() {
+  let changed = false;
+  const eqNine = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === 9 && b.length === 9 && a.every((v, i) => v === b[i]);
+  (A.rounds || []).forEach(r => {
+    if (!r || !r.holePars || r.holePars.length !== 18) return;
+    const master = A.official.find(x => x.id === r.courseId || x.name === r.courseName);
+    if (!master || !(master.layouts || []).length) return;
+    const uniq = nine => { const m = master.layouts.filter(l => eqNine(l.holes, nine)); return m.length === 1 ? m[0].name : null; };
+    const n0 = uniq(r.holePars.slice(0, 9)), n1 = uniq(r.holePars.slice(9, 18));
+    if (!n0 || !n1 || n0 === n1) return;      // 유일하게 못 가리면(애매/수정된 파) 그대로 둠
+    const lbl = `${n0}+${n1}`;
+    if (r.courseLbl !== lbl || !r.layoutNames || r.layoutNames[0] !== n0 || r.layoutNames[1] !== n1) {
+      r.courseLbl = lbl; r.layoutNames = [n0, n1]; changed = true;   // 라벨/이름만 교정
+    }
+  });
+  return changed;
 }
 // ── 같은 골프장 이전 기록과 비교 (코스별 평균을 대신해 스코어카드 안에서 바로 보여줌) ──
 function courseCompareHTML(r) {
@@ -411,8 +448,12 @@ function resumeDraft(id) { openSC(id, false); }
 function openSC(id, ro) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
   const master = A.allCourses().find(x => x.id === r.courseId) || A.official[0];
-  const [m0, m1] = r.layoutIdx || [0, 1];
-  const n0 = (master && master.layouts[m0]?.name) || '전반', n1 = (master && master.layouts[m1]?.name) || '후반';
+  // 레이아웃 이름은 저장된 실제 이름(layoutNames) → courseLbl 분해 → (구버전) 마스터 인덱스 순으로 복원.
+  // 예전엔 layoutIdx(클론 기준 [0,1])로 마스터를 역참조해, 마스터 나인 순서와 다르면 코스가 뒤바뀌었음.
+  let n0, n1;
+  if (r.layoutNames && r.layoutNames.length === 2) { [n0, n1] = r.layoutNames; }
+  else if (r.courseLbl && r.courseLbl.includes('+')) { const p = r.courseLbl.split('+'); n0 = p[0]; n1 = p[1]; }
+  else { const [m0, m1] = r.layoutIdx || [0, 1]; n0 = (master && master.layouts[m0]?.name) || '전반'; n1 = (master && master.layouts[m1]?.name) || '후반'; }
   const pars = roundPars(r);     // 박제된 그 라운드의 파
   // 라운드 전용 코스 클론 (마스터는 절대 안 건드림)
   const c = { id: r.courseId, name: r.courseName, addr: (master && master.addr) || '',
