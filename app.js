@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.22.5';
+const APP_VERSION = 'v12.23.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -108,8 +108,10 @@ async function doLogin() {
 }
 
 function logout() {
-  if (!confirm('로그아웃 하시겠어요?')) return;
-  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache');
+  // 아직 서버에 못 올린 변경이 있으면 분명히 알려주고 확인받는다 (로그아웃하면 로컬 캐시와 함께 사라짐)
+  const p = pendGet(); const n = Object.keys(p.edits).length + p.dels.length;
+  if (!confirm(n ? `⚠️ 아직 서버에 못 올린 변경이 ${n}건 있어요.\n로그아웃하면 이 변경은 사라집니다. 계속할까요?` : '로그아웃 하시겠어요?')) return;
+  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); pendClear();
   API.setAuth('', '');
   Object.assign(A, { u: '', isAdm: false, loaded: false, rounds: [], official: [...DEF], notes: [] });
   Q('li-n').value = ''; Q('li-p').value = ''; showPg('login');
@@ -154,12 +156,10 @@ async function loadAll(silent) {
   //    절대 빈 배열로 덮지 않는다. (서버 saveRounds_ 가 clearContents 라, 이후 빈 배열 저장 시 유실되므로)
   const roundsOk = rr && rr.ok && Array.isArray(rr.rounds);
   if (roundsOk) {
-    const server = rr.rounds;
-    // 서버엔 없고 로컬에만 있는 라운드(오프라인 입력 등)는 보존 → id 기준 병합 후 즉시 동기화
-    const localOnly = (A.rounds || []).filter(lr => lr && lr.id != null && !server.some(s => s && s.id === lr.id));
-    A.rounds = localOnly.length ? [...localOnly, ...server] : server;
+    const m = mergeRounds(rr.rounds, A.rounds, pendGet());
+    A.rounds = m.rounds;
     A.loaded = true;
-    if (localOnly.length) callAPI(() => API.saveRounds(A.rounds));   // 미동기화분을 서버에 올림(이미 권위 데이터 확보)
+    if (m.needSync) pushRounds();   // 미동기화분 즉시 반영 (성공하면 pushRounds 가 대기목록을 정리)
   } else if (!Array.isArray(A.rounds)) {
     A.rounds = [];   // 이전 데이터가 아예 없을 때만 방어적 초기화
   }
@@ -192,7 +192,7 @@ function setUserLabels() {
   Q('adm-panel').style.display = A.isAdm ? 'block' : 'none';
 }
 function logoutSilent() {
-  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); API.setAuth('', '');
+  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); pendClear(); API.setAuth('', '');   // 다른 계정 로그인 시 이전 사용자의 미동기화분이 섞이지 않게
   Object.assign(A, { u: '', isAdm: false, loaded: false, rounds: [], official: [...DEF], notes: [] });
   showPg('login'); toast('다시 로그인해주세요');
 }
@@ -339,10 +339,77 @@ function buildRound(isDraft) {
 //  ① 로컬 캐시는 "항상" 갱신 → 오프라인 입력·삭제도 보존되고 다음 실행에 반영됨
 //  ② 서버에서 권위 데이터(A.loaded)를 아직 못 받았으면 서버를 덮지 않는다 —
 //     서버 saveRounds_ 가 clearContents 라, 불완전한 A.rounds 로 덮으면 기존 기록이 통째로 날아간다.
+// ── 미동기화 변경 추적 (og_pending) ────────────────────────────────────────
+// 오프라인·서버 실패로 서버에 못 올린 변경(신규/수정/삭제)을 기억해 둔다.
+// 예전엔 로드할 때 "서버에 없는 id"만 보존해서, 이미 서버에 있는 라운드를 오프라인에서
+// 수정하면 다음 로드에 옛 값으로 조용히 되돌아갔고, 오프라인 삭제는 되살아났다.
+const PEND_KEY = 'og_pending';
+function sameId(a, b) { return a != null && b != null && String(a) === String(b); }   // 서버가 id를 문자열로 돌려줘도 안전하게 매칭
+function pendGet() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PEND_KEY) || 'null');
+    if (p && typeof p === 'object') return { edits: (p.edits && typeof p.edits === 'object') ? p.edits : {}, dels: Array.isArray(p.dels) ? p.dels : [] };
+  } catch (e) {}
+  return { edits: {}, dels: [] };
+}
+function pendSet(p) { try { localStorage.setItem(PEND_KEY, JSON.stringify(p)); } catch (e) {} }
+function pendClear() { try { localStorage.removeItem(PEND_KEY); } catch (e) {} }
+function markSaved(rd) {                        // 저장/임시저장한 라운드를 대기목록에 기록
+  if (!rd || rd.id == null) return;
+  const p = pendGet(); p.edits[rd.id] = rd; p.dels = p.dels.filter(x => !sameId(x, rd.id)); pendSet(p);
+}
+function markDeleted(id) {                      // 삭제한 라운드를 대기목록에 기록(되살아나지 않게)
+  if (id == null) return;
+  const p = pendGet(); delete p.edits[id]; if (!p.dels.some(x => sameId(x, id))) p.dels.push(id); pendSet(p);
+}
+
+// ── 서버 목록 + 로컬 목록 + 미동기화 대기분 합치기 (순수 함수 — tests/data-safety.test.js 가 검증) ──
+// 예전엔 "서버에 없는 id만 보존"이라, 서버에 이미 있는 라운드의 오프라인 수정은 옛 값으로 되돌아가고
+// 오프라인 삭제는 되살아났다. 이제 대기분(edits/dels)을 서버 값 위에 다시 얹어 그 유실을 막는다.
+function mergeRounds(server, local, p) {
+  const pend = { edits: (p && p.edits) || {}, dels: (p && p.dels) || [] };
+  const srv = (server || []).filter(s => s && s.id != null);
+  // ① 로컬에서 지운 라운드는 서버 목록에서도 뺀다 (동기화 실패로 되살아나지 않게)
+  const merged = srv.filter(s => !pend.dels.some(d => sameId(d, s.id)));
+  // ② 로컬 수정/신규분을 서버 값 위에 다시 얹는다 (오프라인 수정이 옛 값으로 안 되돌아가게)
+  Object.keys(pend.edits).forEach(k => {
+    const er = pend.edits[k]; if (!er || er.id == null) return;
+    const i = merged.findIndex(m => sameId(m.id, er.id));
+    if (i >= 0) merged[i] = er; else merged.unshift(er);
+  });
+  // ③ 서버에도 대기목록에도 없는 로컬 전용 라운드(옛 캐시 등)도 보존
+  const localOnly = (local || []).filter(lr => lr && lr.id != null
+    && !srv.some(s => sameId(s.id, lr.id))
+    && !pend.dels.some(d => sameId(d, lr.id))
+    && !Object.keys(pend.edits).some(k => sameId(k, lr.id)));
+  return { rounds: [...localOnly, ...merged],
+           needSync: !!(localOnly.length || Object.keys(pend.edits).length || pend.dels.length) };
+}
+
+// 서버 반영이 확인된 대기분만 지운다. (그 사이 새로 생긴 변경까지 지우면 그 변경이 유실되므로,
+//  보낸 내용과 지금 대기 중인 내용이 같을 때만 제거한다.)
+function pendResolve(snap) {
+  const p = pendGet();
+  Object.keys(snap.edits || {}).forEach(k => {
+    if (p.edits[k] !== undefined && JSON.stringify(p.edits[k]) === JSON.stringify(snap.edits[k])) delete p.edits[k];
+  });
+  p.dels = p.dels.filter(d => !(snap.dels || []).some(s => sameId(s, d)));
+  pendSet(p);
+}
+
+let _pushChain = Promise.resolve();   // 저장 요청 직렬화용
 async function pushRounds() {
   try { const c = JSON.parse(localStorage.getItem('og_cache') || 'null') || {}; c.rounds = A.rounds; localStorage.setItem('og_cache', JSON.stringify(c)); } catch (e) {}
   if (!A.loaded) return { ok: false, __unsafe: true };   // 아직 서버 원본 미확보 → 덮어쓰기 금지(로컬엔 보존됨)
-  return await callAPI(() => API.saveRounds(A.rounds));
+  // 저장 요청을 한 줄로 세운다. 서버 saveRounds_ 는 전체 덮어쓰기라, 동시에 두 요청이 날아가면
+  // 늦게 도착한 "옛 스냅샷"이 최신 저장을 되돌릴 수 있다. 각 요청은 자기 차례에 A.rounds 를 다시 읽는다.
+  const send = () => {
+    const snap = pendGet();                              // 이번 요청이 실어 보내는 대기분
+    return callAPI(() => API.saveRounds(A.rounds)).then(r => { if (r && r.ok) pendResolve(snap); return r; });
+  };
+  const run = _pushChain.then(send, send);
+  _pushChain = run.then(() => {}, () => {});   // 실패해도 다음 요청이 막히지 않게
+  return await run;
 }
 
 async function saveRound() {
@@ -350,8 +417,9 @@ async function saveRound() {
   if (!A.sc.scores.filter(x => x > 0).length) { toast('스코어를 입력해주세요'); return; }
   const rd = buildRound(false);
   const btn = Q('sv'); btn.textContent = '저장 중...'; btn.disabled = true;
-  if (A.sc.eid) { const i = A.rounds.findIndex(r => r.id === A.sc.eid); if (i >= 0) A.rounds[i] = rd; else A.rounds.unshift(rd); }
+  if (A.sc.eid) { const i = A.rounds.findIndex(r => sameId(r.id, A.sc.eid)); if (i >= 0) A.rounds[i] = rd; else A.rounds.unshift(rd); }
   else A.rounds.unshift(rd);
+  markSaved(rd);                                   // 동기화 실패해도 다음 로드에서 안 되돌아가게 기록
   const r = await pushRounds();
   toast(r.ok ? '✅ 저장 완료' : (r.__unsafe ? '✅ 기기에 저장됨 · 연결 후 자동 동기화' : '⚠️ 저장됐지만 동기화 실패'));
   btn.textContent = '저장'; btn.disabled = false;
@@ -486,7 +554,8 @@ function enableEdit() {
 function askDel(id) { _delId = id; om('m-del'); }
 async function confirmDel() {
   cm('m-del'); if (!_delId) return;
-  A.rounds = A.rounds.filter(r => r.id !== _delId);
+  A.rounds = A.rounds.filter(r => !sameId(r.id, _delId));
+  markDeleted(_delId);                             // 동기화 실패해도 다음 로드에서 안 되살아나게 기록
   const r = await pushRounds();
   toast(r.ok ? '삭제됐어요' : (r.__unsafe ? '기기에서 삭제됨 · 연결 후 동기화' : '⚠️ 삭제됐지만 동기화 실패'));
   _delId = null; A.sc.eid = null; A.sc.ro = false; goHome();
@@ -496,8 +565,9 @@ function scBack() {
   if (!A.sc.ro && A.sc.course) {
     if (A.sc.scores.filter(x => x > 0).length) {
       const draft = buildRound(true);
-      if (A.sc.eid) { const i = A.rounds.findIndex(r => r.id === A.sc.eid); if (i >= 0) A.rounds[i] = draft; else A.rounds.unshift(draft); }
+      if (A.sc.eid) { const i = A.rounds.findIndex(r => sameId(r.id, A.sc.eid)); if (i >= 0) A.rounds[i] = draft; else A.rounds.unshift(draft); }
       else { A.sc.eid = draft.id; A.rounds.unshift(draft); }
+      markSaved(draft);                            // 임시저장도 동기화 실패 시 보존
       pushRounds();
       toast('✏️ 임시저장됐어요');
     }
@@ -655,7 +725,7 @@ function renderCourses() {
   // 카드: 누구나 쓰는 ✏️ 수정 버튼을 카드 안에 항상 노출(코스 전체 수정 → 공식맵 공유).
   //       삭제(파괴적)는 기존대로 관리자만 왼쪽 슬라이드로 나옴.
   const card = c => `<div class="cc-wrap">
-    ${A.isAdm ? `<div class="cc-del"><button onclick="delCourse('${c.name}')">🗑 삭제</button></div>` : ''}
+    ${A.isAdm ? `<div class="cc-del"><button onclick="delCourse('${c.id || c.name}')">🗑 삭제</button></div>` : ''}
     <div class="cc">
       <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
         <div class="cc-name">${c.name}</div>
@@ -681,7 +751,10 @@ function selCourse(key) {
   openHoleMdl(c);
 }
 
-function openHoleMdl(c) { Q('m-hl-t').textContent = c.name; renderHolePkr(c, 0, 1); om('m-hl'); }
+// 코스 선택(조합) 모달을 열 때 홀파 수정값을 항상 초기화한다.
+// selCourse 말고 "새 골프장 등록 직후"(submitCourseForm)에서도 열리는데, 그 경로엔 초기화가 없어서
+// 직전 코스에서 만진 holeEdits 가 남아 있다가 이름이 같은 나인이 있으면 새 코스에 잘못 반영될 수 있었다.
+function openHoleMdl(c) { A.sc.holeEdits = {}; Q('m-hl-t').textContent = c.name; renderHolePkr(c, 0, 1); om('m-hl'); }
 function renderHolePkr(c, l0, l1) {
   A.sc.li = [l0, l1];
   const combos = []; for (let a = 0; a < c.layouts.length; a++) for (let b = 0; b < c.layouts.length; b++) if (a !== b) combos.push([a, b]);
@@ -870,8 +943,20 @@ async function submitCourseForm() {
     const el = emptySec.querySelector('.cs-name'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
     return;
   }
+  // 골프장 이름 중복 금지 — 코스를 이름으로 찾는 곳(파 저장·삭제)이 있어서, 이름이 겹치면
+  // 엉뚱한 코스의 파가 덮어써지거나 삭제될 수 있다. (수정 중 자기 자신은 제외)
+  const dupCourse = A.official.find(x => x.name === name && !(eid && (x.id === eid || x.name === _editOldName)));
+  if (dupCourse) {
+    toast('⚠️ 같은 이름의 골프장이 이미 있어요');
+    const el = Q('cs-n'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
+    return;
+  }
   const layouts = [];
   secs.forEach(s => { const uid = s.id.replace('cs-s-', ''); const n = s.querySelector('.cs-name').value.trim() || '코스'; const hn = s.querySelector('.cs-hn').value || '9'; layouts.push({ name: n, holes: gp(uid, hn) }); });
+  // 한 골프장 안에서 코스(나인) 이름 중복 금지 — 파 저장이 이름으로 나인을 찾으므로,
+  // 같은 이름이 둘이면 두 번째 나인의 수정이 조용히 무시된다.
+  const dupLy = layouts.map(l => l.name).find((n, i, arr) => arr.indexOf(n) !== i);
+  if (dupLy) { toast(`⚠️ 코스 이름이 겹쳐요: "${dupLy}" — 서로 다르게 지어주세요`); return; }
 
   const c = { id: eid || ('c' + Date.now()), name, addr: Q('cs-a').value.trim(), layouts, status: 'official' };
   const btn = Q('m-cs-btn'); btn.disabled = true; btn.textContent = '저장 중...';
@@ -882,7 +967,8 @@ async function submitCourseForm() {
 
   // 로컬 목록 갱신
   if (isEdit) {
-    const i = A.official.findIndex(x => x.name === _editOldName || x.name === name);
+    // id 우선 매칭 — 이름으로만 찾으면(예전 `x.name === name` 조건) 개명 시 동명의 "다른 코스"를 덮어쓸 수 있었다.
+    const i = A.official.findIndex(x => (c.id && x.id === c.id) || x.name === _editOldName);
     if (i >= 0) A.official[i] = { ...c }; else A.official.unshift({ ...c });
     toast('✅ 수정됐어요: ' + name); cm('m-cs'); renderCourses();
     if (A.isAdm && _admOffLoaded) renderAdmOfficial();   // 마지막으로 보던 목록(검색어·펼침 상태) 유지
@@ -893,10 +979,13 @@ async function submitCourseForm() {
   }
 }
 
-async function delCourse(name) {                 // 관리자만 호출 (버튼이 관리자에게만 보임)
+async function delCourse(key) {                  // 관리자만 호출 (버튼이 관리자에게만 보임)
+  const c = A.official.find(x => x.id === key || x.name === key);
+  const name = c ? c.name : key;
   if (!confirm(`"${name}" 골프장을 삭제할까요? 목록에서 영구 삭제됩니다.`)) return;
   const r = await callAPI(() => API.deleteCourse(name));
-  if (r.ok) { A.official = A.official.filter(c => c.name !== name); renderCourses(); if (A.isAdm && _admOffLoaded) renderAdmOfficial(); toast('✅ 삭제 완료'); }   // 마지막으로 보던 목록 유지
+  // 로컬 삭제는 id 로 정확히 한 개만 — 이름으로 지우면 동명의 다른 코스까지 함께 사라진다.
+  if (r.ok) { A.official = A.official.filter(x => (c && c.id) ? x.id !== c.id : x.name !== name); renderCourses(); if (A.isAdm && _admOffLoaded) renderAdmOfficial(); toast('✅ 삭제 완료'); }   // 마지막으로 보던 목록 유지
   else { const e = explainError(r); toast('❌ ' + e.msg); }
 }
 
@@ -1532,7 +1621,7 @@ function renderAdmOffList() {
     <div style="font-size:11px;color:var(--t2);margin-bottom:8px">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')}</div>
     <div style="display:flex;gap:6px">
       <button onclick="openEditCourse('${c.name}')" style="flex:1;background:#1a2e5a;border:1px solid var(--b);border-radius:8px;color:#7dd4ff;font-size:12px;font-weight:600;cursor:pointer;padding:7px">✏️ 수정</button>
-      <button onclick="delCourse('${c.name}')" style="flex:1;background:#3d1a1a;border:1px solid #6a2020;border-radius:8px;color:var(--r);font-size:12px;font-weight:600;cursor:pointer;padding:7px">🗑 삭제</button>
+      <button onclick="delCourse('${c.id || c.name}')" style="flex:1;background:#3d1a1a;border:1px solid #6a2020;border-radius:8px;color:var(--r);font-size:12px;font-weight:600;cursor:pointer;padding:7px">🗑 삭제</button>
     </div></div>`).join(''));
 }
 
