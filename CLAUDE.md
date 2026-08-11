@@ -12,7 +12,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 실행: `index.html`을 브라우저로 열면 됩니다. 번들러나 dev 서버가 필요 없습니다. (`fetch` CORS 때문에 `file://`보다는 간단한 정적 서버 권장: 예 `python3 -m http.server`)
 - 백엔드: 별도 배포된 Google Apps Script 웹앱(`/exec` URL)과 통신합니다. 백엔드 소스는 이 폴더에 없고, `Apps_Script.gs`로 따로 관리되며 Apps Script 편집기에서 배포합니다.
-- 빌드/린트/테스트 명령 없음.
+- 빌드/린트 명령 없음.
+- **테스트**: `node tests/data-safety.test.js` — 라운드 데이터 안전장치(서버·로컬 병합, 미동기화 대기목록, 코스 라벨 복구) 자동 테스트. 설치할 것 없는 순수 Node 스크립트이며, `app.js` 소스에서 해당 함수를 직접 뽑아 검사합니다. **`mergeRounds`·`pendGet`/`markSaved`/`markDeleted`/`pendResolve`·`healRoundLabels` 를 고칠 때는 반드시 이 테스트를 돌리세요.**
 
 ## 아키텍처 (방 비유)
 

@@ -14,17 +14,29 @@ const API = {
   u: '', token: '',
   setAuth(u, token) { this.u = u || ''; this.token = token || ''; },
 
+  // 응답이 영영 안 오는 것을 막는 제한 시간(ms). 넘으면 끊고 "네트워크 실패"로 처리되어
+  // 저장 버튼이 '저장 중...'에 영원히 갇히지 않는다. (프로토콜은 그대로 — VERSION 무관)
+  TIMEOUT: 20000,
+  async _fetch(url, opt) {
+    // AbortController 를 지원하지 않는 아주 옛 브라우저에선 그냥 제한 시간 없이 동작
+    if (typeof AbortController === 'undefined') return fetch(url, opt);
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), this.TIMEOUT);
+    try { return await fetch(url, Object.assign({}, opt, { signal: ac.signal })); }
+    finally { clearTimeout(t); }
+  },
+
   // ── 내부: GET (읽기) ──
   async _get(action, extra) {
     // _(캐시버스터) + no-store: Apps Script GET 응답이 브라우저에 캐시되어
     // ① 저장한 코스 파 변경이 다시 안 보이거나 ② 옛 라운드 데이터가 되살아나는 문제를 막는다.
     const p = new URLSearchParams(Object.assign({ action, u: this.u, token: this.token, _: String(Date.now()) }, extra || {}));
-    const res = await fetch(this.URL + '?' + p.toString(), { mode: 'cors', cache: 'no-store' });
+    const res = await this._fetch(this.URL + '?' + p.toString(), { mode: 'cors', cache: 'no-store' });
     return res.json();
   },
   // ── 내부: POST (쓰기) ──
   async _post(data) {
-    const res = await fetch(this.URL, {
+    const res = await this._fetch(this.URL, {
       method: 'POST', mode: 'cors',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(Object.assign({}, data, { u: this.u, token: this.token })),
