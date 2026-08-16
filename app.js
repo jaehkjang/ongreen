@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.23.0';
+const APP_VERSION = 'v12.24.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -412,18 +412,57 @@ async function pushRounds() {
   return await run;
 }
 
+// ── 입력 중인 스코어카드를 라운드 목록에 반영하고 "기기에" 즉시 보존 ──────────
+// 서버 통신 없이 먼저 로컬에 남기므로, 앱이 꺼지거나 인터넷이 끊겨도 입력이 사라지지 않는다.
+// 정식 저장(저장 버튼)을 이미 누른 라운드는 임시저장으로 되돌리지 않는다(기존 isDraft 유지).
+function stashSC() {
+  const prev = A.sc.eid ? A.rounds.find(r => sameId(r.id, A.sc.eid)) : null;
+  const rd = buildRound(prev ? !!prev.isDraft : true);
+  if (A.sc.eid) { const i = A.rounds.findIndex(r => sameId(r.id, A.sc.eid)); if (i >= 0) A.rounds[i] = rd; else A.rounds.unshift(rd); }
+  else { A.sc.eid = rd.id; A.rounds.unshift(rd); }
+  // 대기목록(og_pending)에 이 라운드 자체를 통째로 넣어두면, 앱이 곧바로 꺼져도 다음 실행 때
+  // mergeRounds 가 되살린다. 전체 기록 캐시(og_cache) 쓰기는 무거워서 pushRounds 쪽에 맡긴다.
+  markSaved(rd);
+  return rd;
+}
+
+// ── 자동 저장: 점수·퍼팅·GIR·FIR·M/TP 를 건드릴 때마다 호출 ──────────────────
+// 기기 저장은 즉시(위 stashSC), 서버 전송은 잠깐 모았다가(디바운스) 보낸다.
+// 그래서 +/- 를 연타해도 서버로 요청이 쏟아지지 않는다.
+let _asTimer = null;
+function autoSaveSC() {
+  if (A.sc.ro || !A.sc.course) return;
+  if (!A.sc.scores.some(x => x > 0)) return;       // 아직 아무 점수도 없으면 저장할 게 없음
+  stashSC();
+  setSaveHint('기기에 저장됨');
+  clearTimeout(_asTimer);
+  _asTimer = setTimeout(async () => {
+    const r = await pushRounds();
+    setSaveHint(r.ok ? '자동 저장됨 ✓' : '기기에 저장됨 · 연결되면 자동 동기화');
+  }, 2000);
+}
+function setSaveHint(msg) { const el = Q('sc-save-hint'); if (el) el.textContent = msg; }
+function flushAutoSave() {                         // 화면을 벗어나거나 앱이 가려질 때 즉시 전송
+  if (!_asTimer) return;
+  clearTimeout(_asTimer); _asTimer = null;
+  pushRounds();
+}
+
 async function saveRound() {
   if (A.sc.ro) return;
   if (!A.sc.scores.filter(x => x > 0).length) { toast('스코어를 입력해주세요'); return; }
-  const rd = buildRound(false);
+  clearTimeout(_asTimer); _asTimer = null;         // 대기 중인 자동저장은 취소(지금 바로 보내므로)
+  const rd = buildRound(false);                    // 정식 저장(임시저장 해제)
   const btn = Q('sv'); btn.textContent = '저장 중...'; btn.disabled = true;
   if (A.sc.eid) { const i = A.rounds.findIndex(r => sameId(r.id, A.sc.eid)); if (i >= 0) A.rounds[i] = rd; else A.rounds.unshift(rd); }
   else A.rounds.unshift(rd);
+  A.sc.eid = rd.id;                                // ★ 화면에 머무르므로 같은 라운드를 계속 수정하도록 id 유지(중복 저장 방지)
   markSaved(rd);                                   // 동기화 실패해도 다음 로드에서 안 되돌아가게 기록
   const r = await pushRounds();
   toast(r.ok ? '✅ 저장 완료' : (r.__unsafe ? '✅ 기기에 저장됨 · 연결 후 자동 동기화' : '⚠️ 저장됐지만 동기화 실패'));
-  btn.textContent = '저장'; btn.disabled = false;
-  A.sc.eid = null; A.sc.ro = false; A.sc.course = null; goHome();
+  setSaveHint(r.ok ? '저장됨 ✓' : '기기에 저장됨 · 연결되면 자동 동기화');
+  btn.disabled = false;
+  renderSC();                                      // 버튼 라벨(저장/✓ 완료) 복구 — 화면은 그대로 유지
 }
 
 function roundPars(r) {                          // 박제된 파 우선, 없으면 옛 라운드 호환용으로 마스터 참조
@@ -534,6 +573,7 @@ function openSC(id, ro) {
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${r.date} · ${n0}+${n1} · 파${par}`;
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${n0} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${n1} (10-18)</button>`;
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = ro ? 'none' : 'block';
+  clearTimeout(_asTimer); _asTimer = null; setSaveHint('');   // 다른 라운드를 열었으니 자동저장 상태 초기화
   if (ro) {
     Q('sc-bnr').innerHTML = `<div style="padding:8px 12px;background:var(--bg2);border-bottom:.5px solid var(--bd)"><div class="bnr ro"><span style="font-size:13px;color:var(--t2)">🔒 읽기 전용</span><button style="background:var(--a);border:none;border-radius:10px;padding:9px 18px;color:#000;font-size:14px;font-weight:700;cursor:pointer" onclick="enableEdit()">🔧 수정</button></div></div>`;
     const b = Q('sv'); b.disabled = true; b.textContent = '저장됨'; b.className = 'sv';
@@ -564,12 +604,11 @@ async function confirmDel() {
 function scBack() {
   if (!A.sc.ro && A.sc.course) {
     if (A.sc.scores.filter(x => x > 0).length) {
-      const draft = buildRound(true);
-      if (A.sc.eid) { const i = A.rounds.findIndex(r => sameId(r.id, A.sc.eid)); if (i >= 0) A.rounds[i] = draft; else A.rounds.unshift(draft); }
-      else { A.sc.eid = draft.id; A.rounds.unshift(draft); }
-      markSaved(draft);                            // 임시저장도 동기화 실패 시 보존
+      // stashSC 가 기존 isDraft 를 유지한다 → 이미 "저장" 누른 라운드가 임시저장으로 되돌아가지 않음
+      const rd = stashSC();
+      clearTimeout(_asTimer); _asTimer = null;
       pushRounds();
-      toast('✏️ 임시저장됐어요');
+      toast(rd.isDraft ? '✏️ 임시저장됐어요' : '✅ 저장돼 있어요');
     }
   }
   A.sc.course = null; A.sc.eid = null; A.sc.ro = false; goHome();
@@ -594,10 +633,11 @@ function renderSC() {
   Q('sc-body').innerHTML = html; updFt();
   if (!ro) { const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false; }
 }
-function sp(i) { if (A.sc.ro) return; A.sc.scores[i] = getH()[i]; renderSC(); }
-function adj(i, d) { if (A.sc.ro) return; const h = getH(); if (!A.sc.scores[i]) A.sc.scores[i] = h[i]; A.sc.scores[i] = Math.max(1, Math.min(12, A.sc.scores[i] + d)); renderSC(); }
-function tog(i, t) { if (A.sc.ro) return; if (t === 'f' && getH()[i] === 3) return; if (t === 'g') A.sc.gir[i] = !A.sc.gir[i]; else A.sc.fir[i] = !A.sc.fir[i]; renderSC(); }
-function cyp(i) { if (A.sc.ro) return; A.sc.putts[i] = (A.sc.putts[i] % 4) + 1; renderSC(); }
+// 아래 입력 함수들은 값을 바꾼 뒤 renderSC() 로 화면을 다시 그리고, autoSaveSC() 로 자동 저장한다.
+function sp(i) { if (A.sc.ro) return; A.sc.scores[i] = getH()[i]; renderSC(); autoSaveSC(); }
+function adj(i, d) { if (A.sc.ro) return; const h = getH(); if (!A.sc.scores[i]) A.sc.scores[i] = h[i]; A.sc.scores[i] = Math.max(1, Math.min(12, A.sc.scores[i] + d)); renderSC(); autoSaveSC(); }
+function tog(i, t) { if (A.sc.ro) return; if (t === 'f' && getH()[i] === 3) return; if (t === 'g') A.sc.gir[i] = !A.sc.gir[i]; else A.sc.fir[i] = !A.sc.fir[i]; renderSC(); autoSaveSC(); }
+function cyp(i) { if (A.sc.ro) return; A.sc.putts[i] = (A.sc.putts[i] % 4) + 1; renderSC(); autoSaveSC(); }
 function tom(i) {                                 // 티샷 상태: off → M → TP → off (홀당 1개, M·TP 상호배타)
   if (A.sc.ro) return;
   if (!A.sc.tp) A.sc.tp = Array(18).fill(0);
@@ -605,7 +645,7 @@ function tom(i) {                                 // 티샷 상태: off → M �
   if (!m && !t) { A.sc.mulli[i] = 1; A.sc.tp[i] = 0; }       // off → M
   else if (m)   { A.sc.mulli[i] = 0; A.sc.tp[i] = 1; }       // M → TP
   else          { A.sc.mulli[i] = 0; A.sc.tp[i] = 0; }       // TP → off
-  renderSC();
+  renderSC(); autoSaveSC();
 }
 function swHalf(n, el) { A.sc.half = n; document.querySelectorAll('#sc-seg .sg').forEach(b => b.classList.remove('on')); el.classList.add('on'); renderSC(); }
 function updFt() {
@@ -800,6 +840,7 @@ function startScoringFromPicker() {
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${c.layouts[l0].name} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${c.layouts[l1].name} (10-18)</button>`;
   Q('sc-bnr').innerHTML = '';
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = 'block';
+  clearTimeout(_asTimer); _asTimer = null; setSaveHint('');   // 새 라운드 시작 — 자동저장 상태 초기화
   cm('m-hl'); renderSC(); showPg('sc');
 
   // 공식맵(모두 공유) 반영은 백그라운드로 — 스코어카드 진입을 막지 않음. 마스터와 다를 때만 저장.
@@ -865,7 +906,7 @@ async function applyEditHoles() {
   // ① 이 라운드 클론에 즉시 반영 (입력 화면은 곧바로 갱신)
   c.layouts[0].holes = newPars.slice(0, 9);
   c.layouts[1].holes = newPars.slice(9, 18);
-  cm('m-edh'); renderSC();
+  cm('m-edh'); renderSC(); autoSaveSC();     // 홀 파가 바뀌면 이 라운드의 박제 파도 다시 저장
 
   // ② 공식맵(모두 공유)에도 반영 — best-effort. 실패해도 이 라운드 입력은 계속 가능.
   const edits = { [c.layouts[0].name]: newPars.slice(0, 9), [c.layouts[1].name]: newPars.slice(9, 18) };
@@ -1998,3 +2039,8 @@ async function checkVersion() {
     showPg('login');
   }
 })();
+
+// 앱을 가리거나(홈 화면으로 나가기·화면 잠금) 닫을 때, 대기 중인 자동저장을 곧바로 서버로 보낸다.
+// (기기 저장은 입력 즉시 끝나 있으므로 여기서 실패해도 기록은 남고 다음 실행에 동기화된다)
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAutoSave(); });
+window.addEventListener('pagehide', flushAutoSave);
