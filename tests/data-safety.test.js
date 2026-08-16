@@ -177,6 +177,27 @@ t('대기목록이 깨져 있어도 서버 값으로 정상 동작한다', () =>
   assert(rounds.length === 1, '깨진 대기목록 때문에 기록이 사라지면 안 됨');
 });
 
+console.log('\n[자동저장] 앱이 갑자기 꺼져도 입력이 살아남는가');
+
+t('서버 전송 전에 앱이 꺼져도 입력 중이던 라운드가 복원된다', () => {
+  // 자동저장(stashSC)은 대기목록에만 기록하고, 무거운 전체 캐시 쓰기는 미룬다.
+  // 그 사이 앱이 꺼지면 캐시엔 없지만 대기목록엔 있다 → 다음 실행에서 되살아나야 한다.
+  const playing = R(1000, 41, { isDraft: true, scores: [4,5,3,6,4,4,5,4,3, 0,0,0,0,0,0,0,0,0] });
+  markSaved(playing);                              // 자동저장이 한 일
+  const cachedRounds = [];                         // 캐시엔 아직 반영 안 됨(앱이 꺼진 시점)
+  const { rounds } = mergeRounds([], cachedRounds, pendGet());
+  assert(rounds.length === 1, '입력 중이던 라운드가 복원돼야 함');
+  assert(eq(rounds[0].scores, playing.scores), '홀별 점수가 그대로 살아야 함');
+});
+
+t('자동저장 뒤 정식 저장하면 임시저장 딱지가 떨어진다', () => {
+  markSaved(R(1000, 41, { isDraft: true }));       // 치는 중(자동저장)
+  markSaved(R(1000, 82, { isDraft: false }));      // 저장 버튼(정식 저장)
+  const { rounds } = mergeRounds([], [], pendGet());
+  assert(rounds.length === 1, '같은 라운드가 둘로 늘어나면 안 됨');
+  assert(rounds[0].isDraft === false && rounds[0].score === 82, '정식 저장 상태로 남아야 함');
+});
+
 console.log('\n[라벨복구] 뒤바뀐 코스 조합이 스코어를 건드리지 않고 고쳐지는가');
 
 // 베르힐영종: 나인마다 파 구성이 다름 (레이크/오션/스카이)
