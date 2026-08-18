@@ -59,8 +59,10 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 .ht{display:flex;gap:5px}
 .htg{height:38px;flex:1;border-radius:10px;font-size:12px;font-weight:700;border:1.5px solid #5a5a5e;background:var(--bg3);color:#c8c8c8;cursor:pointer;display:flex;align-items:center;justify-content:center}.htg:active{opacity:.7}
 .htg.og{background:#1e3a5f;border-color:#4aadff;color:#7dd4ff}.htg.of{background:#3a2a0a;border-color:#ffb830;color:#ffd060}
-.htg.op{background:#2d1a4a;border-color:#d580ff;color:#e0aaff}.htg.om{background:#3d1a1a;border-color:#ff6b6b;color:#ff8a80}
-.htg.otp{background:#3a2400;border-color:#ff9f0a;color:#ffbf5a}
+.htg.op{background:#2d1a4a;border-color:#d580ff;color:#e0aaff}
+/* 티샷 사고 — 심각도 순서대로 색을 준다. 멀리건(벌타 없음)=주황, 벌타+1(1타 추가)=빨강 */
+.htg.om{background:#4a2f00;border-color:#ffa726;color:#ffcc80}
+.htg.otp{background:#4a1414;border-color:#ff5252;color:#ff8a80}
 .hd-card{background:var(--bg3);border-radius:14px;padding:2px 14px}
 .hd-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:14px;color:var(--t)}
 .hd-row+.hd-row{border-top:.5px solid var(--bd)}
@@ -68,7 +70,7 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 .sg{flex:1;text-align:center;padding:9px;font-size:14px;border-radius:8px;cursor:pointer;border:none;background:transparent;color:#aaa;font-weight:600;min-height:44px}
 .sg.on{background:var(--g);color:#000;font-weight:700}
 .sft{background:var(--bg2);border-top:.5px solid var(--bd);padding:10px 16px;display:flex;justify-content:space-around;align-items:center;flex-shrink:0}
-.fi{text-align:center}.fl{font-size:9px;color:var(--t2);font-weight:600;text-transform:uppercase}.fv{font-size:18px;font-weight:700;color:var(--t);margin-top:2px}
+.fi{text-align:center}.fl{font-size:9px;color:var(--t2);font-weight:600;text-transform:uppercase;white-space:nowrap}.fv{font-size:18px;font-weight:700;color:var(--t);margin-top:2px}
 .fv.r{color:var(--r)}.fv.g{color:var(--g)}
 .sv{background:var(--g);border:none;border-radius:12px;color:#000;font-size:15px;font-weight:700;cursor:pointer;padding:8px 16px;min-height:44px;min-width:80px}
 .sv.done{background:#fff;color:#000;box-shadow:0 0 0 2.5px var(--g)}.sv:disabled{background:var(--bg3);color:var(--t3);cursor:default;box-shadow:none}
