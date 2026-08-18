@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.24.0';
+const APP_VERSION = 'v12.24.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -574,6 +574,7 @@ function openSC(id, ro) {
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${n0} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${n1} (10-18)</button>`;
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = ro ? 'none' : 'block';
   clearTimeout(_asTimer); _asTimer = null; setSaveHint('');   // 다른 라운드를 열었으니 자동저장 상태 초기화
+  { const box = Q('sc-body'); if (box) box.scrollTop = 0; }   // 새로 연 라운드는 첫 홀부터
   if (ro) {
     Q('sc-bnr').innerHTML = `<div style="padding:8px 12px;background:var(--bg2);border-bottom:.5px solid var(--bd)"><div class="bnr ro"><span style="font-size:13px;color:var(--t2)">🔒 읽기 전용</span><button style="background:var(--a);border:none;border-radius:10px;padding:9px 18px;color:#000;font-size:14px;font-weight:700;cursor:pointer" onclick="enableEdit()">🔧 수정</button></div></div>`;
     const b = Q('sv'); b.disabled = true; b.textContent = '저장됨'; b.className = 'sv';
@@ -630,7 +631,12 @@ function renderSC() {
     if (ro) { html += `<div class="hr" onclick="holeDetail(${A.sc.eid},${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
     else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht">${firCell}<button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button><button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
   }
-  Q('sc-body').innerHTML = html; updFt();
+  // 다시 그려도 보던 위치를 유지한다 — innerHTML 을 갈아끼우면 스크롤이 맨 위로 튕겨서,
+  // 8·9번 홀을 치다가 저장하거나 점수를 누르면 1번 홀로 되돌아가 버렸다.
+  const box = Q('sc-body'); const keepTop = box ? box.scrollTop : 0;
+  box.innerHTML = html;
+  if (keepTop) box.scrollTop = keepTop;
+  updFt();
   if (!ro) { const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false; }
 }
 // 아래 입력 함수들은 값을 바꾼 뒤 renderSC() 로 화면을 다시 그리고, autoSaveSC() 로 자동 저장한다.
@@ -647,7 +653,11 @@ function tom(i) {                                 // 티샷 상태: off → M �
   else          { A.sc.mulli[i] = 0; A.sc.tp[i] = 0; }       // TP → off
   renderSC(); autoSaveSC();
 }
-function swHalf(n, el) { A.sc.half = n; document.querySelectorAll('#sc-seg .sg').forEach(b => b.classList.remove('on')); el.classList.add('on'); renderSC(); }
+function swHalf(n, el) {
+  A.sc.half = n; document.querySelectorAll('#sc-seg .sg').forEach(b => b.classList.remove('on')); el.classList.add('on');
+  const box = Q('sc-body'); if (box) box.scrollTop = 0;   // 다른 나인으로 바꿨으니 첫 홀부터 보여줌
+  renderSC();
+}
 function updFt() {
   const h = getH(); const pl = A.sc.scores.filter(x => x > 0);
   const tot = pl.reduce((a, b) => a + b, 0), ps = h.slice(0, pl.length).reduce((a, b) => a + b, 0), vs = tot - ps;
@@ -841,6 +851,7 @@ function startScoringFromPicker() {
   Q('sc-bnr').innerHTML = '';
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = 'block';
   clearTimeout(_asTimer); _asTimer = null; setSaveHint('');   // 새 라운드 시작 — 자동저장 상태 초기화
+  { const box = Q('sc-body'); if (box) box.scrollTop = 0; }   // 새 라운드는 첫 홀부터
   cm('m-hl'); renderSC(); showPg('sc');
 
   // 공식맵(모두 공유) 반영은 백그라운드로 — 스코어카드 진입을 막지 않음. 마스터와 다를 때만 저장.
