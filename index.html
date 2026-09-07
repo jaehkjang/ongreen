@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<!-- PWA: 안드로이드에서 크롬 바로가기가 아니라 "앱"으로 설치되려면 manifest 가 반드시 있어야 한다 -->
+<link rel="manifest" href="manifest.json?v=12.26.0">
+<meta name="theme-color" content="#1d9345">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="온그린">
@@ -249,21 +253,19 @@
 </div></div>
 </div>
 
-<!-- 서비스 워커 제거: 과거 SW 가 GitHub Pages 재배포 순간의 404 를 그대로
-     노출하는 문제가 있어 폐기했습니다. 더 이상 등록하지 않고, 기기에 남아
-     있을 수 있는 옛 SW 등록과 캐시를 정리합니다. (sw.js 자체도 자기 자신을
-     해제하는 kill-switch 로 교체됨) -->
+<!-- 서비스 워커 등록: 안드로이드 크롬이 홈 화면 추가를 "진짜 앱 설치"로
+     인식하려면 fetch 핸들러를 가진 SW 가 필요합니다. sw.js 는 캐시를 전혀
+     하지 않고 요청을 그대로 통과시키므로, 예전 캐싱 SW 가 일으켰던
+     "재배포 직후 404 를 계속 보여주는" 문제는 생기지 않습니다. -->
 <script>
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations()
-    .then(rs => rs.forEach(r => r.unregister())).catch(() => {});
-  if (window.caches && caches.keys) {
-    caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
-  }
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* 등록 실패해도 앱은 그대로 동작 */ });
+  });
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.25.0"></script>
-<script src="app.js?v=12.25.0"></script>
+<script src="api.js?v=12.26.0"></script>
+<script src="app.js?v=12.26.0"></script>
 </body>
 </html>

@@ -23,7 +23,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **`app.js` — 두뇌 방.** 로그인 판단, 점수 계산, 통계, 화면 전환 등 모든 로직과 UI 렌더링. 빌드 없이 `render*()` 함수가 `innerHTML` 템플릿 문자열로 화면을 직접 그립니다.
 - **`index.html` — 뼈대.** 6개 페이지(`pg-login`, `pg-home`, `pg-course`, `pg-sc`, `pg-stat`, `pg-set`)의 정적 마크업과 인라인 SVG 아이콘. `api.js` → `app.js` 순서로 로드합니다.
 - **`style.css` — 모양.** 다크 테마, iOS 스타일. CSS 변수는 `:root`에 정의(`--bg`, `--g` 등). 신호 색: 빨강 `--r`, 초록 `--g`.
-- **`sw.js` — 자동 해제(kill-switch) 워커.** 예전에는 캐시용 서비스 워커였으나, 한 번 등록되면 기기에서 잘 떨어지지 않아 GitHub Pages 재배포 순간의 404를 계속 노출하는 문제가 있어 **폐기했습니다**(v12.2.2). 지금 `sw.js`는 옛 SW가 박힌 기기에서 **자기 자신을 등록 해제하고 모든 캐시를 비운 뒤 새로고침**하는 역할만 합니다. fetch를 가로채지 않으므로 모든 요청은 네트워크로 그대로 통과합니다. 새로운 SW를 다시 도입하지 마세요(정적 사이트엔 불필요). 버전을 올릴 때 `index.html`의 `?v=` 쿼리스트링은 계속 `APP_VERSION`과 맞춰 갱신합니다.
+- **`sw.js` — 통과형 서비스 워커 (캐시 없음).** 안드로이드 크롬은 `manifest.json`만 있고 서비스 워커가 없으면 홈 화면 추가를 **진짜 앱 설치(WebAPK)가 아니라 단순 북마크 바로가기**로 처리합니다(아이콘에 크롬 배지가 붙고 주소창 있는 브라우저로 열림). 그래서 `fetch` 핸들러를 가진 최소한의 SW를 등록합니다(v12.26.0).
+  - **🚫 여기에 캐시 로직을 절대 추가하지 마세요.** 예전 *캐싱* SW가 GitHub Pages 재배포 순간의 404("There isn't a GitHub Pages site here")를 계속 물고 있어 폐기했던 사고가 있습니다(v12.2.2). 지금 `sw.js`는 요청을 저장하지 않고 네트워크로 그대로 흘려보내기만 해서 그 문제가 구조적으로 생길 수 없습니다. 금지 대상은 **캐싱**이지 서비스 워커 자체가 아닙니다. (자매 앱 DKMK도 같은 통과형 SW를 씁니다.)
+  - 버전을 올릴 때 `index.html`의 `?v=` 쿼리스트링은 계속 `APP_VERSION`과 맞춰 갱신합니다.
+- **`manifest.json` — PWA 매니페스트.** 앱 이름·시작 URL·`display: standalone`·아이콘(192/512, `any`+`maskable`)을 선언합니다. 아이콘 파일은 저장소 루트의 `icon-192.png`, `icon-512.png`, `icon-maskable-192.png`, `icon-maskable-512.png`입니다. 아이콘이나 앱 이름을 바꾸면 이 파일도 함께 고치세요.
 
 ### 상태 관리
 
