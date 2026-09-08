@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.26.0';
+const APP_VERSION = 'v12.26.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -627,9 +627,10 @@ function renderSC() {
   for (let i = s; i < s + 9; i++) {
     const par = h[i], sc = A.sc.scores[i], gg = A.sc.gir[i], ff = A.sc.fir[i], pp = A.sc.putts[i], mm = A.sc.mulli[i] || 0, tpv = (A.sc.tp && A.sc.tp[i]) || 0;
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
-    // 티샷 사고 버튼 — 무슨 뜻인지 글자로 바로 보이게. 끄기(티샷) → 멀리건(벌타 없음) → 벌타+1(1타 추가)
+    // 티샷 사고 버튼 — 무슨 뜻인지 글자로 바로 보이게. 끄기(티샷) → 멀리건(벌타 없음) → 티샷 패널티(OB·해저드 등)
     // 예전엔 꺼져 있을 때도 'M' 이라 적혀 있어서, 켜짐/꺼짐과 M·TP 의 뜻이 모두 헷갈렸다.
-    const teeLbl = mm ? '멀리건' : tpv ? '벌타+1' : '티샷', teeCls = mm ? 'om' : tpv ? 'otp' : '';
+    // 주의: 이 버튼은 벌타를 스코어에 자동으로 더하지 않는다 — 실제 벌타는 스코어 입력(－/＋)에서 사용자가 직접 넣어야 한다.
+    const teeLbl = mm ? '멀리건' : tpv ? '티샷 패널티' : '티샷', teeCls = mm ? 'om' : tpv ? 'otp' : '';
     const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
     if (ro) { html += `<div class="hr" onclick="holeDetail(${A.sc.eid},${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
     else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht">${firCell}<button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button><button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
@@ -688,7 +689,7 @@ function holeDetail(id, i) {
   const girRow = row('🎯 그린 (GIR)', gg ? '<b style="color:#7dd4ff">온그린 ⭕</b>' : '<span style="color:var(--t2)">놓침 ❌</span>');
   const puttRow = row('🍩 퍼팅 수', `<b>${pp}</b>퍼팅${pp >= 3 ? ' <span style="color:var(--a)">(3퍼팅↑)</span>' : ''}`);
   const teeTxt = mm ? '<b style="color:#ffcc80">멀리건 (다시 침 · 벌타 없음)</b>'
-    : tpv ? '<b style="color:#ff8a80">벌타 +1 (OB·해저드)</b>'
+    : tpv ? '<b style="color:#ff8a80">티샷 패널티 (OB·해저드 등 · 벌타는 스코어에 별도 입력)</b>'
     : '<span style="color:var(--t3)">사고 없음</span>';
   const teeRow = row('⛳ 티샷 사고', teeTxt);
   Q('hd-t').textContent = `${i + 1}번 홀 · 파${par}`;
@@ -1902,14 +1903,14 @@ function guideScorecardHTML() {
   <div style="font-size:13px;color:var(--t2);line-height:1.6"><b style="color:var(--a)">리스트는 아직 채우는 중</b>(현재 ${courseCnt}곳)이라, 없으면 <b style="color:var(--t)">[＋ 추가]</b>로 직접 등록해 바로 쓰면 돼요. 등록한 곳은 목록에 남습니다.</div>
 
   ${S('③ 홀 파(par) 확인')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.6">같은 골프장도 도는 코스 조합에 따라 파가 달라요. 뜨는 창에서 ＋/－로 그날 파를 맞추세요(<b style="color:var(--g)">이 라운드에만</b> 적용, 공식 데이터는 안 바뀜). 작성 중에도 상단 <b>⛳ 파수정</b>으로 가능.</div>
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">같은 골프장도 도는 코스 조합에 따라 파가 달라요. 뜨는 창에서 ＋/－로 그날 파를 맞추세요. <b style="color:var(--a)">이 라운드에 바로 적용되고, 마스터와 값이 다르면 공식 코스 데이터에도 함께 저장돼 다른 사람이 같은 골프장·코스 조합을 고를 때도 그대로 보여요</b>(저장 실패해도 이 라운드 입력엔 지장 없음). 작성 중에도 상단 <b>⛳ 파수정</b>으로 같은 방식으로 반영돼요.</div>
 
   ${S('④ 버튼 의미')}
   ${btn('－ ＋', '타수 −1/＋1. 가운데 <b>숫자(P)</b> 탭 = 파로 바로 입력.')}
   ${btn('GIR', '정규타수(파−2) 안에 그린 올렸으면 ON. (아이언 지표)')}
   ${btn('FIR', '티샷이 페어웨이면 ON. 파4·5만, <b>파3은 자동 비활성(·)</b>.')}
   ${btn('2P', '퍼팅 수. 탭마다 1P→2P→3P→4P 순환(기본 2P).')}
-  ${btn('티샷 / 멀리건 / 벌타+1', '티샷 사고를 기록해요. 누를 때마다 <b>티샷</b>(사고 없음) → <b>멀리건</b>(다시 침·벌타 없음) → <b>벌타+1</b>(OB·해저드로 1타 더 받고 진행) → 다시 처음으로 돌아가요. 드라이버 진단(페어웨이%·생존율)에 쓰여요.')}
+  ${btn('티샷 / 멀리건 / 티샷 패널티', '티샷 사고를 기록해요. 누를 때마다 <b>티샷</b>(사고 없음) → <b>멀리건</b>(다시 침·벌타 없음) → <b>티샷 패널티</b>(OB·해저드 등 벌타 있는 사고) → 다시 처음으로 돌아가요. 드라이버 진단(페어웨이%·생존율)에 쓰여요.<br><b style="color:var(--a)">주의: 이 버튼은 벌타를 스코어에 자동으로 더해주지 않아요.</b> 실제 벌타(예: 해저드 ＋1타, OB ＋2타)는 위쪽 타수(－/＋)에서 직접 더해 넣어야 해요.')}
 
   ${S('⑤ 저장')}
   <div style="font-size:13px;color:var(--t2);line-height:1.6">위 세그먼트로 전·후반 전환, 아래 바에 합계가 실시간 집계. 다 채우면 <b style="color:var(--g)">✓ 완료</b>로 저장. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
