@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.33.0';
+const APP_VERSION = 'v12.34.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1192,7 +1192,7 @@ async function delCourse(key) {                  // 관리자만 호출 (버튼�
 // ════════════════════════════════════════
 function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? `<span class="su">${u}</span>` : ''}</span><span class="sl">${l}</span></div>`; }
 
-// ── 🚦 진단 분석 (절대기준 신호등 4지표: 드라이버·아이언·숏게임·퍼팅) ──
+// ── 4부서(드라이버·아이언·숏게임·퍼팅) 손실 타수 집계 ──
 function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
@@ -1247,64 +1247,9 @@ function analyze(rounds) {
   const shortLossRound = f1(missLossSum, n);
   // 퍼팅: 2퍼팅 기준 초과 타수(3퍼팅=1타, 4퍼팅=2타 …)를 그대로 합산
   const puttLossRound = f1(puttExcessSum, n);
-  // 드라이버 등급: 페어웨이%(주지표) 기준 + OB/해저드(M+TP) 잦으면 한 단계 강등
-  // 생존율(survPct)은 등급에 안 쓰고 보조 숫자로만 표시.
-  let dst = adjFir >= BENCH.firGood ? 'g' : adjFir >= BENCH.firOk ? 'y' : 'r';
-  if (teeLostPer >= BENCH.tpDemote) dst = dst === 'g' ? 'y' : 'r';
-  // 퍼팅 등급 = 라운드 퍼팅 수(홀당 평균·거리감) + 3퍼팅 빈도(큰 실수) 중 나쁜 쪽.
-  // 잘 굴려도 3퍼팅이 잦으면 스코어가 새므로 둘을 함께 본다. GIR홀 퍼팅은 참고용으로만 표시.
-  const hasGP = girPuttN > 0;
-  const grdLow = (v, g, b) => v <= g ? 'g' : v > b ? 'r' : 'y';     // 낮을수록 좋은 지표(퍼팅·3퍼팅)
-  const worse = (a, b) => (a === 'r' || b === 'r') ? 'r' : (a === 'y' || b === 'y') ? 'y' : 'g';
-  const putStatus = worse(grdLow(puttAvg, BENCH.puttGood, BENCH.puttBad), grdLow(threeAvg, BENCH.threeGood, BENCH.threeBad));
-  const scrStatus = missGreen ? (scrPct >= BENCH.scrGood ? 'g' : scrPct < BENCH.scrBad ? 'r' : 'y') : 'g';
-  const S = (status, icon, area, value, msg, note) => ({ status, icon, area, value, msg, note });
-  // 표시 순서: 드라이버(티샷) → 아이언(어프로치) → 숏게임 → 퍼팅
-  const sig = [
-    S(dst, '🚗', '드라이버',
-      `페어웨이 ${adjFir}%${teeCostOk ? ` · 티샷 손실 ${nf(teeCostRound)}타/R` : ''} (생존 ${survPct}% · OB/해저드 ${nf(teeLostPer)}홀)`,
-      // 등급 메시지 뒤에, 티샷이 실제로 몇 타를 깎아먹는지 한 문장으로 덧붙인다(표본이 충분할 때만).
-      (dst === 'g' ? `티샷을 페어웨이에 잘 지켜냅니다. 드라이버 정확도가 좋아요. (생존 ${survPct}%)` :
-       dst === 'y' ? `페어웨이를 대체로 지키지만 가끔 빗나갑니다. 페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀.` :
-       `티샷이 페어웨이를 자주 벗어납니다(페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀). 스코어 손실의 큰 원인입니다.`)
-      + (teeCostOk
-          ? (teeCost > 0.05
-              ? ` 페어웨이를 지킨 홀은 파 대비 ${nfs(fwHitVsAvg)}타, 놓친 홀은 ${nfs(fwMissVsAvg)}타 — 티샷 하나가 홀당 ${nf(teeCost)}타, 라운드당 약 ${nf(teeCostRound)}타를 깎아먹고 있어요.`
-              : ` 페어웨이를 놓쳐도 스코어가 거의 안 무너집니다(지킴 ${nfs(fwHitVsAvg)}타 · 놓침 ${nfs(fwMissVsAvg)}타). 티샷보다 다른 곳에서 타수가 새고 있어요.`)
-          : ''),
-      `페어웨이% = 티샷이 페어웨이에 떨어진 비율(파4·5홀 중·M·TP로 살린 홀 제외) — 등급을 정하는 주지표 · OB/해저드(M+TP)가 라운드당 ${BENCH.tpDemote}홀↑이면 한 단계 강등 · 생존율 ${survPct}% = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀, 공을 잃지 않은 비율로 등급엔 안 쓰는 보조 지표`
-      + (teeCostOk ? ` · <b>티샷 손실</b> = (페어웨이 놓친 홀 파대비 평균 − 지킨 홀 파대비 평균) × 라운드당 놓친 홀 수. 티샷이 실제로 스코어를 얼마나 깎는지 퍼센트가 아니라 타수로 바로 계산해요(파4·5홀만, 각 5홀 이상 모였을 때 표시).` : '')),
-    S(girPct >= BENCH.girGood ? 'g' : girPct < BENCH.girBad ? 'r' : 'y', '🎯', '아이언(GIR)',
-      `GIR ${girPct}%`,
-      girPct >= BENCH.girGood ? `그린 적중률이 높습니다. 아이언으로 기회를 잘 만들고 있어요.` :
-      girPct < BENCH.girBad ? `그린 적중률이 낮습니다. 대부분 그린을 놓쳐 어프로치·숏게임 부담이 커집니다.` :
-      `그린 적중 보통. 절반가량은 정규 타수에 그린을 못 올립니다.`,
-      `GIR = 정규타수(파−2) 안에 그린 올린 홀 비율. 파3 티샷 실수도 여기 반영됩니다.`),
-    S(scrStatus, '⛳', '숏게임',
-      missGreen ? `스크램블 ${scrPct}% (그린 미스 ${nf(missAvg)}홀)` : `그린 미스 없음`,
-      !missGreen ? `그린을 놓친 홀이 없어 평가할 수치가 없습니다.` :
-      scrStatus === 'g' ? `그린을 놓쳐도 파 이하로 잘 막습니다. 어프로치·쇼트퍼팅이 좋아요.` :
-      scrStatus === 'r' ? `그린 미스 후 회복이 적습니다. 어프로치 붙이기·파세이브 퍼팅에서 타수가 샙니다.` :
-      `그린 미스 후 회복은 보통입니다. 어프로치를 더 붙이면 스코어가 줄어요.`,
-      `스크램블링 = 그린 놓친 홀 중 파 이하로 막은 비율(높을수록 좋음). 라운드당 그린 미스 ${nf(missAvg)}홀.`),
-    S(putStatus, '🍩', '퍼팅',
-      `라운드 ${nf(puttAvg)}개 (홀당 ${nf(puttAvg / 18)}) · 3퍼팅 ${nf(threeAvg)}회${hasGP ? ` · GIR홀 ${nf(girPuttAvg)}` : ''}`,
-      putStatus === 'g' ? `퍼팅이 안정적입니다. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회로 그린에서 타수를 잘 지키고 있어요.` :
-      putStatus === 'r' ? `퍼팅에서 타수가 샙니다. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회 — 첫 퍼트 거리감(롱퍼트)을 줄이는 게 급선무입니다.` :
-      `퍼팅 보통. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회 — 여기서 조금씩 타수가 새고 있어요.`,
-      `등급 = 라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도 중 나쁜 쪽으로 판정 · 🟢 ${BENCH.puttGood}개↓ 그리고 3퍼팅 ${BENCH.threeGood}회↓ · 🔴 ${BENCH.puttBad}개 초과 또는 3퍼팅 ${BENCH.threeBad}회 초과${hasGP ? ` · (GIR홀 퍼팅 ${nf(girPuttAvg)}개는 순수 퍼팅력 참고용 — 등급엔 미반영)` : ''}`)
-  ];
-  return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, scrPct, missGreen, scrSave, missAvg, sig,
+  return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, scrPct, missGreen, scrSave, missAvg,
            teeCost, teeCostRound, teeCostOk, fwHitVsAvg, fwMissVsAvg,     // 티샷이 깎아먹는 타수
            ironLossRound, shortLossRound, puttLossRound };   // 아이언·숏게임·퍼팅이 깎아먹는 타수
-}
-function analysisHTML(a) {
-  if (!a.n) return `<div class="empty" style="padding:24px 0"><div>📊</div><p>분석할 라운드가 없습니다</p></div>`;
-  const dotc = { g: '🟢', y: '🟡', r: '🔴' };
-  const cards = a.sig.map(s => `<div class="dgi ${s.status}">
-    <div class="dgi-h"><span class="dgi-t">${dotc[s.status]} ${s.icon} ${s.area}</span><span class="dgi-v ${s.status}">${s.value}</span></div>
-    <div class="dgi-m">${s.msg}</div>${s.note ? `<div class="dgi-n">ℹ️ ${s.note}</div>` : ''}</div>`).join('');
-  return `${cards}<div style="font-size:11px;color:var(--t2);margin-top:8px;line-height:1.55;word-break:keep-all">※ ${a.n}개 라운드 기준 · 파3의 M·TP는 드라이버에서 빠지고 GIR(아이언)에 반영 · 기준값은 설정 → 분석 기준에서 조정</div>`;
 }
 // ════════════════════════════════════════
 // 발전 분석 (시간축 · "과거의 나와 비교")
@@ -1356,13 +1301,13 @@ const TREND_METRICS = [
   { k: 'putts', lbl: '퍼팅',   low: true,  u: '' },
   { k: 'gir',   lbl: 'GIR',    low: false, u: '%' },
   { k: 'fir',   lbl: 'FIR',    low: false, u: '%' },
-  { k: 'lossStrokes', lbl: '티샷손실타수', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
+  { k: 'lossStrokes', lbl: '티샷손실', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
   { k: 'consist', lbl: '기복', low: true,  u: '' },   // 최근 5R 스코어 편차(작을수록 일정)
 ];
 function setTrend(k) { _trendMetric = k; const w = Q('trend-wrap'); if (w) w.innerHTML = trendWrapHTML(); }
 function trendWrapHTML() {
   const rs = roundsChrono(); const M = TREND_METRICS[_trendMetric] || TREND_METRICS[0];
-  const toggle = `<div class="seg" style="margin-bottom:10px">${TREND_METRICS.map((m, i) => `<button class="sg ${i === _trendMetric ? 'on' : ''}" onclick="setTrend(${i})">${m.lbl}</button>`).join('')}</div>`;
+  const toggle = `<div class="seg" style="margin-bottom:10px">${TREND_METRICS.map((m, i) => `<button class="sg ${i === _trendMetric ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px;white-space:nowrap" onclick="setTrend(${i})">${m.lbl}</button>`).join('')}</div>`;
   // 기복(consist)은 라운드별 값이 아니라 최근 5R 스코어 편차의 흐름으로 계산, 손실타수는 tpArr 에서 직접 계산
   const vals = M.k === 'consist' ? rollingSD(rs.map(r => +(r.score || 0)), 5)
     : M.k === 'lossStrokes' ? rs.map(lossStrokesOf)
@@ -1700,9 +1645,9 @@ function sig(val, avg, betterLow, margin, n) {
 }
 function dot(c) { return c ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:4px;vertical-align:middle"></span>` : ''; }
 
-// 통계 [전체] 탭의 하위 카테고리: 0 스코어 · 1 정확도·퍼팅 · 2 진단 · 3 추세·기록
+// 통계 [전체] 탭의 하위 카테고리: 0 스코어 · 1 숏게임·퍼팅 · 2 추세·기록
 let _statSub = 0;
-const STAT_SUBS = ['스코어', '정확도·퍼팅', '진단', '추세·기록'];
+const STAT_SUBS = ['스코어', '숏게임·퍼팅', '추세·기록'];
 function setStatSub(s) { _statSub = s; renderStat(0); }
 
 function renderStat(m) {
@@ -1732,7 +1677,7 @@ function renderStat(m) {
       <div style="font-size:13px;color:var(--t2);line-height:1.5">최근 ${segN}R 평균 <b style="color:var(--t)">${recentAvg.toFixed(1)}</b> · 초기 ${segN}R 대비 <b style="color:${prog < 0 ? 'var(--g)' : prog > 0 ? 'var(--r)' : 'var(--t)'}">${prog < 0 ? '▼' : prog > 0 ? '▲' : ''}${Math.abs(prog).toFixed(1)}타</b>${prog < 0 ? ' — 좋아지고 있어요 🎉' : prog > 0 ? '' : ' — 유지 중'}</div></div>`;
     h += `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 4px">💡 추정 핸디 = 최근 20R 중 좋은 라운드의 오버파 평균(간이). 코스 난이도 미반영.</div>`;
 
-    // ── 하위 탭 (스코어 · 정확도·퍼팅 · 진단 · 추세·기록) ──
+    // ── 하위 탭 (스코어 · 숏게임·퍼팅 · 추세·기록) ──
     h += `<div class="seg" style="margin:12px 0">${STAT_SUBS.map((l, i) => `<button class="sg ${i === _statSub ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px" onclick="setStatSub(${i})">${l}</button>`).join('')}</div>`;
 
     if (_statSub === 0) {
@@ -1743,17 +1688,9 @@ function renderStat(m) {
       h += frontBackHTML(rounds);
       h += scoreDistHTML(rounds);
     } else if (_statSub === 1) {
-      // 🎯 정확도·퍼팅
+      // ⛳ 숏게임·퍼팅
       h += `<div class="lbl">파 종류별</div>${parCrossHTML(rounds)}`;
       h += puttShortHTML(rounds);
-    } else if (_statSub === 2) {
-      // 🚦 진단 + 약점 우선순위 (공지·설정과 같은 benchFormulaHTML() 단일 소스)
-      const aAll = analyze(rounds);
-      h += `<div class="lbl">🚦 진단 (전체 라운드)</div>${analysisHTML(aAll)}`;
-      h += `<details style="margin:8px 2px 0;background:var(--bg2);border:.5px solid var(--bd);border-radius:12px;padding:10px 12px">
-        <summary style="font-size:12px;font-weight:700;color:var(--t2);cursor:pointer;list-style:none">🧮 진단 신호등 계산식 보기</summary>
-        <div style="margin-top:8px">${benchFormulaHTML()}</div></details>`;
-      h += `<div class="lbl">🎯 약점 우선순위 (고칠 순서)</div>${weaknessHTML(aAll, rounds)}`;
     } else {
       // 📈 추세 · 기록
       h += `<div class="lbl">📈 발전 추세 (과거의 나와 비교)</div><div id="trend-wrap">${trendWrapHTML()}</div>`;
@@ -2023,13 +1960,13 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 길게 늘어지던 통계를 <b style="color:var(--g)">탭으로 정리</b>해 한눈에 보기 쉽게, 라운드별 분석도 직관적으로 다듬었어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 탭을 더 줄여 화면 하나에서 바로 보이게 정리했고, 스코어 입력에 원터치 파 입력을 추가했어요.</div>
 
-  ${S('📣 이번 업데이트 — 한눈에 보기 쉽게')}
-  ${li('📊 <b>통계 화면 탭 정리</b> — 길던 통계를 <b>스코어·정확도·퍼팅·진단·추세</b> 탭으로 나눠 원하는 것만 골라 봐요. (요약은 늘 맨 위 고정)')}
-  ${li('🔍 <b>라운드별 분석도 같은 탭 구조</b> — 라운드 상세의 "이 라운드 분석"에서도 스코어·정확도·진단을 탭으로 정리했어요.')}
-  ${li('🟢 <b>라운드 목록 신호 칩</b> — 작은 점 대신 🚗FIR·🎯GIR·🍩퍼팅을 🟢🟡🔴 칩으로 한눈에.')}
-  ${li('📖 <b>분석 철학·설명서 정리</b> — 줄글을 아이콘 카드와 한 줄 요약으로 바꿔 읽기 쉽게 했어요.')}
+  ${S('📣 이번 업데이트 — 더 짧고 빠르게')}
+  ${li('🔍 <b>라운드 상세 통합</b> — "이 라운드 분석" 토글을 없애고 정확도·숏게임·퍼팅(스크램블링 포함) 내용을 기본 화면에 바로 노출. 🚦신호등 진단·💊오늘의 처방은 없앴어요.')}
+  ${li('📊 <b>통계 탭 정리</b> — 진단 탭을 없애고 <b>스코어·숏게임·퍼팅·추세·기록</b> 3개 탭으로 줄였어요. "정확도·퍼팅"은 <b>숏게임·퍼팅</b>으로 이름을 바꿨어요.')}
+  ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "입력 전" 박스를 탭하면 파가 그대로 입력돼요.')}
+  ${li('✂️ <b>표기 간소화</b> — 추세 탭의 "티샷손실타수"를 "티샷손실"로 줄여 한 줄에 들어오게 했어요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2072,16 +2009,12 @@ function guideStatsHTML() {
   const it = (name, desc) => `<div style="margin:6px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.5">${desc}</div></div>`;
   return `
   <p style="color:var(--t2);font-size:13px;line-height:1.6"><b>통계</b> 탭에서 자동 계산되는 지표들의 뜻이에요.</p>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12.5px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">한 줄 요약</b> — 🚦진단 신호등으로 4부서(드라이버·아이언·숏게임·퍼팅) 약점을 찾고, 💊처방대로 한 곳만 연습하면 돼요. 나머지 지표는 그 근거예요.</div>
-
-  ${S('🚦 진단 신호등 — 계산식')}
-  ${benchFormulaHTML()}
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12.5px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">한 줄 요약</b> — 🎯 손실 타수, 어디서 났나에서 4부서(드라이버·아이언·숏게임·퍼팅) 중 가장 손해 큰 곳부터 잡으면 돼요. 나머지 지표는 그 근거예요.</div>
 
   ${S('📋 요약 · 발전')}
   ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
-  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
-  ${it('💊 오늘의 처방', '라운드 상세의 "🔍 이 라운드 분석"에서, 4부서 중 손해가 가장 큰 한 곳을 콕 집어 무엇을 연습할지 한 줄로 알려줘요.')}
-  ${it('🎯 약점 우선순위', '드라이버·아이언·숏게임·퍼팅을 설정 기준값과 비교해 라운드당 손실 타수를 추정 → 고칠 순서를 ⭐최우선부터. (상대 비교용)')}
+  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/티샷손실/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
+  ${it('🎯 손실 타수, 어디서 났나', '드라이버·아이언·숏게임·퍼팅 4부서의 라운드당 손실 타수를 실측값으로 계산해 고칠 순서를 ⭐최우선부터 보여줘요(라운드 상세에서 확인).')}
 
   ${S('스코어')}
   ${it('평균 스코어·오버파·기복', '총타수 평균 / 파 대비(+오버·−언더) / 점수 편차(작을수록 일정).')}
@@ -2089,7 +2022,7 @@ function guideStatsHTML() {
   ${it('파 종류별 · 전·후반', '파3·4·5별 파 대비 평균에 더해, 파3은 GIR / 파4·5는 FIR·GIR을 함께 보여줘 어느 홀 유형에서 어느 부서가 약한지 진단. / 앞뒤 9홀 평균·차이(후반 무너짐).')}
   ${it('💥 큰 실수의 원인', '더블보기 이상(블로업) 홀이 티샷 사고·3퍼팅·그린 미스 중 무엇 때문이었는지 원인별로 분해해요(한 홀에 겹칠 수 있음).')}
 
-  ${S('정확도 · 쇼트게임')}
+  ${S('숏게임 · 퍼팅')}
   ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
   ${it('라운드 퍼팅 · 3퍼팅 · GIR홀 퍼팅 · 1퍼팅율 · 퍼팅 분포', '라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도가 퍼팅 등급을 정해요 / GIR홀 퍼팅은 순수 퍼팅력 참고용 / 1퍼팅 비율 / 1·2·3·4+ 퍼팅 홀 수.')}
   ${it('스크램블링', '그린 놓친 홀을 파 이하로 막은 비율(높을수록 좋음).')}
@@ -2118,13 +2051,13 @@ function philosophyHTML() {
   <p style="font-size:14px;color:var(--t);line-height:1.7;font-weight:600">온그린은 점수를 <u>기록</u>하는 앱이 아니라, 다음 라운드에서 한 타를 줄여줄 <b style="color:var(--g)">코치</b>예요.</p>
   <p style="font-size:12.5px;color:var(--t3);line-height:1.6;margin-top:4px">모든 숫자는 하나의 질문에 답해요 — <b style="color:var(--t2)">"무엇을 연습해야 가장 빨리 줄어드나?"</b></p>
 
-  ${card('🔍', `① 점수가 아니라 '원인'을 본다`, `🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 4부서로 쪼개 신호등으로 진단해요. "90 쳤다"가 아니라 "숏게임이 🔴라서 90"을 말해줘요.`)}
+  ${card('🔍', `① 점수가 아니라 '원인'을 본다`, `🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 4부서로 쪼개 손실 타수를 재요. "90 쳤다"가 아니라 "숏게임에서 3타 샜다"를 말해줘요.`)}
   ${card('⚖️', '② 두 개의 잣대로 본다', `<b style="color:var(--t2)">세상 기준</b>으로 내 객관적 위치를, <b style="color:var(--t2)">내 평균</b>으로 오늘의 컨디션을 봐요.`)}
   ${card('📈', '③ 과거의 나와 경쟁한다', `남과 비교 대신 <b style="color:var(--t2)">성장 서사</b>로 동기를 만들어요. 발전 추세, 100·90·80 첫 돌파, 기복 추세로요.`)}
   ${card('💎', `④ 스코어에 직결되는 지표로 잰다`, `드라이버는 페어웨이%로 티샷 정확도를(생존율로 사고를 보조), 퍼팅은 라운드 퍼팅 수와 3퍼팅 빈도로 새는 타수를 직접 봐요. (GIR홀 퍼팅은 순수 퍼팅력 참고용)`)}
 
   <div style="font-size:13px;font-weight:800;color:var(--g);margin:16px 0 4px">🧭 그래서 이렇게 안내해요</div>
-  ${card('💊', '오늘의 처방', `라운드 분석에서 가장 손해 큰 한 곳만 콕 집어줘요.`)}
+  ${card('🎯', '손실 타수, 어디서 났나', `라운드 상세에서 가장 손해 큰 한 곳만 ⭐최우선으로 콕 집어줘요.`)}
   ${card('💥', '큰 실수의 원인', `더블보기↑가 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.`)}
   ${card('📊', '기복 추세', `라운드를 거듭할수록 점수가 일정해지는지 봐요.`)}
 
