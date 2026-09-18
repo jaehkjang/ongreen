@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.30.0';
+const APP_VERSION = 'v12.30.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -632,7 +632,11 @@ function scBack() {
 const SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>';
 const SP = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>';
 function getH() { const c = A.sc.course; const [l0, l1] = A.sc.li; return [...c.layouts[l0].holes, ...c.layouts[l1].holes]; }
-function scoreLabel(d) { return d <= -2 ? '이글 이하' : d === -1 ? '버디' : d === 0 ? '파' : d === 1 ? '보기' : d === 2 ? '더블보기' : '트리플보기 이상'; }
+// score(실제 타수)를 넘기면 1타(홀인원)를 별도로 구분해서 이름 붙인다 — 파3이 아니어도 1타면 홀인원.
+function scoreLabel(d, score) {
+  if (score === 1) return '홀인원';
+  return d <= -3 ? '알바트로스' : d === -2 ? '이글' : d === -1 ? '버디' : d === 0 ? '파' : d === 1 ? '보기' : d === 2 ? '더블보기' : '트리플보기 이상';
+}
 function renderSC() { A.sc.ro ? renderScReadOnly() : renderHoleWizard(); }
 
 // ── 읽기 전용(저장된 라운드 조회) — 전·후반 9홀을 리스트로 보여주기만 함 ──
@@ -771,7 +775,7 @@ function renderHoleWizard() {
         </div>
       </div>
       <div class="${cc}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px">
-        <div style="font-size:18px;font-weight:800">${entered ? scoreLabel(d) : '입력 전'}</div>
+        <div style="font-size:18px;font-weight:800">${entered ? scoreLabel(d, score) : '입력 전'}</div>
         <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `기본값 ${score}타 표시 중 · 조정하면 기록돼요`}</div>
       </div>
       <div style="display:flex;gap:8px">
@@ -805,9 +809,7 @@ function holeDetail(id, i) {
   const gg = (r.girArr || [])[i], ff = (r.firArr || [])[i], pp = (r.puttsArr || [])[i] || 0;
   const mm = (r.mulliArr || [])[i] || 0, tpv = (r.tpArr || [])[i] || 0;
   const d = sc - par;
-  const name = !sc ? '미입력'
-    : d <= -2 ? '이글 이하' : d === -1 ? '버디' : d === 0 ? '파'
-    : d === 1 ? '보기' : d === 2 ? '더블보기' : '트리플보기 이상';
+  const name = !sc ? '미입력' : scoreLabel(d, sc);
   const row = (k, v) => `<div class="hd-row"><span style="color:var(--t2)">${k}</span><span>${v}</span></div>`;
   const firRow = par === 3
     ? row('🚗 티샷 (FIR)', '<span style="color:var(--t3)">파3 · 해당 없음</span>')
