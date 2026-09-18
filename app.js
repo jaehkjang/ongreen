@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.26.1';
+const APP_VERSION = 'v12.27.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -21,8 +21,8 @@ let A = {
   u: '', isAdm: false, loaded: false,   // loaded: 서버에서 라운드를 "확실히" 받았는지 (저장 안전장치용)
   rounds: [], official: [...DEF], notes: [],
   allCourses() { return this.official; },                 // 코스는 공식 목록 하나뿐
-  sc: { course: null, li: [0, 1], ro: false, eid: null, half: 0,
-        scores: Array(18).fill(0), putts: Array(18).fill(2),
+  sc: { course: null, li: [0, 1], ro: false, eid: null, half: 0, hIdx: 0,
+        scores: Array(18).fill(0), putts: Array(18).fill(2), og: Array(18).fill(0),
         gir: Array(18).fill(false), fir: Array(18).fill(false),
         mulli: Array(18).fill(0), tp: Array(18).fill(0),
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
@@ -310,7 +310,7 @@ function newRound() { Q('nr-d').value = new Date().toISOString().split('T')[0]; 
 function goSelectCourse() {
   A.sc.date = Q('nr-d').value.replaceAll('-', '.'); A.sc.wx = Q('nr-w').value;
   A.sc.partner = Q('nr-p').value; A.sc.memo = Q('nr-m').value;
-  A.sc.eid = null; A.sc.ro = false; A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2);
+  A.sc.eid = null; A.sc.ro = false; A.sc.hIdx = 0; A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
   A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0);
   cm('m-nr'); renderCourses(); showPg('course');
 }
@@ -567,9 +567,11 @@ function openSC(id, ro) {
   const c = { id: r.courseId, name: r.courseName, addr: (master && master.addr) || '',
     layouts: [ { name: n0, holes: pars.slice(0, 9) }, { name: n1, holes: pars.slice(9, 18) } ] };
   A.sc.course = c; A.sc.li = [0, 1]; A.sc.date = r.date; A.sc.wx = r.weather;
-  A.sc.partner = r.partner; A.sc.memo = r.memo; A.sc.eid = id; A.sc.ro = ro; A.sc.half = 0;
+  A.sc.partner = r.partner; A.sc.memo = r.memo; A.sc.eid = id; A.sc.ro = ro; A.sc.half = 0; A.sc.hIdx = 0;
   A.sc.scores = [...r.scores]; A.sc.putts = [...r.puttsArr];
   A.sc.gir = [...r.girArr]; A.sc.fir = [...r.firArr]; A.sc.mulli = [...(r.mulliArr || Array(18).fill(0))]; A.sc.tp = [...(r.tpArr || Array(18).fill(0))];
+  // 온그린 타수는 저장하지 않으므로(스코어=온그린+퍼팅) 기존 기록에서 역산해 복원한다.
+  A.sc.og = pars.map((p, i) => { const s = A.sc.scores[i] || 0, pt = A.sc.putts[i] || 0; return s > 0 ? Math.max(0, s - pt) : Math.max(1, p - 2); });
   const par = pars.reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${r.date} · ${n0}+${n1} · 파${par}`;
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${n0} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${n1} (10-18)</button>`;
@@ -622,43 +624,145 @@ function scBack() {
 const SM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>';
 const SP = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>';
 function getH() { const c = A.sc.course; const [l0, l1] = A.sc.li; return [...c.layouts[l0].holes, ...c.layouts[l1].holes]; }
-function renderSC() {
-  const h = getH(); const s = A.sc.half * 9; const ro = A.sc.ro; let html = '';
+function scoreLabel(d) { return d <= -2 ? '이글 이하' : d === -1 ? '버디' : d === 0 ? '파' : d === 1 ? '보기' : d === 2 ? '더블보기' : '트리플보기 이상'; }
+function renderSC() { A.sc.ro ? renderScReadOnly() : renderHoleWizard(); }
+
+// ── 읽기 전용(저장된 라운드 조회) — 전·후반 9홀을 리스트로 보여주기만 함 ──
+function renderScReadOnly() {
+  const h = getH(); const s = A.sc.half * 9; let html = '';
   for (let i = s; i < s + 9; i++) {
     const par = h[i], sc = A.sc.scores[i], gg = A.sc.gir[i], ff = A.sc.fir[i], pp = A.sc.putts[i], mm = A.sc.mulli[i] || 0, tpv = (A.sc.tp && A.sc.tp[i]) || 0;
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
-    // 티샷 사고 버튼 — 무슨 뜻인지 글자로 바로 보이게. 끄기(티샷) → 멀리건(벌타 없음) → 티샷 패널티(OB·해저드 등)
-    // 예전엔 꺼져 있을 때도 'M' 이라 적혀 있어서, 켜짐/꺼짐과 M·TP 의 뜻이 모두 헷갈렸다.
-    // 주의: 이 버튼은 벌타를 스코어에 자동으로 더하지 않는다 — 실제 벌타는 스코어 입력(－/＋)에서 사용자가 직접 넣어야 한다.
-    const teeLbl = mm ? '멀리건' : tpv ? '티샷 패널티' : '티샷', teeCls = mm ? 'om' : tpv ? 'otp' : '';
-    const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : (ro ? `<span class="htg ${ff ? 'of' : ''}">FIR</span>` : `<button class="htg ${ff ? 'of' : ''}" onclick="tog(${i},'f')">FIR</button>`);
-    if (ro) { html += `<div class="hr" onclick="holeDetail(${A.sc.eid},${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`; }
-    else { html += `<div class="hr"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><button class="hb" onclick="adj(${i},-1)">${SM}</button><div class="hv ${c}" onclick="sp(${i})">${d}</div><button class="hb" onclick="adj(${i},1)">${SP}</button></div><div class="ht">${firCell}<button class="htg ${gg ? 'og' : ''}" onclick="tog(${i},'g')">GIR</button><button class="htg ${pp > 0 ? 'op' : ''}" onclick="cyp(${i})">${pp}P</button><button class="htg ${teeCls}" onclick="tom(${i})">${teeLbl}</button></div></div></div>`; }
+    const teeLbl = mm ? '멀리건' : tpv === 2 ? 'OB' : tpv ? '해저드' : '티샷', teeCls = mm ? 'om' : tpv ? 'otp' : '';
+    const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : `<span class="htg ${ff ? 'of' : ''}">FIR</span>`;
+    html += `<div class="hr" onclick="holeDetail(${A.sc.eid},${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`;
   }
-  // 다시 그려도 보던 위치를 유지한다 — innerHTML 을 갈아끼우면 스크롤이 맨 위로 튕겨서,
-  // 8·9번 홀을 치다가 저장하거나 점수를 누르면 1번 홀로 되돌아가 버렸다.
   const box = Q('sc-body'); const keepTop = box ? box.scrollTop : 0;
   box.innerHTML = html;
   if (keepTop) box.scrollTop = keepTop;
   updFt();
-  if (!ro) { const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false; }
 }
-// 아래 입력 함수들은 값을 바꾼 뒤 renderSC() 로 화면을 다시 그리고, autoSaveSC() 로 자동 저장한다.
-function sp(i) { if (A.sc.ro) return; A.sc.scores[i] = getH()[i]; renderSC(); autoSaveSC(); }
-function adj(i, d) { if (A.sc.ro) return; const h = getH(); if (!A.sc.scores[i]) A.sc.scores[i] = h[i]; A.sc.scores[i] = Math.max(1, Math.min(12, A.sc.scores[i] + d)); renderSC(); autoSaveSC(); }
-function tog(i, t) { if (A.sc.ro) return; if (t === 'f' && getH()[i] === 3) return; if (t === 'g') A.sc.gir[i] = !A.sc.gir[i]; else A.sc.fir[i] = !A.sc.fir[i]; renderSC(); autoSaveSC(); }
-function cyp(i) { if (A.sc.ro) return; A.sc.putts[i] = (A.sc.putts[i] % 4) + 1; renderSC(); autoSaveSC(); }
-function tom(i) {                                 // 티샷 상태: off → M → TP → off (홀당 1개, M·TP 상호배타)
+
+// ════════════════════════════════════════
+// 스코어 입력 — 한 홀씩 전체화면(위저드)
+// 스코어는 직접 두드리지 않는다: "온그린까지 타수" + "퍼팅 수"를 입력하면
+// 스코어(=온그린+퍼팅)·GIR(온그린 ≤ 파−2)이 저절로 계산된다.
+// 티샷 결과는 순환 버튼이 아니라 나열된 선택지(페어웨이/러프/해저드/OB/멀리건) 중 하나를 고른다.
+//  · 해저드/OB 구분은 A.sc.tp 값(1=해저드, 2=OB)으로 저장 — 통계(analyze())는 여전히 truthy만 보므로 기존 로직과 호환.
+//  · 온그린 타수(A.sc.og)는 저장 스키마에 없다 — 라운드를 다시 열 때 scores−putts 로 역산해 복원한다(openSC 참고).
+// ════════════════════════════════════════
+function teeState(i) {
+  if (A.sc.mulli[i]) return 'mull';
+  const t = (A.sc.tp && A.sc.tp[i]) || 0;
+  if (t === 2) return 'ob';
+  if (t === 1) return 'hazard';
+  if (A.sc.fir[i]) return 'fw';
+  return null;
+}
+function setTee(i, key) {
   if (A.sc.ro) return;
-  if (!A.sc.tp) A.sc.tp = Array(18).fill(0);
-  const m = A.sc.mulli[i] || 0, t = A.sc.tp[i] || 0;
-  if (!m && !t) { A.sc.mulli[i] = 1; A.sc.tp[i] = 0; }       // off → M
-  else if (m)   { A.sc.mulli[i] = 0; A.sc.tp[i] = 1; }       // M → TP
-  else          { A.sc.mulli[i] = 0; A.sc.tp[i] = 0; }       // TP → off
+  if ((key === 'fw' || key === 'rough') && getH()[i] === 3) return;   // 파3엔 페어웨이 개념 없음
+  const next = teeState(i) === key ? null : key;                     // 같은 걸 다시 누르면 선택 해제
+  A.sc.fir[i] = next === 'fw';
+  A.sc.mulli[i] = next === 'mull' ? 1 : 0;
+  A.sc.tp[i] = next === 'ob' ? 2 : next === 'hazard' ? 1 : 0;
   renderSC(); autoSaveSC();
+}
+function recalcHole(i) {                          // 온그린·퍼팅이 확정된 홀만 스코어·GIR을 다시 계산
+  const par = getH()[i], og = (A.sc.og && A.sc.og[i]) || 0;
+  if (og > 0) { A.sc.scores[i] = og + (A.sc.putts[i] || 0); A.sc.gir[i] = og <= Math.max(1, par - 2); }
+}
+function ogAdj(i, d) {
+  if (A.sc.ro) return;
+  if (!A.sc.og) A.sc.og = Array(18).fill(0);
+  if (!A.sc.og[i]) A.sc.og[i] = Math.max(1, getH()[i] - 2);          // 처음 누르면 기본값(파−2)에서 시작
+  A.sc.og[i] = Math.max(1, Math.min(10, A.sc.og[i] + d));
+  recalcHole(i); renderSC(); autoSaveSC();
+}
+function puttAdjW(i, d) {
+  if (A.sc.ro) return;
+  if (!A.sc.og) A.sc.og = Array(18).fill(0);
+  if (!A.sc.og[i]) A.sc.og[i] = Math.max(1, getH()[i] - 2);          // 퍼팅만 먼저 만져도 스코어가 확정되게
+  A.sc.putts[i] = Math.max(0, Math.min(10, (A.sc.putts[i] || 0) + d));
+  recalcHole(i); renderSC(); autoSaveSC();
+}
+// 스코어 입력 화면에서 이 홀의 파를 바로 바꾼다 — "⛳ 파수정"과 동일하게 공식 코스 데이터에도 반영(마스터와 다를 때만, best-effort).
+async function setHolePar(i, p) {
+  if (A.sc.ro) return;
+  const c = A.sc.course; if (!c || c.layouts[i < 9 ? 0 : 1].holes[i < 9 ? i : i - 9] === p) return;
+  const li = i < 9 ? 0 : 1, hi = i < 9 ? i : i - 9;
+  const before = masterParsFor(c);
+  c.layouts[li].holes[hi] = p;
+  recalcHole(i); renderSC(); autoSaveSC();
+  const res = await persistParsToOfficial(c, { [c.layouts[li].name]: c.layouts[li].holes.slice() });
+  if (res.ok) {
+    toast('✅ 공식 코스 파가 모두에게 반영됐어요');
+    if (!A.isAdm && before && before[i] !== p) {
+      callAPI(() => API.reportParChange(c.name, `${c.name} (${c.layouts[0].name}+${c.layouts[1].name}) · ${c.layouts[li].name} ${hi + 1}번 P${before[i]}→P${p} [반영됨]`));
+    }
+  } else if (res.ok === false) toast('⚠️ 이 라운드엔 적용됐지만 공유 저장 실패 (인터넷 확인)');
+}
+function hJump(i) { A.sc.hIdx = Math.max(0, Math.min(17, i)); A.sc.half = A.sc.hIdx < 9 ? 0 : 1; const box = Q('sc-body'); if (box) box.scrollTop = 0; renderSC(); }
+function hGo(d) { hJump((A.sc.hIdx || 0) + d); }
+
+function renderHoleWizard() {
+  const i = A.sc.hIdx || 0, h = getH(), par = h[i];
+  const entered = A.sc.scores[i] > 0;
+  if (!A.sc.og) A.sc.og = Array(18).fill(0);
+  const og = A.sc.og[i] || Math.max(1, par - 2);
+  const putt = A.sc.putts[i] != null ? A.sc.putts[i] : 2;
+  const score = entered ? A.sc.scores[i] : og + putt;
+  const d = score - par, cc = entered ? cls(score, par) : 'e';
+  const ts = teeState(i);
+  const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
+  const chips = (par === 3 ? [] : [chip('fw', '페어웨이'), chip('rough', '러프')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
+  const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
+  const dotRow = half => `<div style="display:flex;gap:3px;flex:1">${Array.from({ length: 9 }, (_, k) => { const hi = half * 9 + k, on = hi === i, done = A.sc.scores[hi] > 0;
+    return `<span onclick="hJump(${hi})" style="flex:1;height:4px;border-radius:2px;cursor:pointer;background:${on ? 'var(--g)' : done ? '#5a5a5e' : '#2c2c2e'}"></span>`; }).join('')}</div>`;
+
+  Q('sc-body').innerHTML = `
+    <div style="padding:6px 4px 16px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${dotRow(0)}<span style="font-size:10px;color:var(--t3);flex-shrink:0">전반</span></div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">${dotRow(1)}<span style="font-size:10px;color:var(--t3);flex-shrink:0">후반</span></div>
+      <div style="text-align:center;font-size:13px;color:var(--t2);margin-bottom:10px">${(i % 9) + 1}번 홀 · ${A.sc.course.layouts[i < 9 ? 0 : 1].name}</div>
+      <div class="seg" style="margin-bottom:16px">${parTab(3)}${parTab(4)}${parTab(5)}</div>
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:14px 8px">
+          <div style="font-size:12px;color:var(--t2);margin-bottom:8px">온그린까지</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px">
+            <button class="hb" onclick="ogAdj(${i},-1)">${SM}</button>
+            <div style="width:34px;font-size:22px;font-weight:700;text-align:center">${og}</div>
+            <button class="hb" onclick="ogAdj(${i},1)">${SP}</button>
+          </div>
+          <div style="font-size:11px;color:var(--t3);margin-top:6px">타수</div>
+        </div>
+        <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:14px 8px">
+          <div style="font-size:12px;color:var(--t2);margin-bottom:8px">퍼팅</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px">
+            <button class="hb" onclick="puttAdjW(${i},-1)">${SM}</button>
+            <div style="width:34px;font-size:22px;font-weight:700;text-align:center">${putt}</div>
+            <button class="hb" onclick="puttAdjW(${i},1)">${SP}</button>
+          </div>
+          <div style="font-size:11px;color:var(--t3);margin-top:6px">수</div>
+        </div>
+      </div>
+      <div class="${cc}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px">
+        <div style="font-size:18px;font-weight:800">${entered ? scoreLabel(d) : '입력 전'}</div>
+        <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `기본값 ${score}타 표시 중 · 조정하면 기록돼요`}</div>
+      </div>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">⛳ 티샷 결과</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">${chips.join('')}</div>
+      <div style="display:flex;gap:8px">
+        ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 60px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:15px;font-weight:700;cursor:pointer">◀</button>` : ''}
+        <button onclick="${i < 17 ? 'hGo(1)' : 'saveRound()'}" style="flex:1;background:var(--g);border:none;border-radius:12px;padding:13px;color:#000;font-size:15px;font-weight:800;cursor:pointer">${i < 17 ? '저장 · 다음 홀 →' : '저장 · 완료'}</button>
+      </div>
+    </div>`;
+  updFt();
+  const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false;
 }
 function swHalf(n, el) {
   A.sc.half = n; document.querySelectorAll('#sc-seg .sg').forEach(b => b.classList.remove('on')); el.classList.add('on');
+  if (!A.sc.ro) A.sc.hIdx = n * 9;                         // 입력 화면(위저드)에서는 그 나인의 첫 홀로 이동
   const box = Q('sc-body'); if (box) box.scrollTop = 0;   // 다른 나인으로 바꿨으니 첫 홀부터 보여줌
   renderSC();
 }
@@ -689,8 +793,9 @@ function holeDetail(id, i) {
   const girRow = row('🎯 그린 (GIR)', gg ? '<b style="color:#7dd4ff">온그린 ⭕</b>' : '<span style="color:var(--t2)">놓침 ❌</span>');
   const puttRow = row('🍩 퍼팅 수', `<b>${pp}</b>퍼팅${pp >= 3 ? ' <span style="color:var(--a)">(3퍼팅↑)</span>' : ''}`);
   const teeTxt = mm ? '<b style="color:#ffcc80">멀리건 (다시 침 · 벌타 없음)</b>'
-    : tpv ? '<b style="color:#ff8a80">티샷 패널티 (OB·해저드 등 · 벌타는 스코어에 별도 입력)</b>'
-    : '<span style="color:var(--t3)">사고 없음</span>';
+    : tpv === 2 ? '<b style="color:#ff8a80">OB (스코어에 벌타 포함됨)</b>'
+    : tpv ? '<b style="color:#ff8a80">해저드 (스코어에 벌타 포함됨)</b>'
+    : (par !== 3 && !ff) ? '<span style="color:var(--t3)">러프 (사고 없음)</span>' : '<span style="color:var(--t3)">사고 없음</span>';
   const teeRow = row('⛳ 티샷 사고', teeTxt);
   Q('hd-t').textContent = `${i + 1}번 홀 · 파${par}`;
   Q('hd-body').innerHTML = `
@@ -846,9 +951,9 @@ function startScoringFromPicker() {
     layouts: [ { name: src.layouts[s0].name, holes: pars.slice(0, 9) }, { name: src.layouts[s1].name, holes: pars.slice(9, 18) } ] };
   A.sc.course = clone; A.sc.li = [0, 1];
 
-  A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2);
+  A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
   A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0);
-  A.sc.eid = null; A.sc.ro = false; A.sc.half = 0;
+  A.sc.eid = null; A.sc.ro = false; A.sc.half = 0; A.sc.hIdx = 0;
   const c = A.sc.course; const [l0, l1] = A.sc.li; const par = getH().reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${A.sc.date} · ${c.layouts[l0].name}+${c.layouts[l1].name} · 파${par}`;
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${c.layouts[l0].name} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${c.layouts[l1].name} (10-18)</button>`;
@@ -1902,18 +2007,18 @@ function guideScorecardHTML() {
   ${S('② 골프장 고르기')}
   <div style="font-size:13px;color:var(--t2);line-height:1.6"><b style="color:var(--a)">리스트는 아직 채우는 중</b>(현재 ${courseCnt}곳)이라, 없으면 <b style="color:var(--t)">[＋ 추가]</b>로 직접 등록해 바로 쓰면 돼요. 등록한 곳은 목록에 남습니다.</div>
 
-  ${S('③ 홀 파(par) 확인')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.6">같은 골프장도 도는 코스 조합에 따라 파가 달라요. 뜨는 창에서 ＋/－로 그날 파를 맞추세요. <b style="color:var(--a)">이 라운드에 바로 적용되고, 마스터와 값이 다르면 공식 코스 데이터에도 함께 저장돼 다른 사람이 같은 골프장·코스 조합을 고를 때도 그대로 보여요</b>(저장 실패해도 이 라운드 입력엔 지장 없음). 작성 중에도 상단 <b>⛳ 파수정</b>으로 같은 방식으로 반영돼요.</div>
+  ${S('③ 홀 파(par) 확인·변경')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">각 홀 화면 위쪽에 그 홀의 파(파3/4/5)가 이미 골라진 채로 떠요. 다르면 탭해서 바로 바꿀 수 있어요. <b style="color:var(--a)">이 라운드에 바로 적용되고, 마스터와 값이 다르면 공식 코스 데이터에도 함께 저장돼 다른 사람이 같은 골프장·코스 조합을 고를 때도 그대로 보여요</b>(저장 실패해도 이 라운드 입력엔 지장 없음). 상단 <b>⛳ 파수정</b>으로 18홀을 한 번에 고칠 수도 있어요.</div>
 
-  ${S('④ 버튼 의미')}
-  ${btn('－ ＋', '타수 −1/＋1. 가운데 <b>숫자(P)</b> 탭 = 파로 바로 입력.')}
-  ${btn('GIR', '정규타수(파−2) 안에 그린 올렸으면 ON. (아이언 지표)')}
-  ${btn('FIR', '티샷이 페어웨이면 ON. 파4·5만, <b>파3은 자동 비활성(·)</b>.')}
-  ${btn('2P', '퍼팅 수. 탭마다 1P→2P→3P→4P 순환(기본 2P).')}
-  ${btn('티샷 / 멀리건 / 티샷 패널티', '티샷 사고를 기록해요. 누를 때마다 <b>티샷</b>(사고 없음) → <b>멀리건</b>(다시 침·벌타 없음) → <b>티샷 패널티</b>(OB·해저드 등 벌타 있는 사고) → 다시 처음으로 돌아가요. 드라이버 진단(페어웨이%·생존율)에 쓰여요.<br><b style="color:var(--a)">주의: 이 버튼은 벌타를 스코어에 자동으로 더해주지 않아요.</b> 실제 벌타(예: 해저드 ＋1타, OB ＋2타)는 위쪽 타수(－/＋)에서 직접 더해 넣어야 해요.')}
+  ${S('④ 홀마다 입력하는 것')}
+  ${btn('온그린까지', '티샷부터 그린에 공을 올릴 때까지 친 타수. ＋/－로 조정. <b>스코어는 이 값에 퍼팅 수를 더해 자동 계산</b>돼요 — 직접 두드리지 않아요.')}
+  ${btn('퍼팅', '그린에서 홀에 넣기까지 친 횟수. 0(칩인)도 가능해요.')}
+  ${btn('결과 배너', '위 두 값으로 계산된 스코어(파·보기·더블 등)를 실시간으로 보여줘요. 파 대비도 함께 표시.')}
+  ${btn('GIR', '자동 계산돼요. <b>온그린까지 타수 ≤ 파−2</b>면 ON — 따로 누를 필요 없어요.')}
+  ${btn('티샷 결과', '페어웨이 / 러프 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이·러프 제외). <b>페어웨이를 고르면 FIR이 자동으로 반영</b>돼요. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
 
-  ${S('⑤ 저장')}
-  <div style="font-size:13px;color:var(--t2);line-height:1.6">위 세그먼트로 전·후반 전환, 아래 바에 합계가 실시간 집계. 다 채우면 <b style="color:var(--g)">✓ 완료</b>로 저장. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
+  ${S('⑤ 이동·저장')}
+  <div style="font-size:13px;color:var(--t2);line-height:1.6">맨 위 전반/후반 진행 막대를 탭하면 해당 홀로 바로 이동. 값을 바꾸면 그 즉시 자동 저장되고, <b style="color:var(--g)">저장·다음 홀 →</b>로 다음 홀로 넘어가요. 18번 홀에서는 <b style="color:var(--g)">저장·완료</b>로 마무리. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} 기준 · 기능이 바뀌면 자동 갱신.</div>`;
 }
