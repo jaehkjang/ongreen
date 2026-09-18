@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.32.0';
+const APP_VERSION = 'v12.33.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -547,13 +547,13 @@ function openDet(id) {
     ${skillRatioHTML([r])}
     ${blowupCauseHTML([r])}
     <div class="lbl">🎯 손실 타수, 어디서 났나 (드라이버=티샷 · 아이언 · 숏게임=어프로치 · 퍼팅)</div>${weaknessHTML(analyze([r]), [r])}
+    <div class="lbl">파 종류별</div>${parCrossHTML([r])}
+    ${puttShortHTML([r])}
     ${frontBackHTML([r])}
     <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div onclick="holeDetail(${id},${i})" style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
     ${scoreDistHTML([r])}
-    <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin:8px 0 6px">🔍 이 라운드 분석</button>
-    <div id="rana-box" style="display:none;margin-bottom:8px"></div>
     ${courseCompareHTML(r)}
     <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -697,6 +697,15 @@ function recalcHole(i) {                          // 온그린·퍼팅이 확정
   const par = getH()[i], og = (A.sc.og && A.sc.og[i]) || 0;
   if (og > 0) { A.sc.scores[i] = og + (A.sc.putts[i] || 0); A.sc.gir[i] = og <= Math.max(1, par - 2); }
 }
+// 아직 입력 전(미조정) 홀은 미리보기 값이 항상 파와 같으므로, 그 값 그대로 원터치 확정한다.
+function confirmPar(i) {
+  if (A.sc.ro || A.sc.scores[i] > 0) return;
+  if (!A.sc.og) A.sc.og = Array(18).fill(0);
+  const par = getH()[i];
+  A.sc.og[i] = Math.max(1, par - 2);
+  A.sc.putts[i] = 2;
+  recalcHole(i); renderSC(); autoSaveSC();
+}
 function ogAdj(i, d) {
   if (A.sc.ro) return;
   if (!A.sc.og) A.sc.og = Array(18).fill(0);
@@ -778,9 +787,9 @@ function renderHoleWizard() {
           <div style="font-size:11px;color:var(--t3);margin-top:6px">수</div>
         </div>
       </div>
-      <div class="${cc}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px">
+      <div class="${cc}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px${entered ? '' : ';cursor:pointer'}"${entered ? '' : ` onclick="confirmPar(${i})"`}>
         <div style="font-size:18px;font-weight:800">${entered ? scoreLabel(d, score) : '입력 전'}</div>
-        <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `기본값 ${score}타 표시 중 · 조정하면 기록돼요`}</div>
+        <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `탭하면 파(${par}) 그대로 입력돼요`}</div>
       </div>
       <div style="display:flex;gap:8px">
         ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 108px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">◀ 이전 홀</button>` : ''}
@@ -1413,21 +1422,6 @@ function weaknessItems(a) {
     { area: '🍩 퍼팅', lost: a.puttLossRound, tip: '거리감·3퍼팅 줄이기 · 2퍼팅 기준 초과 타수 그대로 반영', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
   ].sort((x, y) => y.lost - x.lost);
 }
-// ── 💊 오늘의 처방: 4부서 중 손해 가장 큰 한 곳을 콕 집어 행동 지시 ──
-function prescriptionHTML(a) {
-  if (!a.n) return '';
-  const top = weaknessItems(a)[0];
-  if (!top || top.lost < 0.3) {   // 큰 약점이 없음 — 균형 잡힌 상태
-    return `<div class="cb" style="border-left:3px solid var(--g)">
-      <div style="font-size:13px;font-weight:800;color:var(--g);margin-bottom:4px">💊 오늘의 처방</div>
-      <div style="font-size:13px;color:var(--t2);line-height:1.6">4개 영역이 고르게 좋아요. 뚜렷한 약점이 없으니 <b style="color:var(--t)">지금 루틴을 유지</b>하세요.</div></div>`;
-  }
-  const name = top.area.replace(/^[^ ]+\s/, '');   // 이모지 제거한 영역 이름
-  return `<div class="cb" style="border-left:3px solid var(--a)">
-    <div style="font-size:13px;font-weight:800;color:var(--a);margin-bottom:5px">💊 오늘의 처방</div>
-    <div style="font-size:16px;font-weight:700;color:var(--t);line-height:1.4">${top.area.split(' ')[0]} ${name} 한 곳만 잡으세요</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-top:6px">${name}에서 약 <b style="color:var(--a)">${top.lost.toFixed(1)}타</b>를 손해 보고 있어요.<br>→ <b style="color:var(--t)">${top.drill}</b></div></div>`;
-}
 // ── 약점 우선순위(간이 스트로크게인): 영역별 손실 타수 추정 → 고칠 순서 ──
 function weaknessHTML(a, rounds) {
   if (!a.n) return '';
@@ -1687,30 +1681,6 @@ function scoreDistHTML(rounds) {
 function sigChip(icon, label, val, color) {
   const em = color === 'var(--g)' ? '🟢' : color === 'var(--a)' ? '🟡' : color === 'var(--r)' ? '🔴' : '';
   return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:.5px solid var(--bd);border-radius:8px;padding:4px 9px;font-size:12px;color:var(--t2)">${em ? em + ' ' : ''}${icon} ${label} <b style="color:var(--t)">${val}</b></span>`;
-}
-
-// ── 🔍 이 라운드 분석: 전체 통계와 같은 하위 탭(추세·기록 제외)으로, 그 라운드 한 판 기준 ──
-// "스코어" 탭은 폐지 — 라운드 상세 기본 정보(openDet)와 내용이 겹쳐서 기본 정보 쪽으로 옮겼다.
-let _ranaSub = 0;   // 0 정확도·퍼팅 · 1 진단
-let _ranaId = null;
-const RANA_SUBS = ['정확도·퍼팅', '진단'];
-function setRanaSub(s) { _ranaSub = s; renderRanaBox(); }
-function renderRanaBox() {
-  const r = A.rounds.find(x => x.id === _ranaId); if (!r) return;
-  const box = Q('rana-box'); if (!box) return;
-  let h = `<div class="seg" style="margin-bottom:12px">${RANA_SUBS.map((l, i) => `<button class="sg ${i === _ranaSub ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px" onclick="setRanaSub(${i})">${l}</button>`).join('')}</div>`;
-  if (_ranaSub === 0) {
-    h += `<div class="lbl">파 종류별</div>${parCrossHTML([r])}` + puttShortHTML([r]);
-  } else {
-    const a = analyze([r]);
-    h += `<div class="lbl">🚦 진단</div>${analysisHTML(a)}<div class="lbl">🎯 약점 우선순위</div>${weaknessHTML(a, [r])}` + prescriptionHTML(a);   // 💊 처방은 맨 마지막
-  }
-  box.innerHTML = h;
-}
-function toggleRoundAna(id) {
-  const box = Q('rana-box'), btn = Q('rana-btn'); if (!box) return;
-  if (box.style.display === 'block') { box.style.display = 'none'; if (btn) btn.textContent = '🔍 이 라운드 분석'; }
-  else { _ranaId = id; _ranaSub = 0; renderRanaBox(); box.style.display = 'block'; if (btn) btn.textContent = '🔍 분석 닫기'; }
 }
 
 // ── 신호등 기준: "내 평균 대비" ──
