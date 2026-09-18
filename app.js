@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.30.4';
+const APP_VERSION = 'v12.30.5';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1390,7 +1390,7 @@ function weaknessItems(a) {
     { area: '🚗 드라이버', lost: a.teeCostOk ? a.teeCostRound : a.teeLostPer * 1.0, tip: 'OB·해저드 줄이기 (티샷 안정) · 파4·5 홀만 집계, 파3 제외', drill: '드라이버 대신 페어웨이우드·롱아이언으로 티샷 안정 우선' },
     { area: '🎯 아이언', lost: a.missAvg, tip: '그린 적중률(GIR) 올리기 · 라운드당 그린 놓친 홀 수 그대로 반영', drill: '핀이 아니라 그린 센터를 노려 큰 미스 줄이기' },
     { area: '⛳ 숏게임', lost: a.missAvg * (1 - scrRate), tip: '어프로치·파세이브 · 그린 놓치고 파 못 지킨 홀 수 그대로 반영', drill: '30·50·70m 거리별 어프로치를 반복해 그린 미스 후 회복' },
-    { area: '🍩 퍼팅', lost: Math.max(0, a.puttAvg - BENCH.puttGood), tip: '거리감·3퍼팅 줄이기', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
+    { area: '🍩 퍼팅', lost: a.threeAvg, tip: '거리감·3퍼팅 줄이기 · 3퍼팅 홀 수 그대로 반영', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
   ].sort((x, y) => y.lost - x.lost);
 }
 // ── 💊 오늘의 처방: 4부서 중 손해 가장 큰 한 곳을 콕 집어 행동 지시 ──
