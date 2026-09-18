@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.34.0';
+const APP_VERSION = 'v12.34.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1382,15 +1382,16 @@ function weaknessHTML(a, rounds) {
   return `<div class="cb">${rows}<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:2px">※ 라운드당 손실 타수 추정(설정 기준값 대비). 영역 간 중복이 있을 수 있는 상대 비교용입니다.</div></div>`;
 }
 
-// ── 💥 큰 실수(블로업)의 원인 분해: 더블보기↑ 홀이 무엇 때문에 났는지 ──
+// ── 💥 블로업(트리플보기 이상) 홀의 원인 분해 ──
 // 한 홀에 원인이 겹칠 수 있으므로(예: 티샷 OB + 3퍼팅) 각 원인별로 따로 셉니다.
+// "블로업"은 실력 비율 카드(skillRatioHTML)와 같은 기준(트리플보기 이상)을 씁니다.
 function blowupCauseHTML(rounds) {
   let big = 0, teeC = 0, puttC = 0, missC = 0;
   rounds.forEach(r => {
     const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], pa = r.puttsArr || [], tp = r.tpArr || [];
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!(s > 0)) continue;
-      const par = hp[i] || 4; if (s - par < 2) continue;     // 더블보기 이상만
+      const par = hp[i] || 4; if (s - par < 3) continue;     // 블로업(트리플보기 이상)만
       big++;
       const tee = (tp[i] || 0);                              // 티샷 사고(OB·해저드 벌타). 멀리건은 벌타가 안 들어가 제외
       if (tee) teeC++;
@@ -1398,16 +1399,16 @@ function blowupCauseHTML(rounds) {
       if (!gi[i] && !tee) missC++;                           // 그린 미스(티샷 사고는 위에서 집계해 중복 제외)
     }
   });
-  if (!big) return `<div class="cb" style="font-size:13px;color:var(--t2);line-height:1.6">🎉 더블보기 이상(큰 실수)이 없어요. 큰 점수가 안 나오는 게 최고의 강점입니다.</div>`;
+  if (!big) return `<div class="cb" style="font-size:13px;color:var(--t2);line-height:1.6">🎉 블로업(트리플보기 이상)이 없어요. 큰 점수가 안 나오는 게 최고의 강점입니다.</div>`;
   const rows = [
-    ['🚗 티샷 사고(OB·해저드)', teeC, 'var(--r)'],
-    ['🍩 3퍼팅 이상', puttC, 'var(--a)'],
-    ['🎯 그린 미스(어프로치)', missC, 'var(--b)'],
+    ['🚗 티샷 사고', teeC, 'var(--r)'],
+    ['🍩 3퍼팅↑', puttC, 'var(--a)'],
+    ['🎯 그린 미스', missC, 'var(--b)'],
   ];
   const mx = Math.max(...rows.map(x => x[1]), 1);
-  const body = rows.map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co};min-width:${c ? 18 : 0}px"><span>${c}</span></div></div></div>`).join('');
+  const body = rows.map(([l, c, co]) => `<div class="br"><div class="bl" style="width:74px;white-space:nowrap">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co};min-width:${c ? 18 : 0}px"><span>${c}</span></div></div></div>`).join('');
   const top = [...rows].sort((a, b) => b[1] - a[1])[0];
-  return `<div class="cb"><div class="cbt">💥 큰 실수(더블보기↑) ${big}개의 원인</div>${body}
+  return `<div class="cb"><div class="cbt">💥 블로업(트리플보기↑) ${big}개의 원인</div>${body}
     <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">한 홀에 원인이 겹칠 수 있어 합계는 ${big}개와 다를 수 있어요. <b style="color:var(--t2)">가장 잦은 범인: ${top[0]}</b> — 여기만 줄여도 큰 점수가 확 줄어요.</div></div>`;
 }
 
@@ -1967,6 +1968,7 @@ function updateNewsHTML() {
   ${li('📊 <b>통계 탭 정리</b> — 진단 탭을 없애고 <b>스코어·숏게임·퍼팅·추세·기록</b> 3개 탭으로 줄였어요. "정확도·퍼팅"은 <b>숏게임·퍼팅</b>으로 이름을 바꿨어요.')}
   ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "입력 전" 박스를 탭하면 파가 그대로 입력돼요.')}
   ${li('✂️ <b>표기 간소화</b> — 추세 탭의 "티샷손실타수"를 "티샷손실"로 줄여 한 줄에 들어오게 했어요.')}
+  ${li('💥 <b>큰 실수 기준 수정</b> — "큰 실수의 원인"이 더블보기 이상이 아니라 <b>블로업(트리플보기 이상)</b> 홀만 세도록 바로잡았고, 원인 이름(티샷 사고·3퍼팅↑·그린 미스)이 한 줄로 보이게 고쳤어요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2020,7 +2022,7 @@ function guideStatsHTML() {
   ${it('평균 스코어·오버파·기복', '총타수 평균 / 파 대비(+오버·−언더) / 점수 편차(작을수록 일정).')}
   ${it('실력 비율 · 블로업', '홀 기준 파 이하·보기·더블+ 비율. 블로업 = 라운드당 트리플보기↑ 홀.')}
   ${it('파 종류별 · 전·후반', '파3·4·5별 파 대비 평균에 더해, 파3은 GIR / 파4·5는 FIR·GIR을 함께 보여줘 어느 홀 유형에서 어느 부서가 약한지 진단. / 앞뒤 9홀 평균·차이(후반 무너짐).')}
-  ${it('💥 큰 실수의 원인', '더블보기 이상(블로업) 홀이 티샷 사고·3퍼팅·그린 미스 중 무엇 때문이었는지 원인별로 분해해요(한 홀에 겹칠 수 있음).')}
+  ${it('💥 큰 실수의 원인', '블로업(트리플보기 이상) 홀이 티샷 사고·3퍼팅·그린 미스 중 무엇 때문이었는지 원인별로 분해해요(한 홀에 겹칠 수 있음).')}
 
   ${S('숏게임 · 퍼팅')}
   ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
@@ -2058,7 +2060,7 @@ function philosophyHTML() {
 
   <div style="font-size:13px;font-weight:800;color:var(--g);margin:16px 0 4px">🧭 그래서 이렇게 안내해요</div>
   ${card('🎯', '손실 타수, 어디서 났나', `라운드 상세에서 가장 손해 큰 한 곳만 ⭐최우선으로 콕 집어줘요.`)}
-  ${card('💥', '큰 실수의 원인', `더블보기↑가 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.`)}
+  ${card('💥', '큰 실수의 원인', `블로업(트리플보기↑)이 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.`)}
   ${card('📊', '기복 추세', `라운드를 거듭할수록 점수가 일정해지는지 봐요.`)}
 
   <div style="margin-top:16px;padding:12px 14px;background:#0d2e1a;border:1px solid var(--g);border-radius:12px;font-size:13px;color:var(--g);line-height:1.6;font-weight:600">숫자를 보지 말고, 숫자가 가리키는 <b>다음 한 타</b>를 보세요. 그게 온그린의 전부예요. 🟢</div>
