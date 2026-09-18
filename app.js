@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.30.1';
+const APP_VERSION = 'v12.30.2';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -540,8 +540,8 @@ function openDet(id) {
       <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span></div>
       <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
       <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
-      <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span style="font-size:14px;color:var(--t2)">/</span>${r.tpCount || 0}</span><span class="sl">M / TP</span></div>
-      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
+      <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span style="font-size:13px;color:var(--t2)">/</span>${obCountOf(r)}<span style="font-size:13px;color:var(--t2)">/</span>${hzCountOf(r)}</span><span class="sl">멀리건/OB/해저드</span></div>
+      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
     <div class="lbl">🎯 손실 타수, 어디서 났나 (드라이버=티샷 · 아이언 · 숏게임=어프로치 · 퍼팅)</div>${weaknessHTML(analyze([r]), [r])}
@@ -1328,7 +1328,7 @@ const TREND_METRICS = [
   { k: 'putts', lbl: '퍼팅',   low: true,  u: '' },
   { k: 'gir',   lbl: 'GIR',    low: false, u: '%' },
   { k: 'fir',   lbl: 'FIR',    low: false, u: '%' },
-  { k: 'lossStrokes', lbl: '손실타수', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
+  { k: 'lossStrokes', lbl: '티샷손실타수', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
   { k: 'consist', lbl: '기복', low: true,  u: '' },   // 최근 5R 스코어 편차(작을수록 일정)
 ];
 function setTrend(k) { _trendMetric = k; const w = Q('trend-wrap'); if (w) w.innerHTML = trendWrapHTML(); }
@@ -1387,7 +1387,7 @@ function weaknessItems(a) {
   const scrRate = a.missGreen ? a.scrSave / a.missGreen : 1;   // 스크램블 성공률(analyze 집계 재사용)
   return [
     // 손실 타수: 실측한 "티샷 손실"이 있으면 그걸 쓰고(가장 정확), 표본이 모자라면 예전처럼 OB/해저드 홀 수로 추정
-    { area: '🚗 드라이버', lost: a.teeCostOk ? a.teeCostRound : a.teeLostPer * 1.0, tip: 'OB·해저드 줄이기 (티샷 안정)', drill: '드라이버 대신 페어웨이우드·롱아이언으로 티샷 안정 우선' },
+    { area: '🚗 드라이버', lost: a.teeCostOk ? a.teeCostRound : a.teeLostPer * 1.0, tip: 'OB·해저드 줄이기 (티샷 안정) · 파4·5 홀만 집계, 파3 제외', drill: '드라이버 대신 페어웨이우드·롱아이언으로 티샷 안정 우선' },
     { area: '🎯 아이언', lost: Math.max(0, (BENCH.girGood - a.girPct) / 100) * 18 * 0.5, tip: '그린 적중률(GIR) 올리기', drill: '핀이 아니라 그린 센터를 노려 큰 미스 줄이기' },
     { area: '⛳ 숏게임', lost: a.missAvg * (1 - scrRate) * 0.5, tip: '어프로치·파세이브', drill: '30·50·70m 거리별 어프로치를 반복해 그린 미스 후 회복' },
     { area: '🍩 퍼팅', lost: Math.max(0, a.puttAvg - BENCH.puttGood), tip: '거리감·3퍼팅 줄이기', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
