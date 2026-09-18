@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.29.0';
+const APP_VERSION = 'v12.30.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -463,7 +463,12 @@ async function saveRound() {
   toast(r.ok ? '✅ 저장 완료' : (r.__unsafe ? '✅ 기기에 저장됨 · 연결 후 자동 동기화' : '⚠️ 저장됐지만 동기화 실패'));
   setSaveHint(r.ok ? '저장됨 ✓' : '기기에 저장됨 · 연결되면 자동 동기화');
   btn.disabled = false;
-  renderSC();                                      // 버튼 라벨(저장/✓ 완료) 복구 — 화면은 그대로 유지
+  if (rd.scores.every(x => x > 0)) {               // 18홀 다 채우고 저장했으면 이 라운드의 분석 화면으로 바로 이동
+    A.sc.course = null; A.sc.eid = null; A.sc.ro = false;
+    goHome(); openDet(rd.id);
+  } else {
+    renderSC();                                    // 아직 다 안 쳤으면 화면에 머무르며 버튼 라벨(저장/✓ 완료)만 복구
+  }
 }
 
 function roundPars(r) {                          // 박제된 파 우선, 없으면 옛 라운드 호환용으로 마스터 참조
@@ -671,6 +676,7 @@ function deriveTeeSel() {                          // 저장된 라운드를 다
 function setTee(i, key) {
   if (A.sc.ro) return;
   if ((key === 'fw' || key === 'rough') && getH()[i] === 3) return;   // 파3엔 페어웨이 개념 없음
+  if (key === 'green' && getH()[i] !== 3) return;                     // 온그린 칩은 파3 전용(파4·5는 온그린까지 숫자로 입력)
   if (!A.sc.teeSel) A.sc.teeSel = Array(18).fill(null);
   const next = A.sc.teeSel[i] === key ? null : key;                   // 같은 걸 다시 누르면 선택 해제
   A.sc.teeSel[i] = next;
@@ -726,7 +732,7 @@ function renderHoleWizard() {
   const d = score - par, cc = entered ? cls(score, par) : 'e';
   const ts = teeState(i);
   const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
-  const chips = (par === 3 ? [] : [chip('fw', '페어웨이'), chip('rough', '러프')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
+  const chips = (par === 3 ? [chip('green', '온그린')] : [chip('fw', '페어웨이'), chip('rough', '러프')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
   const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
   const holeCell = idx => { const on = idx === i, done = A.sc.scores[idx] > 0;
     return `<button onclick="hJump(${idx})" style="flex:1;height:38px;min-width:0;border:none;border-radius:9px;cursor:pointer;font-size:13px;
@@ -1477,7 +1483,7 @@ function parCrossHTML(rounds) {
 
 // ── 추가 집계(홀 기준): 실력 비율 · 퍼팅 분포 · 정확도의 가치 ──
 function extraStats(rounds) {
-  let played = 0, parOrBetter = 0, bogey = 0, dblPlus = 0;
+  let played = 0;
   let firHitVs = 0, firHitN = 0, firMissVs = 0, firMissN = 0;
   let girHitVs = 0, girHitN = 0, girMissVs = 0, girMissN = 0;
   let p1 = 0, p2 = 0, p3 = 0, p4 = 0, puttHoles = 0;
@@ -1487,16 +1493,13 @@ function extraStats(rounds) {
       const s = sc[i]; if (!(s > 0)) continue;
       const par = hp[i] || 4, d = s - par;
       played++;
-      if (d <= 0) parOrBetter++;
-      if (d === 1) bogey++;
-      if (d >= 2) dblPlus++;
       if (gi[i]) { girHitN++; girHitVs += d; } else { girMissN++; girMissVs += d; }
       if (par > 3) { if (fi[i]) { firHitN++; firHitVs += d; } else { firMissN++; firMissVs += d; } }
       const pt = pa[i] || 0; if (pt > 0) { puttHoles++; if (pt <= 1) p1++; else if (pt === 2) p2++; else if (pt === 3) p3++; else p4++; }
     }
   });
   const pct = (x, y) => y ? Math.round(x / y * 100) : null, avg = (x, y) => y ? x / y : null;
-  return { played, parSaveRate: pct(parOrBetter, played), bogeyRate: pct(bogey, played), dblPlusRate: pct(dblPlus, played),
+  return { played,
     firHitAvg: avg(firHitVs, firHitN), firMissAvg: avg(firMissVs, firMissN), girHitAvg: avg(girHitVs, girHitN), girMissAvg: avg(girMissVs, girMissN),
     p1, p2, p3, p4, puttHoles, onePuttRate: pct(p1, puttHoles) };
 }
@@ -1572,21 +1575,44 @@ function coreMetricsHTML(rounds, includeSd) {
   const sd = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
   return `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', n > 1 ? '평균 스코어' : '스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', n > 1 ? '평균 오버파' : '오버파')}${statCard(avg('putts').toFixed(1), '', n > 1 ? '평균 퍼팅' : '퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${includeSd ? statCard('±' + sd.toFixed(1), '', '기복(편차)') : ''}</div>`;
 }
-// 실력 비율(홀 기준) + 블로업 설명
+// ── 도넛(원형) 차트: 값이 서로 겹치지 않고 합쳐서 전체가 되는 비율 데이터용 ──
+// stroke-dasharray 로 원을 나눠 그리는 방식이라 별도 라이브러리 없이 SVG 하나로 끝난다.
+function donutSVG(segs, size, thick) {
+  size = size || 128; thick = thick || 20;
+  const total = segs.reduce((a, s) => a + s.v, 0) || 1;
+  const r = (size - thick) / 2, cx = size / 2, cy = size / 2, C = 2 * Math.PI * r;
+  let acc = 0;
+  const arcs = segs.filter(s => s.v > 0).map(s => {
+    const dash = s.v / total * C, offset = -acc * C; acc += s.v / total;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.c}" stroke-width="${thick}" stroke-dasharray="${dash.toFixed(1)} ${(C - dash).toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${size} ${size}" style="width:${size}px;height:${size}px;flex-shrink:0">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bg3)" stroke-width="${thick}"/>${arcs}
+  </svg>`;
+}
+// 실력 비율(홀 기준, 파이하·보기·더블+ 은 서로 겹치지 않는 전체 분해라 원형그래프로) + 블로업 설명
 function skillRatioHTML(rounds) {
   const n = rounds.length; if (!n) return '';
   const ex = extraStats(rounds);
   const allD = rounds.flatMap(r => { const hh = roundPars(r); return (r.scores || []).map((s, i) => s > 0 ? s - (hh[i] || 4) : null).filter(x => x !== null); });
+  if (!allD.length) return '<div class="lbl">실력 비율 (홀 기준)</div><div class="cb" style="text-align:center;color:var(--t3);font-size:12px;padding:20px">기록된 홀이 없습니다</div>';
   const birdie = allD.filter(d => d === -1).length, trip = allD.filter(d => d >= 3).length;
   const blowup = trip / n;
   const birdieRate = ex.played ? Math.round(birdie / ex.played * 100) : null;
-  return `<div class="lbl">실력 비율 (홀 기준)</div><div class="sgd">
-    ${statCard(ex.parSaveRate == null ? '-' : ex.parSaveRate, ex.parSaveRate == null ? '' : '%', '파 이하')}
-    ${statCard(birdieRate == null ? '-' : birdieRate, birdieRate == null ? '' : '%', '🕊️ 버디')}
-    ${statCard(ex.bogeyRate == null ? '-' : ex.bogeyRate, ex.bogeyRate == null ? '' : '%', '보기')}
-    ${statCard(ex.dblPlusRate == null ? '-' : ex.dblPlusRate, ex.dblPlusRate == null ? '' : '%', '더블+')}
+  const segs = [
+    { v: allD.filter(d => d <= 0).length, c: 'var(--g)', l: '파 이하' },
+    { v: allD.filter(d => d === 1).length, c: 'var(--a)', l: '보기' },
+    { v: allD.filter(d => d >= 2).length, c: 'var(--r)', l: '더블+' },
+  ];
+  const legend = segs.map(s => `<div style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--t2);margin:5px 0">
+    <span style="width:10px;height:10px;border-radius:3px;background:${s.c};flex-shrink:0"></span>
+    <span style="flex:1">${s.l}</span><b style="color:var(--t)">${Math.round(s.v / allD.length * 100)}%</b></div>`).join('');
+  return `<div class="lbl">실력 비율 (홀 기준)</div>
+  <div class="cb" style="display:flex;align-items:center;gap:18px">${donutSVG(segs)}<div style="flex:1">${legend}</div></div>
+  <div class="sgd" style="margin-top:10px">
+    ${statCard(birdieRate == null ? '-' : birdieRate, birdieRate == null ? '' : '%', '🕊️ 버디 (파 이하 중)')}
     ${statCard(nf(blowup), '', '블로업/R')}</div>
-  <div style="font-size:10px;color:var(--t3);margin:-6px 2px 4px">💡 블로업 = 트리플보기 이상 홀(라운드당 ${nf(blowup)}홀). 줄이면 스코어가 크게 떨어져요.</div>`;
+  <div style="font-size:10px;color:var(--t3);margin:6px 2px 4px">💡 블로업 = 트리플보기 이상 홀(라운드당 ${nf(blowup)}홀). 줄이면 스코어가 크게 떨어져요.</div>`;
 }
 // 퍼팅 · 쇼트게임 + 퍼팅 분포 막대 + 스크램블 설명
 function puttShortHTML(rounds) {
