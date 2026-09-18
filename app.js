@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.35.0';
+const APP_VERSION = 'v12.35.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -736,9 +736,9 @@ function renderHoleWizard() {
           <div style="font-size:11px;color:var(--t3);margin-top:6px">수</div>
         </div>
       </div>
-      <div class="${cc}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px${entered ? '' : ';cursor:pointer'}"${entered ? '' : ` onclick="confirmPar(${i})"`}>
-        <div style="font-size:18px;font-weight:800">${entered ? scoreLabel(d, score) : '입력 전'}</div>
-        <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `탭하면 파(${par}) 그대로 입력돼요`}</div>
+      <div class="${entered ? cc : ''}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px${entered ? '' : ';cursor:pointer;background:#0d2e1a;border:1.5px dashed var(--g)'}"${entered ? '' : ` onclick="confirmPar(${i})"`}>
+        <div style="font-size:18px;font-weight:800;${entered ? '' : 'color:var(--g)'}">${entered ? scoreLabel(d, score) : '👆 입력 전'}</div>
+        <div style="font-size:13px;margin-top:3px;${entered ? 'opacity:.85' : 'color:var(--g);font-weight:800'}">${entered ? `${vsL(d)} · 총 ${score}타` : `탭 한 번으로 파(${par}) 입력!`}</div>
       </div>
       <div style="display:flex;gap:8px">
         ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 108px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">◀ 이전 홀</button>` : ''}
@@ -1915,7 +1915,7 @@ function updateNewsHTML() {
   ${S('📣 이번 업데이트 — 더 짧고 빠르게')}
   ${li('🔍 <b>라운드 상세 통합</b> — "이 라운드 분석" 토글을 없애고 정확도·숏게임·퍼팅(스크램블링 포함) 내용을 기본 화면에 바로 노출. 🚦신호등 진단·💊오늘의 처방은 없앴어요.')}
   ${li('📊 <b>통계 탭 정리</b> — 진단 탭을 없애고 <b>스코어·숏게임·퍼팅·추세·기록</b> 3개 탭으로 줄였어요. "정확도·퍼팅"은 <b>숏게임·퍼팅</b>으로 이름을 바꿨어요.')}
-  ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "입력 전" 박스를 탭하면 파가 그대로 입력돼요.')}
+  ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "👆 입력 전" 박스(초록 점선 테두리로 눈에 띄게)를 탭하면 파가 그대로 입력돼요.')}
   ${li('✂️ <b>표기 간소화</b> — 추세 탭의 "티샷손실타수"를 "티샷손실"로 줄여 한 줄에 들어오게 했어요.')}
   ${li('💥 <b>큰 실수 기준 수정</b> — "큰 실수의 원인"이 더블보기 이상이 아니라 <b>블로업(트리플보기 이상)</b> 홀만 세도록 바로잡았고, 원인 이름(티샷 사고·3퍼팅↑·그린 미스)이 한 줄로 보이게 고쳤어요.')}
   ${li('🗑️ <b>분석 기준값 설정 삭제</b> — 신호등 진단 기능이 없어지며 안 쓰이게 된 설정 → "분석 기준" 화면을 정리했어요.')}
