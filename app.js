@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.27.0';
+const APP_VERSION = 'v12.28.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -24,7 +24,7 @@ let A = {
   sc: { course: null, li: [0, 1], ro: false, eid: null, half: 0, hIdx: 0,
         scores: Array(18).fill(0), putts: Array(18).fill(2), og: Array(18).fill(0),
         gir: Array(18).fill(false), fir: Array(18).fill(false),
-        mulli: Array(18).fill(0), tp: Array(18).fill(0),
+        mulli: Array(18).fill(0), tp: Array(18).fill(0), teeSel: Array(18).fill(null),
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
 
 // ── 분석 기준값(신호등) · 관리자가 설정에서 수정 → 서버 공유. 서버 없으면 이 기본값 ──
@@ -49,7 +49,7 @@ const NOTICES = [
 function nf(x) { return Number.isInteger(+x) ? String(+x) : (+x).toFixed(1); }
 function nfs(x) { const v = +x; return (v > 0 ? '+' : '') + nf(v); }   // 파 대비처럼 부호가 중요한 값 (+0.4 / -0.2)
 let _sid = 0, _delId = null, _editOldName = '';
-let _trendMetric = 0;   // 발전 추세 그래프에서 보고 있는 지표(0 스코어·1 퍼팅·2 GIR·3 FIR)
+let _trendMetric = 0;   // 발전 추세 그래프에서 보고 있는 지표(TREND_METRICS 인덱스)
 
 // ── 작은 도우미 ──
 const Q = id => document.getElementById(id);
@@ -311,7 +311,7 @@ function goSelectCourse() {
   A.sc.date = Q('nr-d').value.replaceAll('-', '.'); A.sc.wx = Q('nr-w').value;
   A.sc.partner = Q('nr-p').value; A.sc.memo = Q('nr-m').value;
   A.sc.eid = null; A.sc.ro = false; A.sc.hIdx = 0; A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
-  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0);
+  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0); A.sc.teeSel = Array(18).fill(null);
   cm('m-nr'); renderCourses(); showPg('course');
 }
 
@@ -536,6 +536,7 @@ function openDet(id) {
       <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
       <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
       <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span style="font-size:14px;color:var(--t2)">/</span>${r.tpCount || 0}</span><span class="sl">M / TP</span></div>
+      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
     <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin-bottom:6px">🔍 이 라운드 분석</button>
@@ -572,6 +573,7 @@ function openSC(id, ro) {
   A.sc.gir = [...r.girArr]; A.sc.fir = [...r.firArr]; A.sc.mulli = [...(r.mulliArr || Array(18).fill(0))]; A.sc.tp = [...(r.tpArr || Array(18).fill(0))];
   // 온그린 타수는 저장하지 않으므로(스코어=온그린+퍼팅) 기존 기록에서 역산해 복원한다.
   A.sc.og = pars.map((p, i) => { const s = A.sc.scores[i] || 0, pt = A.sc.putts[i] || 0; return s > 0 ? Math.max(0, s - pt) : Math.max(1, p - 2); });
+  A.sc.teeSel = deriveTeeSel();   // 티샷 선택 칩 상태도 fir/mulli/tp 로부터 추정 복원(러프/미선택은 구분 불가 → 미선택으로)
   const par = pars.reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${r.date} · ${n0}+${n1} · 파${par}`;
   Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${n0} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${n1} (10-18)</button>`;
@@ -651,18 +653,26 @@ function renderScReadOnly() {
 //  · 해저드/OB 구분은 A.sc.tp 값(1=해저드, 2=OB)으로 저장 — 통계(analyze())는 여전히 truthy만 보므로 기존 로직과 호환.
 //  · 온그린 타수(A.sc.og)는 저장 스키마에 없다 — 라운드를 다시 열 때 scores−putts 로 역산해 복원한다(openSC 참고).
 // ════════════════════════════════════════
-function teeState(i) {
-  if (A.sc.mulli[i]) return 'mull';
-  const t = (A.sc.tp && A.sc.tp[i]) || 0;
-  if (t === 2) return 'ob';
-  if (t === 1) return 'hazard';
-  if (A.sc.fir[i]) return 'fw';
-  return null;
+// 티샷 선택 상태는 fir/mulli/tp 만으로는 되짚을 수 없다 — "러프"(fir:false,mulli:0,tp:0)와
+// "아직 아무것도 안 고름"이 데이터상 완전히 같은 값이라, 러프를 골라도 칩이 켜진 티가 안 나던 버그가 있었다.
+// 그래서 실제 선택 상태는 A.sc.teeSel 에 문자열로 직접 저장하고, fir/mulli/tp 는 그 결과로만 채운다(저장·통계 호환용).
+function teeState(i) { return (A.sc.teeSel && A.sc.teeSel[i]) || null; }
+function deriveTeeSel() {                          // 저장된 라운드를 다시 열 때만 fir/mulli/tp 로부터 추정 복원
+  return Array.from({ length: 18 }, (_, i) => {
+    if (A.sc.mulli[i]) return 'mull';
+    const t = (A.sc.tp && A.sc.tp[i]) || 0;
+    if (t === 2) return 'ob';
+    if (t === 1) return 'hazard';
+    if (A.sc.fir[i]) return 'fw';
+    return null;                                    // 러프였는지 미입력이었는지는 구분 불가 — 미선택으로 되돌림(무해)
+  });
 }
 function setTee(i, key) {
   if (A.sc.ro) return;
   if ((key === 'fw' || key === 'rough') && getH()[i] === 3) return;   // 파3엔 페어웨이 개념 없음
-  const next = teeState(i) === key ? null : key;                     // 같은 걸 다시 누르면 선택 해제
+  if (!A.sc.teeSel) A.sc.teeSel = Array(18).fill(null);
+  const next = A.sc.teeSel[i] === key ? null : key;                   // 같은 걸 다시 누르면 선택 해제
+  A.sc.teeSel[i] = next;
   A.sc.fir[i] = next === 'fw';
   A.sc.mulli[i] = next === 'mull' ? 1 : 0;
   A.sc.tp[i] = next === 'ob' ? 2 : next === 'hazard' ? 1 : 0;
@@ -717,21 +727,26 @@ function renderHoleWizard() {
   const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
   const chips = (par === 3 ? [] : [chip('fw', '페어웨이'), chip('rough', '러프')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
   const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
-  const dotRow = half => `<div style="display:flex;gap:3px;flex:1">${Array.from({ length: 9 }, (_, k) => { const hi = half * 9 + k, on = hi === i, done = A.sc.scores[hi] > 0;
-    return `<span onclick="hJump(${hi})" style="flex:1;height:4px;border-radius:2px;cursor:pointer;background:${on ? 'var(--g)' : done ? '#5a5a5e' : '#2c2c2e'}"></span>`; }).join('')}</div>`;
+  const holeCell = idx => { const on = idx === i, done = A.sc.scores[idx] > 0;
+    return `<button onclick="hJump(${idx})" style="flex:1;height:38px;min-width:0;border:none;border-radius:9px;cursor:pointer;font-size:13px;
+      background:${on ? 'var(--g)' : done ? '#48484a' : 'var(--bg3)'};color:${on ? '#000' : done ? 'var(--t)' : 'var(--t3)'};font-weight:${on ? '800' : '600'}">${idx + 1}</button>`; };
+  const holeRow = half => `<div style="display:flex;gap:4px;flex:1">${Array.from({ length: 9 }, (_, k) => holeCell(half * 9 + k)).join('')}</div>`;
 
   Q('sc-body').innerHTML = `
     <div style="padding:6px 4px 16px">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">${dotRow(0)}<span style="font-size:10px;color:var(--t3);flex-shrink:0">전반</span></div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">${dotRow(1)}<span style="font-size:10px;color:var(--t3);flex-shrink:0">후반</span></div>
-      <div style="text-align:center;font-size:13px;color:var(--t2);margin-bottom:10px">${(i % 9) + 1}번 홀 · ${A.sc.course.layouts[i < 9 ? 0 : 1].name}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">${holeRow(0)}<span style="font-size:10px;color:var(--t3);flex-shrink:0;width:20px">전반</span></div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:16px">${holeRow(1)}<span style="font-size:10px;color:var(--t3);flex-shrink:0;width:20px">후반</span></div>
+      <div style="text-align:center;margin-bottom:14px">
+        <div style="font-size:38px;font-weight:800;color:var(--t);line-height:1.1">${(i % 9) + 1}<span style="font-size:16px;font-weight:700;color:var(--t2)">번 홀</span></div>
+        <div style="font-size:12px;color:var(--t3);margin-top:2px">${A.sc.course.layouts[i < 9 ? 0 : 1].name}</div>
+      </div>
       <div class="seg" style="margin-bottom:16px">${parTab(3)}${parTab(4)}${parTab(5)}</div>
       <div style="display:flex;gap:10px;margin-bottom:14px">
         <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:14px 8px">
           <div style="font-size:12px;color:var(--t2);margin-bottom:8px">온그린까지</div>
           <div style="display:flex;align-items:center;justify-content:center;gap:10px">
             <button class="hb" onclick="ogAdj(${i},-1)">${SM}</button>
-            <div style="width:34px;font-size:22px;font-weight:700;text-align:center">${og}</div>
+            <div style="width:34px;font-size:22px;font-weight:700;text-align:center;color:var(--t)">${og}</div>
             <button class="hb" onclick="ogAdj(${i},1)">${SP}</button>
           </div>
           <div style="font-size:11px;color:var(--t3);margin-top:6px">타수</div>
@@ -740,7 +755,7 @@ function renderHoleWizard() {
           <div style="font-size:12px;color:var(--t2);margin-bottom:8px">퍼팅</div>
           <div style="display:flex;align-items:center;justify-content:center;gap:10px">
             <button class="hb" onclick="puttAdjW(${i},-1)">${SM}</button>
-            <div style="width:34px;font-size:22px;font-weight:700;text-align:center">${putt}</div>
+            <div style="width:34px;font-size:22px;font-weight:700;text-align:center;color:var(--t)">${putt}</div>
             <button class="hb" onclick="puttAdjW(${i},1)">${SP}</button>
           </div>
           <div style="font-size:11px;color:var(--t3);margin-top:6px">수</div>
@@ -753,7 +768,7 @@ function renderHoleWizard() {
       <div style="font-size:12px;color:var(--t2);margin-bottom:6px">⛳ 티샷 결과</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">${chips.join('')}</div>
       <div style="display:flex;gap:8px">
-        ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 60px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:15px;font-weight:700;cursor:pointer">◀</button>` : ''}
+        ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 108px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">◀ 이전 홀</button>` : ''}
         <button onclick="${i < 17 ? 'hGo(1)' : 'saveRound()'}" style="flex:1;background:var(--g);border:none;border-radius:12px;padding:13px;color:#000;font-size:15px;font-weight:800;cursor:pointer">${i < 17 ? '저장 · 다음 홀 →' : '저장 · 완료'}</button>
       </div>
     </div>`;
@@ -952,7 +967,7 @@ function startScoringFromPicker() {
   A.sc.course = clone; A.sc.li = [0, 1];
 
   A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
-  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0);
+  A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0); A.sc.teeSel = Array(18).fill(null);
   A.sc.eid = null; A.sc.ro = false; A.sc.half = 0; A.sc.hIdx = 0;
   const c = A.sc.course; const [l0, l1] = A.sc.li; const par = getH().reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${A.sc.date} · ${c.layouts[l0].name}+${c.layouts[l1].name} · 파${par}`;
@@ -1292,20 +1307,29 @@ function estHandicap(rsChrono) {
   return best.reduce((a, b) => a + b, 0) / best.length;
 }
 
+// ── 손실 타수: OB 1회=2타·해저드 1회=1타로 환산(멀리건은 벌타 없어 제외). tpArr 에서 바로 계산하므로
+// 이 기능 이전에 저장된 옛 라운드도(그때부터 해저드/OB 구분이 없었다면 전부 해저드로 잡히지만) 문제없이 동작한다.
+function obCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 2 ? 1 : 0), 0); }
+function hzCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 1 ? 1 : 0), 0); }
+function lossStrokesOf(r) { return obCountOf(r) * 2 + hzCountOf(r); }
+
 // ── 발전 추세: 지표 선택 그래프(이동평균) + 추세 판정 + 구간 비교 ──
 const TREND_METRICS = [
   { k: 'score', lbl: '스코어', low: true,  u: '' },
   { k: 'putts', lbl: '퍼팅',   low: true,  u: '' },
   { k: 'gir',   lbl: 'GIR',    low: false, u: '%' },
   { k: 'fir',   lbl: 'FIR',    low: false, u: '%' },
+  { k: 'lossStrokes', lbl: '손실타수', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
   { k: 'consist', lbl: '기복', low: true,  u: '' },   // 최근 5R 스코어 편차(작을수록 일정)
 ];
 function setTrend(k) { _trendMetric = k; const w = Q('trend-wrap'); if (w) w.innerHTML = trendWrapHTML(); }
 function trendWrapHTML() {
   const rs = roundsChrono(); const M = TREND_METRICS[_trendMetric] || TREND_METRICS[0];
   const toggle = `<div class="seg" style="margin-bottom:10px">${TREND_METRICS.map((m, i) => `<button class="sg ${i === _trendMetric ? 'on' : ''}" onclick="setTrend(${i})">${m.lbl}</button>`).join('')}</div>`;
-  // 기복(consist)은 라운드별 값이 아니라 최근 5R 스코어 편차의 흐름으로 계산
-  const vals = M.k === 'consist' ? rollingSD(rs.map(r => +(r.score || 0)), 5) : rs.map(r => +(r[M.k] || 0));
+  // 기복(consist)은 라운드별 값이 아니라 최근 5R 스코어 편차의 흐름으로 계산, 손실타수는 tpArr 에서 직접 계산
+  const vals = M.k === 'consist' ? rollingSD(rs.map(r => +(r.score || 0)), 5)
+    : M.k === 'lossStrokes' ? rs.map(lossStrokesOf)
+    : rs.map(r => +(r[M.k] || 0));
   if (vals.length < 2) return toggle + `<div class="cb" style="text-align:center;color:var(--t3);font-size:12px;padding:20px">${M.k === 'consist' ? '라운드가 4개 이상이면 기복 추세가 표시됩니다' : '라운드가 2개 이상이면 추세가 표시됩니다'}</div>`;
   const fmt = v => (M.k === 'gir' || M.k === 'fir') ? Math.round(v) + '%' : (M.k === 'consist' ? '±' + v.toFixed(1) : v.toFixed(1));
   const slope = regSlope(vals);
