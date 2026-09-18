@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.34.1';
+const APP_VERSION = 'v12.35.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -26,10 +26,6 @@ let A = {
         gir: Array(18).fill(false), fir: Array(18).fill(false),
         mulli: Array(18).fill(0), tp: Array(18).fill(0), teeSel: Array(18).fill(null),
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
-
-// ── 분석 기준값(신호등) · 관리자가 설정에서 수정 → 서버 공유. 서버 없으면 이 기본값 ──
-let BENCH = { firGood: 60, firOk: 35, tpDemote: 3, puttGood: 33, puttBad: 36, threeGood: 2, threeBad: 3.5,
-              girGood: 40, girBad: 21, scrGood: 34, scrBad: 21 };  // putt=라운드 퍼팅(개/R) · three=3퍼팅(회/R) · gir/scr=%(적중·스크램블)
 
 // ── 📢 공지 게시판 (읽기 전용) ──
 // 사용자는 읽기만 합니다. 새 글(id가 마지막으로 본 id보다 큼)이 있으면 홈의 📢 배지에 알림이 뜹니다.
@@ -136,7 +132,7 @@ async function changePin() {
 // ════════════════════════════════════════
 async function loadAll(silent) {
   if (!silent) load('데이터 불러오는 중...');  // 캐시로 이미 화면이 떠 있으면(silent) 로딩창 없이 조용히 갱신
-  const [rr, cr, br] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()), callAPI(() => API.getBench()) ]);
+  const [rr, cr] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()) ]);
 
   if (rr && rr.err === '인증실패') { hide(); logoutSilent(); return; }  // 토큰 만료(초기화 등) — 이때만 로그아웃
 
@@ -150,8 +146,6 @@ async function loadAll(silent) {
     maybeShowStartupPopup();   // 첫 로그인=설명서 / 업데이트되면 변경 내용 팝업(각각 한 번만)
     return;
   }
-
-  if (br && br.ok && br.bench && typeof br.bench === 'object') Object.assign(BENCH, br.bench);  // 서버 기준값 반영(없으면 기본값 유지)
 
   // ── 라운드: 서버가 "확실히 성공"(ok + rounds 배열)일 때만 교체. 그 외(서버 일시오류·이상 응답)엔
   //    절대 빈 배열로 덮지 않는다. (서버 saveRounds_ 가 clearContents 라, 이후 빈 배열 저장 시 유실되므로)
@@ -168,13 +162,13 @@ async function loadAll(silent) {
   A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(c => ({ ...c, status: 'official' }))
                                                        : ((A.official && A.official.length) ? A.official : [...DEF]);
   // ── 캐시는 "라운드를 성공적으로 받았을 때만" 갱신 (실패 응답으로 캐시를 비우지 않도록)
-  if (roundsOk) { try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {} }
+  if (roundsOk) { try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official })); } catch (e) {} }
   else if (!silent) toast('⚠️ 기록 동기화 실패 — 저장된 기록을 그대로 표시합니다');
 
   // 과거 버그로 뒤바뀐 코스 조합 라벨을 박제된 파 기준으로 자동 복구(스코어·기록은 불변). 바뀐 게 있으면 서버에도 반영.
   if (roundsOk && healRoundLabels()) {
     pushRounds();
-    try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {}
+    try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official })); } catch (e) {}
   }
 
   setUserLabels();
@@ -212,7 +206,7 @@ async function refreshNotes() {
 // ════════════════════════════════════════
 function goHome() { showPg('home'); renderHome(); document.querySelector('.tab .tb:first-child')?.classList.add('on'); document.querySelector('.tab .tb:last-child')?.classList.remove('on'); }
 function goStat() { showPg('stat'); renderStat(0); document.querySelector('.tab .tb:last-child')?.classList.add('on'); document.querySelector('.tab .tb:first-child')?.classList.remove('on'); }
-function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); if (A.isAdm) { if (_admOffLoaded) renderAdmOfficial(); else admLoadOfficial(); } }   // 관리자는 설정을 열 때 목록을 미리 불러와 바로 검색되게(불러오기→재검색 불필요)
+function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; if (A.isAdm) { if (_admOffLoaded) renderAdmOfficial(); else admLoadOfficial(); } }   // 관리자는 설정을 열 때 목록을 미리 불러와 바로 검색되게(불러오기→재검색 불필요)
 // 홈 상단 노란 알림 배너 → 설정의 관리자 "골프장 변경 알림" 메뉴로 바로 이동.
 // 알림 목록(누가·어느 코스·어느 구성을 어떻게 고쳤는지)을 자동으로 펼치고 그 위치로 스크롤한다.
 async function goAdmNotes() {
@@ -221,51 +215,6 @@ async function goAdmNotes() {
   await admLoadNotes();                                  // 변경 내역 자동 로드 (상세 포함)
   const el = Q('adm-notes');
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-// ── 🚦 진단 신호등 계산식 (단일 소스) ──
-// 공지(통계 가이드)·관리자 설정·사용자 통계 화면이 모두 이 함수를 끌어다 씁니다.
-// 기준값(BENCH)이 바뀌면 세 곳의 설명이 함께 자동 갱신돼 서로 어긋날 일이 없습니다.
-function benchFormulaHTML() {
-  const b = BENCH;
-  return `<div style="font-size:13px;color:var(--t2);line-height:1.7">
-    신호등은 <b style="color:var(--g)">🟢 좋음</b> / <b style="color:var(--a)">🟡 양호</b> / <b style="color:var(--r)">🔴 부족</b> 3단계입니다.<br><br>
-    <b style="color:var(--t)">🚗 드라이버 — 페어웨이%(FIR) · 티샷 손실</b><br>페어웨이% = 티샷이 페어웨이에 떨어진 홀(FIR) ÷ 파4·5홀. M·TP로 살린 홀은 제외. 🟢 ${b.firGood}%↑ · 🟡 ${b.firOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀↑이면 한 단계 강등.<br><br><span style="color:var(--t3)">※ <b>티샷 손실(타/R)</b> = 페어웨이 놓친 홀의 파 대비 평균 − 지킨 홀의 파 대비 평균, 거기에 라운드당 놓친 홀 수를 곱한 값. “내 티샷이 한 라운드에 몇 타를 깎아먹나”를 퍼센트가 아니라 타수로 바로 보여줘요(파4·5홀만, 지킴·놓침이 각각 5홀 이상 모였을 때). 등급 판정에는 쓰지 않고, 약점 우선순위의 드라이버 손실 타수로 쓰입니다.</span><br><span style="color:var(--t3)">※ 함께 보이는 <b>생존율</b> = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀. 공을 잃지 않은 비율로, 등급 판정에는 쓰지 않는 보조 지표예요.</span><br><br>
-    <b style="color:var(--t)">🎯 아이언 — GIR(그린 적중률)</b><br>정규타수(파−2) 안에 그린 올린 홀 비율. 🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.<br><br>
-    <b style="color:var(--t)">⛳ 숏게임 — 스크램블링</b><br>그린 놓친 홀 중 파 이하로 막은 비율. 🟢 ${b.scrGood}%↑ · 🟡 ${b.scrBad}%↑ · 🔴 그 미만.<br><br>
-    <b style="color:var(--t)">🍩 퍼팅 — 라운드 퍼팅 + 3퍼팅</b><br>라운드 퍼팅 수(홀당 평균·거리감)와 3퍼팅 빈도(큰 실수) 중 <b>나쁜 쪽</b>으로 판정. 🟢 ${b.puttGood}개↓ <b>그리고</b> 3퍼팅 ${b.threeGood}회↓ · 🔴 ${b.puttBad}개 초과 <b>또는</b> 3퍼팅 ${b.threeBad}회 초과 · 🟡 그 사이.<br><span style="color:var(--t3)">※ <b>GIR홀 퍼팅</b>(정규로 올린 홀의 순수 퍼팅력)은 등급엔 안 쓰고 참고용으로 함께 보여줘요.</span></div>`;
-}
-
-// ── 설정 → 📊 분석 기준 : 모두 설명 보기 / 관리자만 수정 ──
-function renderBenchSettings() {
-  const b = BENCH, box = Q('bench-box'); if (!box) return;
-  let html = benchFormulaHTML();
-  if (A.isAdm) {
-    const f = (id, label, val) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0"><label style="font-size:13px;color:var(--t2);flex:1">${label}</label><input id="bn-${id}" type="number" inputmode="decimal" step="any" value="${val}" style="width:84px;text-align:center;padding:8px;border-radius:8px;border:1.5px solid var(--bd);background:var(--bg3);color:var(--t);font-size:15px;font-weight:700"></div>`;
-    html += `<div class="msep"></div><div style="font-size:12px;color:var(--a);font-weight:700;margin-bottom:6px">🔧 관리자 — 기준값 수정 (전체 적용)</div>`
-      + f('firGood', '드라이버 페어웨이% 좋음(%)', b.firGood)
-      + f('firOk', '드라이버 페어웨이% 양호(%)', b.firOk)
-      + f('tpDemote', 'OB/해저드 강등 기준(M+TP, 라운드당 홀)', b.tpDemote)
-      + f('girGood', '아이언 GIR 좋음(%)', b.girGood)
-      + f('girBad', '아이언 GIR 부족(%)', b.girBad)
-      + f('scrGood', '숏게임 스크램블 좋음(%)', b.scrGood)
-      + f('scrBad', '숏게임 스크램블 부족(%)', b.scrBad)
-      + f('puttGood', '퍼팅 라운드 좋음(개 이하)', b.puttGood)
-      + f('puttBad', '퍼팅 라운드 부족(개 초과)', b.puttBad)
-      + f('threeGood', '3퍼팅 좋음(회/라운드 이하)', b.threeGood)
-      + f('threeBad', '3퍼팅 부족(회/라운드 초과)', b.threeBad)
-      + `<div id="bench-msg" style="font-size:12px;min-height:16px;margin:8px 0"></div>`
-      + `<button class="btn btn-g" onclick="saveBench()" style="width:100%">기준 저장 (전체 반영)</button>`;
-  }
-  box.innerHTML = html;
-}
-async function saveBench() {
-  const ids = ['firGood', 'firOk', 'tpDemote', 'puttGood', 'puttBad', 'threeGood', 'threeBad', 'girGood', 'girBad', 'scrGood', 'scrBad'];
-  const nb = {}; for (const id of ids) { const v = parseFloat(Q('bn-' + id).value); if (!isNaN(v)) nb[id] = v; }
-  const msg = Q('bench-msg'); msg.style.color = 'var(--t2)'; msg.textContent = '저장 중...';
-  const r = await callAPI(() => API.setBench(nb));
-  if (r && r.ok) { Object.assign(BENCH, r.bench || nb); msg.style.color = 'var(--g)'; msg.textContent = '✅ 저장됨 — 전체 분석에 반영됩니다'; renderBenchSettings(); }
-  else { Object.assign(BENCH, nb); msg.style.color = 'var(--a)'; msg.textContent = '⚠️ 이 기기에만 적용됨 (서버 미연결 — 배포 후 전체 공유)'; renderBenchSettings(); }
 }
 
 // ════════════════════════════════════════
@@ -1969,6 +1918,7 @@ function updateNewsHTML() {
   ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "입력 전" 박스를 탭하면 파가 그대로 입력돼요.')}
   ${li('✂️ <b>표기 간소화</b> — 추세 탭의 "티샷손실타수"를 "티샷손실"로 줄여 한 줄에 들어오게 했어요.')}
   ${li('💥 <b>큰 실수 기준 수정</b> — "큰 실수의 원인"이 더블보기 이상이 아니라 <b>블로업(트리플보기 이상)</b> 홀만 세도록 바로잡았고, 원인 이름(티샷 사고·3퍼팅↑·그린 미스)이 한 줄로 보이게 고쳤어요.')}
+  ${li('🗑️ <b>분석 기준값 설정 삭제</b> — 신호등 진단 기능이 없어지며 안 쓰이게 된 설정 → "분석 기준" 화면을 정리했어요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2005,7 +1955,6 @@ function guideScorecardHTML() {
 }
 
 // ── 통계 분석 지표 설명(자동 생성) : 각 지표가 무엇을 뜻하는지 ──
-// 신호등 기준값(BENCH)을 그대로 끌어와 기준이 바뀌면 설명도 함께 갱신됩니다.
 function guideStatsHTML() {
   const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
   const it = (name, desc) => `<div style="margin:6px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.5">${desc}</div></div>`;
@@ -2147,7 +2096,6 @@ async function checkVersion() {
       if (cache && cache.rounds) {
         A.rounds = cache.rounds;
         A.official = (cache.official && cache.official.length) ? cache.official : [...DEF];
-        if (cache.bench && typeof cache.bench === 'object') Object.assign(BENCH, cache.bench);
         setUserLabels(); renderHome(); showPg('home'); goHome();
         shownFromCache = true;
       }
