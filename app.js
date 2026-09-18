@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.30.5';
+const APP_VERSION = 'v12.31.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1187,6 +1187,8 @@ function analyze(rounds) {
       puttSum = 0, threePutt = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0,
       scoreSum = 0, vsSum = 0, girPuttSum = 0, girPuttN = 0,
       missGreen = 0, scrSave = 0,                       // 숏게임: 그린 미스 홀 / 그중 파 이하로 막은 홀
+      girHitVs = 0, girMissVs = 0, missLossSum = 0,     // 아이언·숏게임 실제 손실 타수 계산용
+      puttExcessSum = 0,                                // 퍼팅 실제 손실 타수(2퍼팅 기준 초과분) 계산용
       fwHit = 0, fwHitVs = 0, fwMiss = 0, fwMissVs = 0; // 드라이버: 페어웨이 지킨/놓친 홀 수와 그 홀들의 파 대비 합
   rounds.forEach(r => {
     const hh = roundPars(r);
@@ -1194,10 +1196,12 @@ function analyze(rounds) {
     scoreSum += r.score || 0; vsSum += r.vs || 0;
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!s || s <= 0) continue;        // 미입력 홀 스킵
-      const par = hh[i] || 4, mull = mu[i] || 0, tpv = tpa[i] || 0, putt = pa[i] || 0;
-      girHoles++; if (gi[i]) { girHit++; girPuttSum += putt; girPuttN++; }   // GIR홀 퍼팅(순수 퍼팅력)
-      else { missGreen++; if (s <= par) scrSave++; }                         // 그린 놓침 → 파 이하로 막으면 스크램블 성공
+      const par = hh[i] || 4, mull = mu[i] || 0, tpv = tpa[i] || 0, putt = pa[i] || 0, d = s - par;
+      girHoles++;
+      if (gi[i]) { girHit++; girPuttSum += putt; girPuttN++; girHitVs += d; }   // GIR홀 퍼팅(순수 퍼팅력) + 파 대비
+      else { missGreen++; if (s <= par) scrSave++; else missLossSum += d; girMissVs += d; }  // 그린 놓침 → 스크램블 실패 홀의 초과 타수만 누적
       puttSum += putt; if (putt >= 3) threePutt++;
+      puttExcessSum += Math.max(0, putt - 2);            // 2퍼팅 기준 초과 타수(3퍼팅=1타, 4퍼팅=2타 …)
       if (putt <= 1) p1++; else if (putt === 2) p2++; else if (putt === 3) p3++; else p4++;
       if (par > 3) {                                       // 드라이버는 파4·5만 (파3의 M/TP는 제외)
         par45++;
@@ -1220,6 +1224,16 @@ function analyze(rounds) {
   const teeCost = (fwHit && fwMiss) ? (fwMissVsAvg - fwHitVsAvg) : 0;   // 홀당 손해(양수면 놓칠 때 더 나쁨)
   const teeCostRound = teeCost > 0 ? teeCost * f1(fwMiss, n) : 0;       // 라운드당 손해 타수
   const teeCostOk = fwHit >= 5 && fwMiss >= 5;                          // 표본이 너무 적으면 숫자를 못 믿는다
+  // ── 아이언·숏게임·퍼팅도 홀 수가 아니라 같은 방식으로 실제 손실 타수를 잰다 ──
+  // 아이언: 그린 지킨 홀과 놓친 홀의 "파 대비" 평균 차이 × 라운드당 놓친 홀 수(티샷과 동일한 방식, 표본 부족하면 홀 수로 대체)
+  const girHitVsAvg = f1(girHitVs, girHit), girMissVsAvg = f1(girMissVs, missGreen);
+  const ironCost = (girHit && missGreen) ? (girMissVsAvg - girHitVsAvg) : 0;
+  const ironCostRound = ironCost > 0 ? ironCost * f1(missGreen, n) : 0;
+  const ironCostOk = girHit >= 5 && missGreen >= 5;
+  // 숏게임: 그린 놓친 홀 중 "파를 못 지킨" 홀들의 초과 타수(파 대비)를 그대로 합산 — 이미 실측값이라 대체식이 필요 없다
+  const shortLossRound = f1(missLossSum, n);
+  // 퍼팅: 2퍼팅 기준 초과 타수(3퍼팅=1타, 4퍼팅=2타 …)를 그대로 합산 — 역시 실측값
+  const puttLossRound = f1(puttExcessSum, n);
   // 드라이버 등급: 페어웨이%(주지표) 기준 + OB/해저드(M+TP) 잦으면 한 단계 강등
   // 생존율(survPct)은 등급에 안 쓰고 보조 숫자로만 표시.
   let dst = adjFir >= BENCH.firGood ? 'g' : adjFir >= BENCH.firOk ? 'y' : 'r';
@@ -1268,7 +1282,8 @@ function analyze(rounds) {
       `등급 = 라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도 중 나쁜 쪽으로 판정 · 🟢 ${BENCH.puttGood}개↓ 그리고 3퍼팅 ${BENCH.threeGood}회↓ · 🔴 ${BENCH.puttBad}개 초과 또는 3퍼팅 ${BENCH.threeBad}회 초과${hasGP ? ` · (GIR홀 퍼팅 ${nf(girPuttAvg)}개는 순수 퍼팅력 참고용 — 등급엔 미반영)` : ''}`)
   ];
   return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, scrPct, missGreen, scrSave, missAvg, sig,
-           teeCost, teeCostRound, teeCostOk, fwHitVsAvg, fwMissVsAvg };   // 티샷이 깎아먹는 타수
+           teeCost, teeCostRound, teeCostOk, fwHitVsAvg, fwMissVsAvg,     // 티샷이 깎아먹는 타수
+           ironCost, ironCostRound, ironCostOk, girHitVsAvg, girMissVsAvg, shortLossRound, puttLossRound };   // 아이언·숏게임·퍼팅이 깎아먹는 타수
 }
 function analysisHTML(a) {
   if (!a.n) return `<div class="empty" style="padding:24px 0"><div>📊</div><p>분석할 라운드가 없습니다</p></div>`;
@@ -1383,14 +1398,15 @@ function trendChartSVG(vals, M, lc) {
 }
 
 // ── 약점 항목(간이 스트로크게인): 영역별 손실 타수 추정 (처방·우선순위 공용) ──
+// 넷 다 "홀 수"가 아니라 실제로 몇 타를 손해봤는지를 잰다.
+//  · 드라이버·아이언: 지킨 홀과 놓친 홀의 파 대비 평균 차이 × 놓친 홀 수(표본 부족하면 홀 수로 대체)
+//  · 숏게임·퍼팅: 이미 실측된 초과 타수 합계라 대체식이 필요 없음
 function weaknessItems(a) {
-  const scrRate = a.missGreen ? a.scrSave / a.missGreen : 1;   // 스크램블 성공률(analyze 집계 재사용)
   return [
-    // 손실 타수: 실측한 "티샷 손실"이 있으면 그걸 쓰고(가장 정확), 표본이 모자라면 예전처럼 OB/해저드 홀 수로 추정
     { area: '🚗 드라이버', lost: a.teeCostOk ? a.teeCostRound : a.teeLostPer * 1.0, tip: 'OB·해저드 줄이기 (티샷 안정) · 파4·5 홀만 집계, 파3 제외', drill: '드라이버 대신 페어웨이우드·롱아이언으로 티샷 안정 우선' },
-    { area: '🎯 아이언', lost: a.missAvg, tip: '그린 적중률(GIR) 올리기 · 라운드당 그린 놓친 홀 수 그대로 반영', drill: '핀이 아니라 그린 센터를 노려 큰 미스 줄이기' },
-    { area: '⛳ 숏게임', lost: a.missAvg * (1 - scrRate), tip: '어프로치·파세이브 · 그린 놓치고 파 못 지킨 홀 수 그대로 반영', drill: '30·50·70m 거리별 어프로치를 반복해 그린 미스 후 회복' },
-    { area: '🍩 퍼팅', lost: a.threeAvg, tip: '거리감·3퍼팅 줄이기 · 3퍼팅 홀 수 그대로 반영', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
+    { area: '🎯 아이언', lost: a.ironCostOk ? a.ironCostRound : a.missAvg, tip: '그린 적중률(GIR) 올리기 · 그린 지킨 홀보다 놓친 홀이 실제로 몇 타 나빴는지 반영', drill: '핀이 아니라 그린 센터를 노려 큰 미스 줄이기' },
+    { area: '⛳ 숏게임', lost: a.shortLossRound, tip: '어프로치·파세이브 · 그린 놓치고 파 못 지킨 홀의 초과 타수 그대로 반영', drill: '30·50·70m 거리별 어프로치를 반복해 그린 미스 후 회복' },
+    { area: '🍩 퍼팅', lost: a.puttLossRound, tip: '거리감·3퍼팅 줄이기 · 2퍼팅 기준 초과 타수 그대로 반영', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
   ].sort((x, y) => y.lost - x.lost);
 }
 // ── 💊 오늘의 처방: 4부서 중 손해 가장 큰 한 곳을 콕 집어 행동 지시 ──
