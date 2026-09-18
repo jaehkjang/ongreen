@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.31.1';
+const APP_VERSION = 'v12.32.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -544,12 +544,16 @@ function openDet(id) {
       <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
+    ${skillRatioHTML([r])}
+    ${blowupCauseHTML([r])}
     <div class="lbl">🎯 손실 타수, 어디서 났나 (드라이버=티샷 · 아이언 · 숏게임=어프로치 · 퍼팅)</div>${weaknessHTML(analyze([r]), [r])}
-    <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin-bottom:6px">🔍 이 라운드 분석</button>
-    <div id="rana-box" style="display:none;margin-bottom:8px"></div>
+    ${frontBackHTML([r])}
     <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div onclick="holeDetail(${id},${i})" style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
+    ${scoreDistHTML([r])}
+    <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin:8px 0 6px">🔍 이 라운드 분석</button>
+    <div id="rana-box" style="display:none;margin-bottom:8px"></div>
     ${courseCompareHTML(r)}
     <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -1686,17 +1690,16 @@ function sigChip(icon, label, val, color) {
 }
 
 // ── 🔍 이 라운드 분석: 전체 통계와 같은 하위 탭(추세·기록 제외)으로, 그 라운드 한 판 기준 ──
-let _ranaSub = 0;   // 0 스코어 · 1 정확도·퍼팅 · 2 진단
+// "스코어" 탭은 폐지 — 라운드 상세 기본 정보(openDet)와 내용이 겹쳐서 기본 정보 쪽으로 옮겼다.
+let _ranaSub = 0;   // 0 정확도·퍼팅 · 1 진단
 let _ranaId = null;
-const RANA_SUBS = ['스코어', '정확도·퍼팅', '진단'];
+const RANA_SUBS = ['정확도·퍼팅', '진단'];
 function setRanaSub(s) { _ranaSub = s; renderRanaBox(); }
 function renderRanaBox() {
   const r = A.rounds.find(x => x.id === _ranaId); if (!r) return;
   const box = Q('rana-box'); if (!box) return;
   let h = `<div class="seg" style="margin-bottom:12px">${RANA_SUBS.map((l, i) => `<button class="sg ${i === _ranaSub ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px" onclick="setRanaSub(${i})">${l}</button>`).join('')}</div>`;
   if (_ranaSub === 0) {
-    h += coreMetricsHTML([r], false) + skillRatioHTML([r]) + `<div class="lbl">💥 큰 실수의 원인</div>${blowupCauseHTML([r])}` + frontBackHTML([r]) + scoreDistHTML([r]);
-  } else if (_ranaSub === 1) {
     h += `<div class="lbl">파 종류별</div>${parCrossHTML([r])}` + puttShortHTML([r]);
   } else {
     const a = analyze([r]);
