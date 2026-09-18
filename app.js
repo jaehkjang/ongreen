@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.30.2';
+const APP_VERSION = 'v12.32.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -544,12 +544,16 @@ function openDet(id) {
       <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
+    ${skillRatioHTML([r])}
+    ${blowupCauseHTML([r])}
     <div class="lbl">🎯 손실 타수, 어디서 났나 (드라이버=티샷 · 아이언 · 숏게임=어프로치 · 퍼팅)</div>${weaknessHTML(analyze([r]), [r])}
-    <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin-bottom:6px">🔍 이 라운드 분석</button>
-    <div id="rana-box" style="display:none;margin-bottom:8px"></div>
+    ${frontBackHTML([r])}
     <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div onclick="holeDetail(${id},${i})" style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
+    ${scoreDistHTML([r])}
+    <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin:8px 0 6px">🔍 이 라운드 분석</button>
+    <div id="rana-box" style="display:none;margin-bottom:8px"></div>
     ${courseCompareHTML(r)}
     <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -1187,6 +1191,8 @@ function analyze(rounds) {
       puttSum = 0, threePutt = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0,
       scoreSum = 0, vsSum = 0, girPuttSum = 0, girPuttN = 0,
       missGreen = 0, scrSave = 0,                       // 숏게임: 그린 미스 홀 / 그중 파 이하로 막은 홀
+      ironExcessSum = 0, missLossSum = 0,               // 아이언·숏게임 실제 손실 타수 계산용
+      puttExcessSum = 0,                                // 퍼팅 실제 손실 타수(2퍼팅 기준 초과분) 계산용
       fwHit = 0, fwHitVs = 0, fwMiss = 0, fwMissVs = 0; // 드라이버: 페어웨이 지킨/놓친 홀 수와 그 홀들의 파 대비 합
   rounds.forEach(r => {
     const hh = roundPars(r);
@@ -1194,10 +1200,15 @@ function analyze(rounds) {
     scoreSum += r.score || 0; vsSum += r.vs || 0;
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!s || s <= 0) continue;        // 미입력 홀 스킵
-      const par = hh[i] || 4, mull = mu[i] || 0, tpv = tpa[i] || 0, putt = pa[i] || 0;
-      girHoles++; if (gi[i]) { girHit++; girPuttSum += putt; girPuttN++; }   // GIR홀 퍼팅(순수 퍼팅력)
-      else { missGreen++; if (s <= par) scrSave++; }                         // 그린 놓침 → 파 이하로 막으면 스크램블 성공
+      const par = hh[i] || 4, mull = mu[i] || 0, tpv = tpa[i] || 0, putt = pa[i] || 0, d = s - par;
+      girHoles++;
+      if (gi[i]) { girHit++; girPuttSum += putt; girPuttN++; }               // GIR홀 퍼팅(순수 퍼팅력)
+      else { missGreen++; if (s <= par) scrSave++; else missLossSum += d; }  // 그린 놓침 → 스크램블 실패 홀의 초과 타수만 누적
+      // 아이언 손실 = 온그린까지 실제 타수(스코어−퍼팅) 가 정규타수(파−2)보다 초과한 만큼 그대로 합산.
+      // GIR 히트/미스 비교 없이 홀마다 바로 계산되므로 표본 부족 걱정이 없다.
+      ironExcessSum += Math.max(0, (s - putt) - (par - 2));
       puttSum += putt; if (putt >= 3) threePutt++;
+      puttExcessSum += Math.max(0, putt - 2);            // 2퍼팅 기준 초과 타수(3퍼팅=1타, 4퍼팅=2타 …)
       if (putt <= 1) p1++; else if (putt === 2) p2++; else if (putt === 3) p3++; else p4++;
       if (par > 3) {                                       // 드라이버는 파4·5만 (파3의 M/TP는 제외)
         par45++;
@@ -1220,6 +1231,13 @@ function analyze(rounds) {
   const teeCost = (fwHit && fwMiss) ? (fwMissVsAvg - fwHitVsAvg) : 0;   // 홀당 손해(양수면 놓칠 때 더 나쁨)
   const teeCostRound = teeCost > 0 ? teeCost * f1(fwMiss, n) : 0;       // 라운드당 손해 타수
   const teeCostOk = fwHit >= 5 && fwMiss >= 5;                          // 표본이 너무 적으면 숫자를 못 믿는다
+  // ── 아이언·숏게임·퍼팅도 홀 수가 아니라 실제 손실 타수를 잰다 (전부 이미 실측값이라 표본 걱정 없음) ──
+  // 아이언: 온그린까지 걸린 실제 타수가 정규타수(파−2)를 넘긴 만큼(홀마다 바로 계산 — 지킨/놓친 홀 비교가 필요 없다)
+  const ironLossRound = f1(ironExcessSum, n);
+  // 숏게임: 그린 놓친 홀 중 "파를 못 지킨" 홀들의 초과 타수(파 대비)를 그대로 합산
+  const shortLossRound = f1(missLossSum, n);
+  // 퍼팅: 2퍼팅 기준 초과 타수(3퍼팅=1타, 4퍼팅=2타 …)를 그대로 합산
+  const puttLossRound = f1(puttExcessSum, n);
   // 드라이버 등급: 페어웨이%(주지표) 기준 + OB/해저드(M+TP) 잦으면 한 단계 강등
   // 생존율(survPct)은 등급에 안 쓰고 보조 숫자로만 표시.
   let dst = adjFir >= BENCH.firGood ? 'g' : adjFir >= BENCH.firOk ? 'y' : 'r';
@@ -1268,7 +1286,8 @@ function analyze(rounds) {
       `등급 = 라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도 중 나쁜 쪽으로 판정 · 🟢 ${BENCH.puttGood}개↓ 그리고 3퍼팅 ${BENCH.threeGood}회↓ · 🔴 ${BENCH.puttBad}개 초과 또는 3퍼팅 ${BENCH.threeBad}회 초과${hasGP ? ` · (GIR홀 퍼팅 ${nf(girPuttAvg)}개는 순수 퍼팅력 참고용 — 등급엔 미반영)` : ''}`)
   ];
   return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, scrPct, missGreen, scrSave, missAvg, sig,
-           teeCost, teeCostRound, teeCostOk, fwHitVsAvg, fwMissVsAvg };   // 티샷이 깎아먹는 타수
+           teeCost, teeCostRound, teeCostOk, fwHitVsAvg, fwMissVsAvg,     // 티샷이 깎아먹는 타수
+           ironLossRound, shortLossRound, puttLossRound };   // 아이언·숏게임·퍼팅이 깎아먹는 타수
 }
 function analysisHTML(a) {
   if (!a.n) return `<div class="empty" style="padding:24px 0"><div>📊</div><p>분석할 라운드가 없습니다</p></div>`;
@@ -1383,14 +1402,15 @@ function trendChartSVG(vals, M, lc) {
 }
 
 // ── 약점 항목(간이 스트로크게인): 영역별 손실 타수 추정 (처방·우선순위 공용) ──
+// 넷 다 "홀 수"가 아니라 실제로 몇 타를 손해봤는지를 잰다.
+//  · 드라이버: 페어웨이 지킨 홀과 놓친 홀의 파 대비 평균 차이 × 놓친 홀 수(표본 부족하면 홀 수로 대체)
+//  · 아이언·숏게임·퍼팅: 홀마다 바로 계산되는 실측 초과 타수 합계라 대체식이 필요 없음
 function weaknessItems(a) {
-  const scrRate = a.missGreen ? a.scrSave / a.missGreen : 1;   // 스크램블 성공률(analyze 집계 재사용)
   return [
-    // 손실 타수: 실측한 "티샷 손실"이 있으면 그걸 쓰고(가장 정확), 표본이 모자라면 예전처럼 OB/해저드 홀 수로 추정
     { area: '🚗 드라이버', lost: a.teeCostOk ? a.teeCostRound : a.teeLostPer * 1.0, tip: 'OB·해저드 줄이기 (티샷 안정) · 파4·5 홀만 집계, 파3 제외', drill: '드라이버 대신 페어웨이우드·롱아이언으로 티샷 안정 우선' },
-    { area: '🎯 아이언', lost: Math.max(0, (BENCH.girGood - a.girPct) / 100) * 18 * 0.5, tip: '그린 적중률(GIR) 올리기', drill: '핀이 아니라 그린 센터를 노려 큰 미스 줄이기' },
-    { area: '⛳ 숏게임', lost: a.missAvg * (1 - scrRate) * 0.5, tip: '어프로치·파세이브', drill: '30·50·70m 거리별 어프로치를 반복해 그린 미스 후 회복' },
-    { area: '🍩 퍼팅', lost: Math.max(0, a.puttAvg - BENCH.puttGood), tip: '거리감·3퍼팅 줄이기', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
+    { area: '🎯 아이언', lost: a.ironLossRound, tip: '그린 적중률(GIR) 올리기 · 온그린까지 정규타수보다 초과한 타수 그대로 반영', drill: '핀이 아니라 그린 센터를 노려 큰 미스 줄이기' },
+    { area: '⛳ 숏게임', lost: a.shortLossRound, tip: '어프로치·파세이브 · 그린 놓치고 파 못 지킨 홀의 초과 타수 그대로 반영', drill: '30·50·70m 거리별 어프로치를 반복해 그린 미스 후 회복' },
+    { area: '🍩 퍼팅', lost: a.puttLossRound, tip: '거리감·3퍼팅 줄이기 · 2퍼팅 기준 초과 타수 그대로 반영', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
   ].sort((x, y) => y.lost - x.lost);
 }
 // ── 💊 오늘의 처방: 4부서 중 손해 가장 큰 한 곳을 콕 집어 행동 지시 ──
@@ -1670,17 +1690,16 @@ function sigChip(icon, label, val, color) {
 }
 
 // ── 🔍 이 라운드 분석: 전체 통계와 같은 하위 탭(추세·기록 제외)으로, 그 라운드 한 판 기준 ──
-let _ranaSub = 0;   // 0 스코어 · 1 정확도·퍼팅 · 2 진단
+// "스코어" 탭은 폐지 — 라운드 상세 기본 정보(openDet)와 내용이 겹쳐서 기본 정보 쪽으로 옮겼다.
+let _ranaSub = 0;   // 0 정확도·퍼팅 · 1 진단
 let _ranaId = null;
-const RANA_SUBS = ['스코어', '정확도·퍼팅', '진단'];
+const RANA_SUBS = ['정확도·퍼팅', '진단'];
 function setRanaSub(s) { _ranaSub = s; renderRanaBox(); }
 function renderRanaBox() {
   const r = A.rounds.find(x => x.id === _ranaId); if (!r) return;
   const box = Q('rana-box'); if (!box) return;
   let h = `<div class="seg" style="margin-bottom:12px">${RANA_SUBS.map((l, i) => `<button class="sg ${i === _ranaSub ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px" onclick="setRanaSub(${i})">${l}</button>`).join('')}</div>`;
   if (_ranaSub === 0) {
-    h += coreMetricsHTML([r], false) + skillRatioHTML([r]) + `<div class="lbl">💥 큰 실수의 원인</div>${blowupCauseHTML([r])}` + frontBackHTML([r]) + scoreDistHTML([r]);
-  } else if (_ranaSub === 1) {
     h += `<div class="lbl">파 종류별</div>${parCrossHTML([r])}` + puttShortHTML([r]);
   } else {
     const a = analyze([r]);
