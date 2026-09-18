@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.27.1';
+const APP_VERSION = 'v12.28.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -49,7 +49,7 @@ const NOTICES = [
 function nf(x) { return Number.isInteger(+x) ? String(+x) : (+x).toFixed(1); }
 function nfs(x) { const v = +x; return (v > 0 ? '+' : '') + nf(v); }   // 파 대비처럼 부호가 중요한 값 (+0.4 / -0.2)
 let _sid = 0, _delId = null, _editOldName = '';
-let _trendMetric = 0;   // 발전 추세 그래프에서 보고 있는 지표(0 스코어·1 퍼팅·2 GIR·3 FIR)
+let _trendMetric = 0;   // 발전 추세 그래프에서 보고 있는 지표(TREND_METRICS 인덱스)
 
 // ── 작은 도우미 ──
 const Q = id => document.getElementById(id);
@@ -536,6 +536,7 @@ function openDet(id) {
       <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
       <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
       <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span style="font-size:14px;color:var(--t2)">/</span>${r.tpCount || 0}</span><span class="sl">M / TP</span></div>
+      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
     <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin-bottom:6px">🔍 이 라운드 분석</button>
@@ -1306,20 +1307,29 @@ function estHandicap(rsChrono) {
   return best.reduce((a, b) => a + b, 0) / best.length;
 }
 
+// ── 손실 타수: OB 1회=2타·해저드 1회=1타로 환산(멀리건은 벌타 없어 제외). tpArr 에서 바로 계산하므로
+// 이 기능 이전에 저장된 옛 라운드도(그때부터 해저드/OB 구분이 없었다면 전부 해저드로 잡히지만) 문제없이 동작한다.
+function obCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 2 ? 1 : 0), 0); }
+function hzCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 1 ? 1 : 0), 0); }
+function lossStrokesOf(r) { return obCountOf(r) * 2 + hzCountOf(r); }
+
 // ── 발전 추세: 지표 선택 그래프(이동평균) + 추세 판정 + 구간 비교 ──
 const TREND_METRICS = [
   { k: 'score', lbl: '스코어', low: true,  u: '' },
   { k: 'putts', lbl: '퍼팅',   low: true,  u: '' },
   { k: 'gir',   lbl: 'GIR',    low: false, u: '%' },
   { k: 'fir',   lbl: 'FIR',    low: false, u: '%' },
+  { k: 'lossStrokes', lbl: '손실타수', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
   { k: 'consist', lbl: '기복', low: true,  u: '' },   // 최근 5R 스코어 편차(작을수록 일정)
 ];
 function setTrend(k) { _trendMetric = k; const w = Q('trend-wrap'); if (w) w.innerHTML = trendWrapHTML(); }
 function trendWrapHTML() {
   const rs = roundsChrono(); const M = TREND_METRICS[_trendMetric] || TREND_METRICS[0];
   const toggle = `<div class="seg" style="margin-bottom:10px">${TREND_METRICS.map((m, i) => `<button class="sg ${i === _trendMetric ? 'on' : ''}" onclick="setTrend(${i})">${m.lbl}</button>`).join('')}</div>`;
-  // 기복(consist)은 라운드별 값이 아니라 최근 5R 스코어 편차의 흐름으로 계산
-  const vals = M.k === 'consist' ? rollingSD(rs.map(r => +(r.score || 0)), 5) : rs.map(r => +(r[M.k] || 0));
+  // 기복(consist)은 라운드별 값이 아니라 최근 5R 스코어 편차의 흐름으로 계산, 손실타수는 tpArr 에서 직접 계산
+  const vals = M.k === 'consist' ? rollingSD(rs.map(r => +(r.score || 0)), 5)
+    : M.k === 'lossStrokes' ? rs.map(lossStrokesOf)
+    : rs.map(r => +(r[M.k] || 0));
   if (vals.length < 2) return toggle + `<div class="cb" style="text-align:center;color:var(--t3);font-size:12px;padding:20px">${M.k === 'consist' ? '라운드가 4개 이상이면 기복 추세가 표시됩니다' : '라운드가 2개 이상이면 추세가 표시됩니다'}</div>`;
   const fmt = v => (M.k === 'gir' || M.k === 'fir') ? Math.round(v) + '%' : (M.k === 'consist' ? '±' + v.toFixed(1) : v.toFixed(1));
   const slope = regSlope(vals);
