@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 코드는 "방"이라는 비유로 역할이 명확히 분리되어 있습니다. 새 코드는 역할에 맞는 파일에만 추가하세요.
 
-- **`api.js` — 통신 방.** 서버와 주고받는 모든 코드. 전역 `API` 객체가 모든 엔드포인트(`login`, `getRounds`, `saveRounds`, `saveCourse`, `getBench`/`setBench`, 관리자 전용 등)를 메서드로 노출합니다. 내부 `_get`/`_post`가 인증 정보(`u`, `token`)를 자동으로 붙입니다. `explainError()`는 서버 에러를 사람이 읽는 문구 + 코드(NET/PIN/AUTH/VER/ERR)로 변환하고, `callAPI()`는 네트워크 단절을 잡는 안전 래퍼입니다. **모든 API 호출은 `callAPI(() => API.xxx())` 형태로 감쌉니다.**
+- **`api.js` — 통신 방.** 서버와 주고받는 모든 코드. 전역 `API` 객체가 모든 엔드포인트(`login`, `getRounds`, `saveRounds`, `saveCourse`, 관리자 전용 등)를 메서드로 노출합니다. 내부 `_get`/`_post`가 인증 정보(`u`, `token`)를 자동으로 붙입니다. `explainError()`는 서버 에러를 사람이 읽는 문구 + 코드(NET/PIN/AUTH/VER/ERR)로 변환하고, `callAPI()`는 네트워크 단절을 잡는 안전 래퍼입니다. **모든 API 호출은 `callAPI(() => API.xxx())` 형태로 감쌉니다.**
 - **`app.js` — 두뇌 방.** 로그인 판단, 점수 계산, 통계, 화면 전환 등 모든 로직과 UI 렌더링. 빌드 없이 `render*()` 함수가 `innerHTML` 템플릿 문자열로 화면을 직접 그립니다.
 - **`index.html` — 뼈대.** 6개 페이지(`pg-login`, `pg-home`, `pg-course`, `pg-sc`, `pg-stat`, `pg-set`)의 정적 마크업과 인라인 SVG 아이콘. `api.js` → `app.js` 순서로 로드합니다.
 - **`style.css` — 모양.** 다크 테마, iOS 스타일. CSS 변수는 `:root`에 정의(`--bg`, `--g` 등). 신호 색: 빨강 `--r`, 초록 `--g`.
@@ -37,10 +37,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 화면 전환
 
 페이지는 CSS 클래스 토글로 전환됩니다. `showPg(id)`가 모든 `.page`에서 `.on`을 빼고 `pg-{id}`에만 추가합니다. 모달은 `om(id)`/`cm(id)`로 여닫습니다. 짧은 헬퍼(`Q`=getElementById, `toast`, `load`/`hide`)가 app.js 상단에 모여 있습니다.
-
-### BENCH (분석 기준값 / 신호등)
-
-`BENCH` 객체는 통계 색상 판정 임계값입니다(예: `puttGood:32`, `girGood:50`). 관리자가 설정 화면에서 수정하면 서버 Script Properties의 `BENCH` 키에 저장되어 **모든 사용자가 공유**합니다. 서버가 없거나 실패하면 app.js의 내장 기본값을 사용하므로 앱은 항상 동작합니다. `Apps_Script_추가분_bench.gs.txt`는 이 기능을 기존 백엔드에 붙이는 패치 안내입니다.
 
 ## 버전 관리 & 체인지로그 (필수 규칙)
 

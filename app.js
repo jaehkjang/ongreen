@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.32.0';
+const APP_VERSION = 'v12.35.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -26,10 +26,6 @@ let A = {
         gir: Array(18).fill(false), fir: Array(18).fill(false),
         mulli: Array(18).fill(0), tp: Array(18).fill(0), teeSel: Array(18).fill(null),
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
-
-// ── 분석 기준값(신호등) · 관리자가 설정에서 수정 → 서버 공유. 서버 없으면 이 기본값 ──
-let BENCH = { firGood: 60, firOk: 35, tpDemote: 3, puttGood: 33, puttBad: 36, threeGood: 2, threeBad: 3.5,
-              girGood: 40, girBad: 21, scrGood: 34, scrBad: 21 };  // putt=라운드 퍼팅(개/R) · three=3퍼팅(회/R) · gir/scr=%(적중·스크램블)
 
 // ── 📢 공지 게시판 (읽기 전용) ──
 // 사용자는 읽기만 합니다. 새 글(id가 마지막으로 본 id보다 큼)이 있으면 홈의 📢 배지에 알림이 뜹니다.
@@ -136,7 +132,7 @@ async function changePin() {
 // ════════════════════════════════════════
 async function loadAll(silent) {
   if (!silent) load('데이터 불러오는 중...');  // 캐시로 이미 화면이 떠 있으면(silent) 로딩창 없이 조용히 갱신
-  const [rr, cr, br] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()), callAPI(() => API.getBench()) ]);
+  const [rr, cr] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()) ]);
 
   if (rr && rr.err === '인증실패') { hide(); logoutSilent(); return; }  // 토큰 만료(초기화 등) — 이때만 로그아웃
 
@@ -150,8 +146,6 @@ async function loadAll(silent) {
     maybeShowStartupPopup();   // 첫 로그인=설명서 / 업데이트되면 변경 내용 팝업(각각 한 번만)
     return;
   }
-
-  if (br && br.ok && br.bench && typeof br.bench === 'object') Object.assign(BENCH, br.bench);  // 서버 기준값 반영(없으면 기본값 유지)
 
   // ── 라운드: 서버가 "확실히 성공"(ok + rounds 배열)일 때만 교체. 그 외(서버 일시오류·이상 응답)엔
   //    절대 빈 배열로 덮지 않는다. (서버 saveRounds_ 가 clearContents 라, 이후 빈 배열 저장 시 유실되므로)
@@ -168,13 +162,13 @@ async function loadAll(silent) {
   A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(c => ({ ...c, status: 'official' }))
                                                        : ((A.official && A.official.length) ? A.official : [...DEF]);
   // ── 캐시는 "라운드를 성공적으로 받았을 때만" 갱신 (실패 응답으로 캐시를 비우지 않도록)
-  if (roundsOk) { try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {} }
+  if (roundsOk) { try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official })); } catch (e) {} }
   else if (!silent) toast('⚠️ 기록 동기화 실패 — 저장된 기록을 그대로 표시합니다');
 
   // 과거 버그로 뒤바뀐 코스 조합 라벨을 박제된 파 기준으로 자동 복구(스코어·기록은 불변). 바뀐 게 있으면 서버에도 반영.
   if (roundsOk && healRoundLabels()) {
     pushRounds();
-    try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official, bench: BENCH })); } catch (e) {}
+    try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official })); } catch (e) {}
   }
 
   setUserLabels();
@@ -212,7 +206,7 @@ async function refreshNotes() {
 // ════════════════════════════════════════
 function goHome() { showPg('home'); renderHome(); document.querySelector('.tab .tb:first-child')?.classList.add('on'); document.querySelector('.tab .tb:last-child')?.classList.remove('on'); }
 function goStat() { showPg('stat'); renderStat(0); document.querySelector('.tab .tb:last-child')?.classList.add('on'); document.querySelector('.tab .tb:first-child')?.classList.remove('on'); }
-function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; renderBenchSettings(); if (A.isAdm) { if (_admOffLoaded) renderAdmOfficial(); else admLoadOfficial(); } }   // 관리자는 설정을 열 때 목록을 미리 불러와 바로 검색되게(불러오기→재검색 불필요)
+function goSet() { showPg('set'); Q('adm-panel').style.display = A.isAdm ? 'block' : 'none'; if (A.isAdm) { if (_admOffLoaded) renderAdmOfficial(); else admLoadOfficial(); } }   // 관리자는 설정을 열 때 목록을 미리 불러와 바로 검색되게(불러오기→재검색 불필요)
 // 홈 상단 노란 알림 배너 → 설정의 관리자 "골프장 변경 알림" 메뉴로 바로 이동.
 // 알림 목록(누가·어느 코스·어느 구성을 어떻게 고쳤는지)을 자동으로 펼치고 그 위치로 스크롤한다.
 async function goAdmNotes() {
@@ -221,51 +215,6 @@ async function goAdmNotes() {
   await admLoadNotes();                                  // 변경 내역 자동 로드 (상세 포함)
   const el = Q('adm-notes');
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-// ── 🚦 진단 신호등 계산식 (단일 소스) ──
-// 공지(통계 가이드)·관리자 설정·사용자 통계 화면이 모두 이 함수를 끌어다 씁니다.
-// 기준값(BENCH)이 바뀌면 세 곳의 설명이 함께 자동 갱신돼 서로 어긋날 일이 없습니다.
-function benchFormulaHTML() {
-  const b = BENCH;
-  return `<div style="font-size:13px;color:var(--t2);line-height:1.7">
-    신호등은 <b style="color:var(--g)">🟢 좋음</b> / <b style="color:var(--a)">🟡 양호</b> / <b style="color:var(--r)">🔴 부족</b> 3단계입니다.<br><br>
-    <b style="color:var(--t)">🚗 드라이버 — 페어웨이%(FIR) · 티샷 손실</b><br>페어웨이% = 티샷이 페어웨이에 떨어진 홀(FIR) ÷ 파4·5홀. M·TP로 살린 홀은 제외. 🟢 ${b.firGood}%↑ · 🟡 ${b.firOk}%↑ · 🔴 그 미만. OB/해저드(M+TP)가 라운드당 ${b.tpDemote}홀↑이면 한 단계 강등.<br><br><span style="color:var(--t3)">※ <b>티샷 손실(타/R)</b> = 페어웨이 놓친 홀의 파 대비 평균 − 지킨 홀의 파 대비 평균, 거기에 라운드당 놓친 홀 수를 곱한 값. “내 티샷이 한 라운드에 몇 타를 깎아먹나”를 퍼센트가 아니라 타수로 바로 보여줘요(파4·5홀만, 지킴·놓침이 각각 5홀 이상 모였을 때). 등급 판정에는 쓰지 않고, 약점 우선순위의 드라이버 손실 타수로 쓰입니다.</span><br><span style="color:var(--t3)">※ 함께 보이는 <b>생존율</b> = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀. 공을 잃지 않은 비율로, 등급 판정에는 쓰지 않는 보조 지표예요.</span><br><br>
-    <b style="color:var(--t)">🎯 아이언 — GIR(그린 적중률)</b><br>정규타수(파−2) 안에 그린 올린 홀 비율. 🟢 ${b.girGood}%↑ · 🟡 ${b.girBad}%↑ · 🔴 그 미만.<br><br>
-    <b style="color:var(--t)">⛳ 숏게임 — 스크램블링</b><br>그린 놓친 홀 중 파 이하로 막은 비율. 🟢 ${b.scrGood}%↑ · 🟡 ${b.scrBad}%↑ · 🔴 그 미만.<br><br>
-    <b style="color:var(--t)">🍩 퍼팅 — 라운드 퍼팅 + 3퍼팅</b><br>라운드 퍼팅 수(홀당 평균·거리감)와 3퍼팅 빈도(큰 실수) 중 <b>나쁜 쪽</b>으로 판정. 🟢 ${b.puttGood}개↓ <b>그리고</b> 3퍼팅 ${b.threeGood}회↓ · 🔴 ${b.puttBad}개 초과 <b>또는</b> 3퍼팅 ${b.threeBad}회 초과 · 🟡 그 사이.<br><span style="color:var(--t3)">※ <b>GIR홀 퍼팅</b>(정규로 올린 홀의 순수 퍼팅력)은 등급엔 안 쓰고 참고용으로 함께 보여줘요.</span></div>`;
-}
-
-// ── 설정 → 📊 분석 기준 : 모두 설명 보기 / 관리자만 수정 ──
-function renderBenchSettings() {
-  const b = BENCH, box = Q('bench-box'); if (!box) return;
-  let html = benchFormulaHTML();
-  if (A.isAdm) {
-    const f = (id, label, val) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0"><label style="font-size:13px;color:var(--t2);flex:1">${label}</label><input id="bn-${id}" type="number" inputmode="decimal" step="any" value="${val}" style="width:84px;text-align:center;padding:8px;border-radius:8px;border:1.5px solid var(--bd);background:var(--bg3);color:var(--t);font-size:15px;font-weight:700"></div>`;
-    html += `<div class="msep"></div><div style="font-size:12px;color:var(--a);font-weight:700;margin-bottom:6px">🔧 관리자 — 기준값 수정 (전체 적용)</div>`
-      + f('firGood', '드라이버 페어웨이% 좋음(%)', b.firGood)
-      + f('firOk', '드라이버 페어웨이% 양호(%)', b.firOk)
-      + f('tpDemote', 'OB/해저드 강등 기준(M+TP, 라운드당 홀)', b.tpDemote)
-      + f('girGood', '아이언 GIR 좋음(%)', b.girGood)
-      + f('girBad', '아이언 GIR 부족(%)', b.girBad)
-      + f('scrGood', '숏게임 스크램블 좋음(%)', b.scrGood)
-      + f('scrBad', '숏게임 스크램블 부족(%)', b.scrBad)
-      + f('puttGood', '퍼팅 라운드 좋음(개 이하)', b.puttGood)
-      + f('puttBad', '퍼팅 라운드 부족(개 초과)', b.puttBad)
-      + f('threeGood', '3퍼팅 좋음(회/라운드 이하)', b.threeGood)
-      + f('threeBad', '3퍼팅 부족(회/라운드 초과)', b.threeBad)
-      + `<div id="bench-msg" style="font-size:12px;min-height:16px;margin:8px 0"></div>`
-      + `<button class="btn btn-g" onclick="saveBench()" style="width:100%">기준 저장 (전체 반영)</button>`;
-  }
-  box.innerHTML = html;
-}
-async function saveBench() {
-  const ids = ['firGood', 'firOk', 'tpDemote', 'puttGood', 'puttBad', 'threeGood', 'threeBad', 'girGood', 'girBad', 'scrGood', 'scrBad'];
-  const nb = {}; for (const id of ids) { const v = parseFloat(Q('bn-' + id).value); if (!isNaN(v)) nb[id] = v; }
-  const msg = Q('bench-msg'); msg.style.color = 'var(--t2)'; msg.textContent = '저장 중...';
-  const r = await callAPI(() => API.setBench(nb));
-  if (r && r.ok) { Object.assign(BENCH, r.bench || nb); msg.style.color = 'var(--g)'; msg.textContent = '✅ 저장됨 — 전체 분석에 반영됩니다'; renderBenchSettings(); }
-  else { Object.assign(BENCH, nb); msg.style.color = 'var(--a)'; msg.textContent = '⚠️ 이 기기에만 적용됨 (서버 미연결 — 배포 후 전체 공유)'; renderBenchSettings(); }
 }
 
 // ════════════════════════════════════════
@@ -547,13 +496,13 @@ function openDet(id) {
     ${skillRatioHTML([r])}
     ${blowupCauseHTML([r])}
     <div class="lbl">🎯 손실 타수, 어디서 났나 (드라이버=티샷 · 아이언 · 숏게임=어프로치 · 퍼팅)</div>${weaknessHTML(analyze([r]), [r])}
+    <div class="lbl">파 종류별</div>${parCrossHTML([r])}
+    ${puttShortHTML([r])}
     ${frontBackHTML([r])}
     <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div onclick="holeDetail(${id},${i})" style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
     ${scoreDistHTML([r])}
-    <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin:8px 0 6px">🔍 이 라운드 분석</button>
-    <div id="rana-box" style="display:none;margin-bottom:8px"></div>
     ${courseCompareHTML(r)}
     <button onclick="shareRound(${id})" style="width:100%;margin-top:8px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;padding:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">📤 스코어카드 공유</button>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -697,6 +646,15 @@ function recalcHole(i) {                          // 온그린·퍼팅이 확정
   const par = getH()[i], og = (A.sc.og && A.sc.og[i]) || 0;
   if (og > 0) { A.sc.scores[i] = og + (A.sc.putts[i] || 0); A.sc.gir[i] = og <= Math.max(1, par - 2); }
 }
+// 아직 입력 전(미조정) 홀은 미리보기 값이 항상 파와 같으므로, 그 값 그대로 원터치 확정한다.
+function confirmPar(i) {
+  if (A.sc.ro || A.sc.scores[i] > 0) return;
+  if (!A.sc.og) A.sc.og = Array(18).fill(0);
+  const par = getH()[i];
+  A.sc.og[i] = Math.max(1, par - 2);
+  A.sc.putts[i] = 2;
+  recalcHole(i); renderSC(); autoSaveSC();
+}
 function ogAdj(i, d) {
   if (A.sc.ro) return;
   if (!A.sc.og) A.sc.og = Array(18).fill(0);
@@ -778,9 +736,9 @@ function renderHoleWizard() {
           <div style="font-size:11px;color:var(--t3);margin-top:6px">수</div>
         </div>
       </div>
-      <div class="${cc}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px">
+      <div class="${cc}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px${entered ? '' : ';cursor:pointer'}"${entered ? '' : ` onclick="confirmPar(${i})"`}>
         <div style="font-size:18px;font-weight:800">${entered ? scoreLabel(d, score) : '입력 전'}</div>
-        <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `기본값 ${score}타 표시 중 · 조정하면 기록돼요`}</div>
+        <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `탭하면 파(${par}) 그대로 입력돼요`}</div>
       </div>
       <div style="display:flex;gap:8px">
         ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 108px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">◀ 이전 홀</button>` : ''}
@@ -1183,7 +1141,7 @@ async function delCourse(key) {                  // 관리자만 호출 (버튼�
 // ════════════════════════════════════════
 function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? `<span class="su">${u}</span>` : ''}</span><span class="sl">${l}</span></div>`; }
 
-// ── 🚦 진단 분석 (절대기준 신호등 4지표: 드라이버·아이언·숏게임·퍼팅) ──
+// ── 4부서(드라이버·아이언·숏게임·퍼팅) 손실 타수 집계 ──
 function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
@@ -1238,64 +1196,9 @@ function analyze(rounds) {
   const shortLossRound = f1(missLossSum, n);
   // 퍼팅: 2퍼팅 기준 초과 타수(3퍼팅=1타, 4퍼팅=2타 …)를 그대로 합산
   const puttLossRound = f1(puttExcessSum, n);
-  // 드라이버 등급: 페어웨이%(주지표) 기준 + OB/해저드(M+TP) 잦으면 한 단계 강등
-  // 생존율(survPct)은 등급에 안 쓰고 보조 숫자로만 표시.
-  let dst = adjFir >= BENCH.firGood ? 'g' : adjFir >= BENCH.firOk ? 'y' : 'r';
-  if (teeLostPer >= BENCH.tpDemote) dst = dst === 'g' ? 'y' : 'r';
-  // 퍼팅 등급 = 라운드 퍼팅 수(홀당 평균·거리감) + 3퍼팅 빈도(큰 실수) 중 나쁜 쪽.
-  // 잘 굴려도 3퍼팅이 잦으면 스코어가 새므로 둘을 함께 본다. GIR홀 퍼팅은 참고용으로만 표시.
-  const hasGP = girPuttN > 0;
-  const grdLow = (v, g, b) => v <= g ? 'g' : v > b ? 'r' : 'y';     // 낮을수록 좋은 지표(퍼팅·3퍼팅)
-  const worse = (a, b) => (a === 'r' || b === 'r') ? 'r' : (a === 'y' || b === 'y') ? 'y' : 'g';
-  const putStatus = worse(grdLow(puttAvg, BENCH.puttGood, BENCH.puttBad), grdLow(threeAvg, BENCH.threeGood, BENCH.threeBad));
-  const scrStatus = missGreen ? (scrPct >= BENCH.scrGood ? 'g' : scrPct < BENCH.scrBad ? 'r' : 'y') : 'g';
-  const S = (status, icon, area, value, msg, note) => ({ status, icon, area, value, msg, note });
-  // 표시 순서: 드라이버(티샷) → 아이언(어프로치) → 숏게임 → 퍼팅
-  const sig = [
-    S(dst, '🚗', '드라이버',
-      `페어웨이 ${adjFir}%${teeCostOk ? ` · 티샷 손실 ${nf(teeCostRound)}타/R` : ''} (생존 ${survPct}% · OB/해저드 ${nf(teeLostPer)}홀)`,
-      // 등급 메시지 뒤에, 티샷이 실제로 몇 타를 깎아먹는지 한 문장으로 덧붙인다(표본이 충분할 때만).
-      (dst === 'g' ? `티샷을 페어웨이에 잘 지켜냅니다. 드라이버 정확도가 좋아요. (생존 ${survPct}%)` :
-       dst === 'y' ? `페어웨이를 대체로 지키지만 가끔 빗나갑니다. 페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀.` :
-       `티샷이 페어웨이를 자주 벗어납니다(페어웨이 ${adjFir}% · OB/해저드 ${nf(teeLostPer)}홀). 스코어 손실의 큰 원인입니다.`)
-      + (teeCostOk
-          ? (teeCost > 0.05
-              ? ` 페어웨이를 지킨 홀은 파 대비 ${nfs(fwHitVsAvg)}타, 놓친 홀은 ${nfs(fwMissVsAvg)}타 — 티샷 하나가 홀당 ${nf(teeCost)}타, 라운드당 약 ${nf(teeCostRound)}타를 깎아먹고 있어요.`
-              : ` 페어웨이를 놓쳐도 스코어가 거의 안 무너집니다(지킴 ${nfs(fwHitVsAvg)}타 · 놓침 ${nfs(fwMissVsAvg)}타). 티샷보다 다른 곳에서 타수가 새고 있어요.`)
-          : ''),
-      `페어웨이% = 티샷이 페어웨이에 떨어진 비율(파4·5홀 중·M·TP로 살린 홀 제외) — 등급을 정하는 주지표 · OB/해저드(M+TP)가 라운드당 ${BENCH.tpDemote}홀↑이면 한 단계 강등 · 생존율 ${survPct}% = (파4·5홀 − M·TP 켜진 홀) ÷ 파4·5홀, 공을 잃지 않은 비율로 등급엔 안 쓰는 보조 지표`
-      + (teeCostOk ? ` · <b>티샷 손실</b> = (페어웨이 놓친 홀 파대비 평균 − 지킨 홀 파대비 평균) × 라운드당 놓친 홀 수. 티샷이 실제로 스코어를 얼마나 깎는지 퍼센트가 아니라 타수로 바로 계산해요(파4·5홀만, 각 5홀 이상 모였을 때 표시).` : '')),
-    S(girPct >= BENCH.girGood ? 'g' : girPct < BENCH.girBad ? 'r' : 'y', '🎯', '아이언(GIR)',
-      `GIR ${girPct}%`,
-      girPct >= BENCH.girGood ? `그린 적중률이 높습니다. 아이언으로 기회를 잘 만들고 있어요.` :
-      girPct < BENCH.girBad ? `그린 적중률이 낮습니다. 대부분 그린을 놓쳐 어프로치·숏게임 부담이 커집니다.` :
-      `그린 적중 보통. 절반가량은 정규 타수에 그린을 못 올립니다.`,
-      `GIR = 정규타수(파−2) 안에 그린 올린 홀 비율. 파3 티샷 실수도 여기 반영됩니다.`),
-    S(scrStatus, '⛳', '숏게임',
-      missGreen ? `스크램블 ${scrPct}% (그린 미스 ${nf(missAvg)}홀)` : `그린 미스 없음`,
-      !missGreen ? `그린을 놓친 홀이 없어 평가할 수치가 없습니다.` :
-      scrStatus === 'g' ? `그린을 놓쳐도 파 이하로 잘 막습니다. 어프로치·쇼트퍼팅이 좋아요.` :
-      scrStatus === 'r' ? `그린 미스 후 회복이 적습니다. 어프로치 붙이기·파세이브 퍼팅에서 타수가 샙니다.` :
-      `그린 미스 후 회복은 보통입니다. 어프로치를 더 붙이면 스코어가 줄어요.`,
-      `스크램블링 = 그린 놓친 홀 중 파 이하로 막은 비율(높을수록 좋음). 라운드당 그린 미스 ${nf(missAvg)}홀.`),
-    S(putStatus, '🍩', '퍼팅',
-      `라운드 ${nf(puttAvg)}개 (홀당 ${nf(puttAvg / 18)}) · 3퍼팅 ${nf(threeAvg)}회${hasGP ? ` · GIR홀 ${nf(girPuttAvg)}` : ''}`,
-      putStatus === 'g' ? `퍼팅이 안정적입니다. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회로 그린에서 타수를 잘 지키고 있어요.` :
-      putStatus === 'r' ? `퍼팅에서 타수가 샙니다. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회 — 첫 퍼트 거리감(롱퍼트)을 줄이는 게 급선무입니다.` :
-      `퍼팅 보통. 라운드 ${nf(puttAvg)}개 · 3퍼팅 ${nf(threeAvg)}회 — 여기서 조금씩 타수가 새고 있어요.`,
-      `등급 = 라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도 중 나쁜 쪽으로 판정 · 🟢 ${BENCH.puttGood}개↓ 그리고 3퍼팅 ${BENCH.threeGood}회↓ · 🔴 ${BENCH.puttBad}개 초과 또는 3퍼팅 ${BENCH.threeBad}회 초과${hasGP ? ` · (GIR홀 퍼팅 ${nf(girPuttAvg)}개는 순수 퍼팅력 참고용 — 등급엔 미반영)` : ''}`)
-  ];
-  return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, scrPct, missGreen, scrSave, missAvg, sig,
+  return { n, scoreAvg: f1(scoreSum, n), vsAvg: f1(vsSum, n), survPct, adjFir, teeLostPer, puttAvg, threeAvg, girPuttAvg, p1A: f1(p1, n), p2A: f1(p2, n), p3A: f1(p3, n), p4A: f1(p4, n), girPct, scrPct, missGreen, scrSave, missAvg,
            teeCost, teeCostRound, teeCostOk, fwHitVsAvg, fwMissVsAvg,     // 티샷이 깎아먹는 타수
            ironLossRound, shortLossRound, puttLossRound };   // 아이언·숏게임·퍼팅이 깎아먹는 타수
-}
-function analysisHTML(a) {
-  if (!a.n) return `<div class="empty" style="padding:24px 0"><div>📊</div><p>분석할 라운드가 없습니다</p></div>`;
-  const dotc = { g: '🟢', y: '🟡', r: '🔴' };
-  const cards = a.sig.map(s => `<div class="dgi ${s.status}">
-    <div class="dgi-h"><span class="dgi-t">${dotc[s.status]} ${s.icon} ${s.area}</span><span class="dgi-v ${s.status}">${s.value}</span></div>
-    <div class="dgi-m">${s.msg}</div>${s.note ? `<div class="dgi-n">ℹ️ ${s.note}</div>` : ''}</div>`).join('');
-  return `${cards}<div style="font-size:11px;color:var(--t2);margin-top:8px;line-height:1.55;word-break:keep-all">※ ${a.n}개 라운드 기준 · 파3의 M·TP는 드라이버에서 빠지고 GIR(아이언)에 반영 · 기준값은 설정 → 분석 기준에서 조정</div>`;
 }
 // ════════════════════════════════════════
 // 발전 분석 (시간축 · "과거의 나와 비교")
@@ -1347,13 +1250,13 @@ const TREND_METRICS = [
   { k: 'putts', lbl: '퍼팅',   low: true,  u: '' },
   { k: 'gir',   lbl: 'GIR',    low: false, u: '%' },
   { k: 'fir',   lbl: 'FIR',    low: false, u: '%' },
-  { k: 'lossStrokes', lbl: '티샷손실타수', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
+  { k: 'lossStrokes', lbl: '티샷손실', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
   { k: 'consist', lbl: '기복', low: true,  u: '' },   // 최근 5R 스코어 편차(작을수록 일정)
 ];
 function setTrend(k) { _trendMetric = k; const w = Q('trend-wrap'); if (w) w.innerHTML = trendWrapHTML(); }
 function trendWrapHTML() {
   const rs = roundsChrono(); const M = TREND_METRICS[_trendMetric] || TREND_METRICS[0];
-  const toggle = `<div class="seg" style="margin-bottom:10px">${TREND_METRICS.map((m, i) => `<button class="sg ${i === _trendMetric ? 'on' : ''}" onclick="setTrend(${i})">${m.lbl}</button>`).join('')}</div>`;
+  const toggle = `<div class="seg" style="margin-bottom:10px">${TREND_METRICS.map((m, i) => `<button class="sg ${i === _trendMetric ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px;white-space:nowrap" onclick="setTrend(${i})">${m.lbl}</button>`).join('')}</div>`;
   // 기복(consist)은 라운드별 값이 아니라 최근 5R 스코어 편차의 흐름으로 계산, 손실타수는 tpArr 에서 직접 계산
   const vals = M.k === 'consist' ? rollingSD(rs.map(r => +(r.score || 0)), 5)
     : M.k === 'lossStrokes' ? rs.map(lossStrokesOf)
@@ -1413,21 +1316,6 @@ function weaknessItems(a) {
     { area: '🍩 퍼팅', lost: a.puttLossRound, tip: '거리감·3퍼팅 줄이기 · 2퍼팅 기준 초과 타수 그대로 반영', drill: '롱퍼트 첫 퍼트를 홀 옆에 붙이는 거리감 연습' },
   ].sort((x, y) => y.lost - x.lost);
 }
-// ── 💊 오늘의 처방: 4부서 중 손해 가장 큰 한 곳을 콕 집어 행동 지시 ──
-function prescriptionHTML(a) {
-  if (!a.n) return '';
-  const top = weaknessItems(a)[0];
-  if (!top || top.lost < 0.3) {   // 큰 약점이 없음 — 균형 잡힌 상태
-    return `<div class="cb" style="border-left:3px solid var(--g)">
-      <div style="font-size:13px;font-weight:800;color:var(--g);margin-bottom:4px">💊 오늘의 처방</div>
-      <div style="font-size:13px;color:var(--t2);line-height:1.6">4개 영역이 고르게 좋아요. 뚜렷한 약점이 없으니 <b style="color:var(--t)">지금 루틴을 유지</b>하세요.</div></div>`;
-  }
-  const name = top.area.replace(/^[^ ]+\s/, '');   // 이모지 제거한 영역 이름
-  return `<div class="cb" style="border-left:3px solid var(--a)">
-    <div style="font-size:13px;font-weight:800;color:var(--a);margin-bottom:5px">💊 오늘의 처방</div>
-    <div style="font-size:16px;font-weight:700;color:var(--t);line-height:1.4">${top.area.split(' ')[0]} ${name} 한 곳만 잡으세요</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-top:6px">${name}에서 약 <b style="color:var(--a)">${top.lost.toFixed(1)}타</b>를 손해 보고 있어요.<br>→ <b style="color:var(--t)">${top.drill}</b></div></div>`;
-}
 // ── 약점 우선순위(간이 스트로크게인): 영역별 손실 타수 추정 → 고칠 순서 ──
 function weaknessHTML(a, rounds) {
   if (!a.n) return '';
@@ -1443,15 +1331,16 @@ function weaknessHTML(a, rounds) {
   return `<div class="cb">${rows}<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:2px">※ 라운드당 손실 타수 추정(설정 기준값 대비). 영역 간 중복이 있을 수 있는 상대 비교용입니다.</div></div>`;
 }
 
-// ── 💥 큰 실수(블로업)의 원인 분해: 더블보기↑ 홀이 무엇 때문에 났는지 ──
+// ── 💥 블로업(트리플보기 이상) 홀의 원인 분해 ──
 // 한 홀에 원인이 겹칠 수 있으므로(예: 티샷 OB + 3퍼팅) 각 원인별로 따로 셉니다.
+// "블로업"은 실력 비율 카드(skillRatioHTML)와 같은 기준(트리플보기 이상)을 씁니다.
 function blowupCauseHTML(rounds) {
   let big = 0, teeC = 0, puttC = 0, missC = 0;
   rounds.forEach(r => {
     const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], pa = r.puttsArr || [], tp = r.tpArr || [];
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!(s > 0)) continue;
-      const par = hp[i] || 4; if (s - par < 2) continue;     // 더블보기 이상만
+      const par = hp[i] || 4; if (s - par < 3) continue;     // 블로업(트리플보기 이상)만
       big++;
       const tee = (tp[i] || 0);                              // 티샷 사고(OB·해저드 벌타). 멀리건은 벌타가 안 들어가 제외
       if (tee) teeC++;
@@ -1459,16 +1348,16 @@ function blowupCauseHTML(rounds) {
       if (!gi[i] && !tee) missC++;                           // 그린 미스(티샷 사고는 위에서 집계해 중복 제외)
     }
   });
-  if (!big) return `<div class="cb" style="font-size:13px;color:var(--t2);line-height:1.6">🎉 더블보기 이상(큰 실수)이 없어요. 큰 점수가 안 나오는 게 최고의 강점입니다.</div>`;
+  if (!big) return `<div class="cb" style="font-size:13px;color:var(--t2);line-height:1.6">🎉 블로업(트리플보기 이상)이 없어요. 큰 점수가 안 나오는 게 최고의 강점입니다.</div>`;
   const rows = [
-    ['🚗 티샷 사고(OB·해저드)', teeC, 'var(--r)'],
-    ['🍩 3퍼팅 이상', puttC, 'var(--a)'],
-    ['🎯 그린 미스(어프로치)', missC, 'var(--b)'],
+    ['🚗 티샷 사고', teeC, 'var(--r)'],
+    ['🍩 3퍼팅↑', puttC, 'var(--a)'],
+    ['🎯 그린 미스', missC, 'var(--b)'],
   ];
   const mx = Math.max(...rows.map(x => x[1]), 1);
-  const body = rows.map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co};min-width:${c ? 18 : 0}px"><span>${c}</span></div></div></div>`).join('');
+  const body = rows.map(([l, c, co]) => `<div class="br"><div class="bl" style="width:74px;white-space:nowrap">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co};min-width:${c ? 18 : 0}px"><span>${c}</span></div></div></div>`).join('');
   const top = [...rows].sort((a, b) => b[1] - a[1])[0];
-  return `<div class="cb"><div class="cbt">💥 큰 실수(더블보기↑) ${big}개의 원인</div>${body}
+  return `<div class="cb"><div class="cbt">💥 블로업(트리플보기↑) ${big}개의 원인</div>${body}
     <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">한 홀에 원인이 겹칠 수 있어 합계는 ${big}개와 다를 수 있어요. <b style="color:var(--t2)">가장 잦은 범인: ${top[0]}</b> — 여기만 줄여도 큰 점수가 확 줄어요.</div></div>`;
 }
 
@@ -1689,30 +1578,6 @@ function sigChip(icon, label, val, color) {
   return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:.5px solid var(--bd);border-radius:8px;padding:4px 9px;font-size:12px;color:var(--t2)">${em ? em + ' ' : ''}${icon} ${label} <b style="color:var(--t)">${val}</b></span>`;
 }
 
-// ── 🔍 이 라운드 분석: 전체 통계와 같은 하위 탭(추세·기록 제외)으로, 그 라운드 한 판 기준 ──
-// "스코어" 탭은 폐지 — 라운드 상세 기본 정보(openDet)와 내용이 겹쳐서 기본 정보 쪽으로 옮겼다.
-let _ranaSub = 0;   // 0 정확도·퍼팅 · 1 진단
-let _ranaId = null;
-const RANA_SUBS = ['정확도·퍼팅', '진단'];
-function setRanaSub(s) { _ranaSub = s; renderRanaBox(); }
-function renderRanaBox() {
-  const r = A.rounds.find(x => x.id === _ranaId); if (!r) return;
-  const box = Q('rana-box'); if (!box) return;
-  let h = `<div class="seg" style="margin-bottom:12px">${RANA_SUBS.map((l, i) => `<button class="sg ${i === _ranaSub ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px" onclick="setRanaSub(${i})">${l}</button>`).join('')}</div>`;
-  if (_ranaSub === 0) {
-    h += `<div class="lbl">파 종류별</div>${parCrossHTML([r])}` + puttShortHTML([r]);
-  } else {
-    const a = analyze([r]);
-    h += `<div class="lbl">🚦 진단</div>${analysisHTML(a)}<div class="lbl">🎯 약점 우선순위</div>${weaknessHTML(a, [r])}` + prescriptionHTML(a);   // 💊 처방은 맨 마지막
-  }
-  box.innerHTML = h;
-}
-function toggleRoundAna(id) {
-  const box = Q('rana-box'), btn = Q('rana-btn'); if (!box) return;
-  if (box.style.display === 'block') { box.style.display = 'none'; if (btn) btn.textContent = '🔍 이 라운드 분석'; }
-  else { _ranaId = id; _ranaSub = 0; renderRanaBox(); box.style.display = 'block'; if (btn) btn.textContent = '🔍 분석 닫기'; }
-}
-
 // ── 신호등 기준: "내 평균 대비" ──
 function playerAvgs() {
   const rs = A.rounds.filter(r => !r.isDraft); const n = rs.length;
@@ -1730,9 +1595,9 @@ function sig(val, avg, betterLow, margin, n) {
 }
 function dot(c) { return c ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:4px;vertical-align:middle"></span>` : ''; }
 
-// 통계 [전체] 탭의 하위 카테고리: 0 스코어 · 1 정확도·퍼팅 · 2 진단 · 3 추세·기록
+// 통계 [전체] 탭의 하위 카테고리: 0 스코어 · 1 숏게임·퍼팅 · 2 추세·기록
 let _statSub = 0;
-const STAT_SUBS = ['스코어', '정확도·퍼팅', '진단', '추세·기록'];
+const STAT_SUBS = ['스코어', '숏게임·퍼팅', '추세·기록'];
 function setStatSub(s) { _statSub = s; renderStat(0); }
 
 function renderStat(m) {
@@ -1762,7 +1627,7 @@ function renderStat(m) {
       <div style="font-size:13px;color:var(--t2);line-height:1.5">최근 ${segN}R 평균 <b style="color:var(--t)">${recentAvg.toFixed(1)}</b> · 초기 ${segN}R 대비 <b style="color:${prog < 0 ? 'var(--g)' : prog > 0 ? 'var(--r)' : 'var(--t)'}">${prog < 0 ? '▼' : prog > 0 ? '▲' : ''}${Math.abs(prog).toFixed(1)}타</b>${prog < 0 ? ' — 좋아지고 있어요 🎉' : prog > 0 ? '' : ' — 유지 중'}</div></div>`;
     h += `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 4px">💡 추정 핸디 = 최근 20R 중 좋은 라운드의 오버파 평균(간이). 코스 난이도 미반영.</div>`;
 
-    // ── 하위 탭 (스코어 · 정확도·퍼팅 · 진단 · 추세·기록) ──
+    // ── 하위 탭 (스코어 · 숏게임·퍼팅 · 추세·기록) ──
     h += `<div class="seg" style="margin:12px 0">${STAT_SUBS.map((l, i) => `<button class="sg ${i === _statSub ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px" onclick="setStatSub(${i})">${l}</button>`).join('')}</div>`;
 
     if (_statSub === 0) {
@@ -1773,17 +1638,9 @@ function renderStat(m) {
       h += frontBackHTML(rounds);
       h += scoreDistHTML(rounds);
     } else if (_statSub === 1) {
-      // 🎯 정확도·퍼팅
+      // ⛳ 숏게임·퍼팅
       h += `<div class="lbl">파 종류별</div>${parCrossHTML(rounds)}`;
       h += puttShortHTML(rounds);
-    } else if (_statSub === 2) {
-      // 🚦 진단 + 약점 우선순위 (공지·설정과 같은 benchFormulaHTML() 단일 소스)
-      const aAll = analyze(rounds);
-      h += `<div class="lbl">🚦 진단 (전체 라운드)</div>${analysisHTML(aAll)}`;
-      h += `<details style="margin:8px 2px 0;background:var(--bg2);border:.5px solid var(--bd);border-radius:12px;padding:10px 12px">
-        <summary style="font-size:12px;font-weight:700;color:var(--t2);cursor:pointer;list-style:none">🧮 진단 신호등 계산식 보기</summary>
-        <div style="margin-top:8px">${benchFormulaHTML()}</div></details>`;
-      h += `<div class="lbl">🎯 약점 우선순위 (고칠 순서)</div>${weaknessHTML(aAll, rounds)}`;
     } else {
       // 📈 추세 · 기록
       h += `<div class="lbl">📈 발전 추세 (과거의 나와 비교)</div><div id="trend-wrap">${trendWrapHTML()}</div>`;
@@ -2053,13 +1910,15 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 길게 늘어지던 통계를 <b style="color:var(--g)">탭으로 정리</b>해 한눈에 보기 쉽게, 라운드별 분석도 직관적으로 다듬었어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 탭을 더 줄여 화면 하나에서 바로 보이게 정리했고, 스코어 입력에 원터치 파 입력을 추가했어요.</div>
 
-  ${S('📣 이번 업데이트 — 한눈에 보기 쉽게')}
-  ${li('📊 <b>통계 화면 탭 정리</b> — 길던 통계를 <b>스코어·정확도·퍼팅·진단·추세</b> 탭으로 나눠 원하는 것만 골라 봐요. (요약은 늘 맨 위 고정)')}
-  ${li('🔍 <b>라운드별 분석도 같은 탭 구조</b> — 라운드 상세의 "이 라운드 분석"에서도 스코어·정확도·진단을 탭으로 정리했어요.')}
-  ${li('🟢 <b>라운드 목록 신호 칩</b> — 작은 점 대신 🚗FIR·🎯GIR·🍩퍼팅을 🟢🟡🔴 칩으로 한눈에.')}
-  ${li('📖 <b>분석 철학·설명서 정리</b> — 줄글을 아이콘 카드와 한 줄 요약으로 바꿔 읽기 쉽게 했어요.')}
+  ${S('📣 이번 업데이트 — 더 짧고 빠르게')}
+  ${li('🔍 <b>라운드 상세 통합</b> — "이 라운드 분석" 토글을 없애고 정확도·숏게임·퍼팅(스크램블링 포함) 내용을 기본 화면에 바로 노출. 🚦신호등 진단·💊오늘의 처방은 없앴어요.')}
+  ${li('📊 <b>통계 탭 정리</b> — 진단 탭을 없애고 <b>스코어·숏게임·퍼팅·추세·기록</b> 3개 탭으로 줄였어요. "정확도·퍼팅"은 <b>숏게임·퍼팅</b>으로 이름을 바꿨어요.')}
+  ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "입력 전" 박스를 탭하면 파가 그대로 입력돼요.')}
+  ${li('✂️ <b>표기 간소화</b> — 추세 탭의 "티샷손실타수"를 "티샷손실"로 줄여 한 줄에 들어오게 했어요.')}
+  ${li('💥 <b>큰 실수 기준 수정</b> — "큰 실수의 원인"이 더블보기 이상이 아니라 <b>블로업(트리플보기 이상)</b> 홀만 세도록 바로잡았고, 원인 이름(티샷 사고·3퍼팅↑·그린 미스)이 한 줄로 보이게 고쳤어요.')}
+  ${li('🗑️ <b>분석 기준값 설정 삭제</b> — 신호등 진단 기능이 없어지며 안 쓰이게 된 설정 → "분석 기준" 화면을 정리했어요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2096,30 +1955,25 @@ function guideScorecardHTML() {
 }
 
 // ── 통계 분석 지표 설명(자동 생성) : 각 지표가 무엇을 뜻하는지 ──
-// 신호등 기준값(BENCH)을 그대로 끌어와 기준이 바뀌면 설명도 함께 갱신됩니다.
 function guideStatsHTML() {
   const S = (t) => `<div style="font-size:14px;font-weight:800;color:var(--g);margin:14px 0 5px">${t}</div>`;
   const it = (name, desc) => `<div style="margin:6px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.5">${desc}</div></div>`;
   return `
   <p style="color:var(--t2);font-size:13px;line-height:1.6"><b>통계</b> 탭에서 자동 계산되는 지표들의 뜻이에요.</p>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12.5px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">한 줄 요약</b> — 🚦진단 신호등으로 4부서(드라이버·아이언·숏게임·퍼팅) 약점을 찾고, 💊처방대로 한 곳만 연습하면 돼요. 나머지 지표는 그 근거예요.</div>
-
-  ${S('🚦 진단 신호등 — 계산식')}
-  ${benchFormulaHTML()}
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12.5px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">한 줄 요약</b> — 🎯 손실 타수, 어디서 났나에서 4부서(드라이버·아이언·숏게임·퍼팅) 중 가장 손해 큰 곳부터 잡으면 돼요. 나머지 지표는 그 근거예요.</div>
 
   ${S('📋 요약 · 발전')}
   ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
-  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
-  ${it('💊 오늘의 처방', '라운드 상세의 "🔍 이 라운드 분석"에서, 4부서 중 손해가 가장 큰 한 곳을 콕 집어 무엇을 연습할지 한 줄로 알려줘요.')}
-  ${it('🎯 약점 우선순위', '드라이버·아이언·숏게임·퍼팅을 설정 기준값과 비교해 라운드당 손실 타수를 추정 → 고칠 순서를 ⭐최우선부터. (상대 비교용)')}
+  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/티샷손실/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
+  ${it('🎯 손실 타수, 어디서 났나', '드라이버·아이언·숏게임·퍼팅 4부서의 라운드당 손실 타수를 실측값으로 계산해 고칠 순서를 ⭐최우선부터 보여줘요(라운드 상세에서 확인).')}
 
   ${S('스코어')}
   ${it('평균 스코어·오버파·기복', '총타수 평균 / 파 대비(+오버·−언더) / 점수 편차(작을수록 일정).')}
   ${it('실력 비율 · 블로업', '홀 기준 파 이하·보기·더블+ 비율. 블로업 = 라운드당 트리플보기↑ 홀.')}
   ${it('파 종류별 · 전·후반', '파3·4·5별 파 대비 평균에 더해, 파3은 GIR / 파4·5는 FIR·GIR을 함께 보여줘 어느 홀 유형에서 어느 부서가 약한지 진단. / 앞뒤 9홀 평균·차이(후반 무너짐).')}
-  ${it('💥 큰 실수의 원인', '더블보기 이상(블로업) 홀이 티샷 사고·3퍼팅·그린 미스 중 무엇 때문이었는지 원인별로 분해해요(한 홀에 겹칠 수 있음).')}
+  ${it('💥 큰 실수의 원인', '블로업(트리플보기 이상) 홀이 티샷 사고·3퍼팅·그린 미스 중 무엇 때문이었는지 원인별로 분해해요(한 홀에 겹칠 수 있음).')}
 
-  ${S('정확도 · 쇼트게임')}
+  ${S('숏게임 · 퍼팅')}
   ${it('GIR · FIR', '그린 적중률 / 페어웨이 적중률(%).')}
   ${it('라운드 퍼팅 · 3퍼팅 · GIR홀 퍼팅 · 1퍼팅율 · 퍼팅 분포', '라운드 퍼팅 수(홀당 평균)와 3퍼팅 빈도가 퍼팅 등급을 정해요 / GIR홀 퍼팅은 순수 퍼팅력 참고용 / 1퍼팅 비율 / 1·2·3·4+ 퍼팅 홀 수.')}
   ${it('스크램블링', '그린 놓친 홀을 파 이하로 막은 비율(높을수록 좋음).')}
@@ -2148,14 +2002,14 @@ function philosophyHTML() {
   <p style="font-size:14px;color:var(--t);line-height:1.7;font-weight:600">온그린은 점수를 <u>기록</u>하는 앱이 아니라, 다음 라운드에서 한 타를 줄여줄 <b style="color:var(--g)">코치</b>예요.</p>
   <p style="font-size:12.5px;color:var(--t3);line-height:1.6;margin-top:4px">모든 숫자는 하나의 질문에 답해요 — <b style="color:var(--t2)">"무엇을 연습해야 가장 빨리 줄어드나?"</b></p>
 
-  ${card('🔍', `① 점수가 아니라 '원인'을 본다`, `🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 4부서로 쪼개 신호등으로 진단해요. "90 쳤다"가 아니라 "숏게임이 🔴라서 90"을 말해줘요.`)}
+  ${card('🔍', `① 점수가 아니라 '원인'을 본다`, `🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 4부서로 쪼개 손실 타수를 재요. "90 쳤다"가 아니라 "숏게임에서 3타 샜다"를 말해줘요.`)}
   ${card('⚖️', '② 두 개의 잣대로 본다', `<b style="color:var(--t2)">세상 기준</b>으로 내 객관적 위치를, <b style="color:var(--t2)">내 평균</b>으로 오늘의 컨디션을 봐요.`)}
   ${card('📈', '③ 과거의 나와 경쟁한다', `남과 비교 대신 <b style="color:var(--t2)">성장 서사</b>로 동기를 만들어요. 발전 추세, 100·90·80 첫 돌파, 기복 추세로요.`)}
   ${card('💎', `④ 스코어에 직결되는 지표로 잰다`, `드라이버는 페어웨이%로 티샷 정확도를(생존율로 사고를 보조), 퍼팅은 라운드 퍼팅 수와 3퍼팅 빈도로 새는 타수를 직접 봐요. (GIR홀 퍼팅은 순수 퍼팅력 참고용)`)}
 
   <div style="font-size:13px;font-weight:800;color:var(--g);margin:16px 0 4px">🧭 그래서 이렇게 안내해요</div>
-  ${card('💊', '오늘의 처방', `라운드 분석에서 가장 손해 큰 한 곳만 콕 집어줘요.`)}
-  ${card('💥', '큰 실수의 원인', `더블보기↑가 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.`)}
+  ${card('🎯', '손실 타수, 어디서 났나', `라운드 상세에서 가장 손해 큰 한 곳만 ⭐최우선으로 콕 집어줘요.`)}
+  ${card('💥', '큰 실수의 원인', `블로업(트리플보기↑)이 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.`)}
   ${card('📊', '기복 추세', `라운드를 거듭할수록 점수가 일정해지는지 봐요.`)}
 
   <div style="margin-top:16px;padding:12px 14px;background:#0d2e1a;border:1px solid var(--g);border-radius:12px;font-size:13px;color:var(--g);line-height:1.6;font-weight:600">숫자를 보지 말고, 숫자가 가리키는 <b>다음 한 타</b>를 보세요. 그게 온그린의 전부예요. 🟢</div>
@@ -2242,7 +2096,6 @@ async function checkVersion() {
       if (cache && cache.rounds) {
         A.rounds = cache.rounds;
         A.official = (cache.official && cache.official.length) ? cache.official : [...DEF];
-        if (cache.bench && typeof cache.bench === 'object') Object.assign(BENCH, cache.bench);
         setUserLabels(); renderHome(); showPg('home'); goHome();
         shownFromCache = true;
       }

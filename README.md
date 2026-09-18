@@ -40,9 +40,6 @@ python3 -m http.server 8000
 - `localStorage`는 **세션/인증(`og_s`)만** 백업합니다. 라운드 데이터의 원본은 항상 서버입니다.
 - 라운드 기록을 메모리에 들고 있으면 통계는 **서버 호출 없이 클라이언트에서 즉시 계산**됩니다(`renderStat` / `analyze`).
 
-### BENCH (분석 기준값 / 신호등)
-`BENCH` 객체는 통계 색상 판정 임계값(예: `puttGood:32`, `girGood:50`)입니다. 관리자가 설정 화면에서 수정하면 서버에 저장되어 **모든 사용자가 공유**합니다. 서버가 없거나 실패하면 `app.js`의 내장 기본값을 사용하므로 앱은 항상 동작합니다.
-
 ---
 
 ## 동작 방식 (Mermaid 다이어그램)
@@ -68,16 +65,14 @@ graph TD
 
     GAS["☁️ Google Apps Script<br/>웹앱 /exec (백엔드)"]
     SHEET[("📊 스프레드시트<br/>라운드·코스·사용자")]
-    PROPS[("⚙️ Script Properties<br/>BENCH 기준값")]
 
     API -- "_get / _post (u, token)" --> GAS
     GAS --> SHEET
-    GAS --> PROPS
 
     classDef front fill:#1f6f43,stroke:#0d3,color:#fff
     classDef back fill:#33415c,stroke:#5b7,color:#fff
     class HTML,APP,API,CSS,STATE,LS front
-    class GAS,SHEET,PROPS back
+    class GAS,SHEET back
 ```
 
 ### 2. 앱 시작 ~ 로그인 흐름
@@ -89,7 +84,7 @@ flowchart TD
     VER --> SESS{"localStorage og_s에<br/>u + token 있나?"}
     BANNER --> SESS
 
-    SESS -->|있음| LOADALL["loadAll()<br/>getRounds · getCourses · getBench"]
+    SESS -->|있음| LOADALL["loadAll()<br/>getRounds · getCourses"]
     LOADALL --> HOME["홈 화면 (pg-home)"]
 
     SESS -->|없음| LOGIN["로그인 화면 (pg-login)"]
@@ -160,8 +155,8 @@ stateDiagram-v2
 
 | 구분 | 메서드 |
 |------|--------|
-| 공개 / 인증 불필요 | `ping` · `login` · `getCourses` · `getBench` |
-| 인증 필요 | `getRounds` · `saveRounds` · `saveCourse` · `reportParChange` · `updatePin` · `setBench`(관리자) |
+| 공개 / 인증 불필요 | `ping` · `login` · `getCourses` |
+| 인증 필요 | `getRounds` · `saveRounds` · `saveCourse` · `reportParChange` · `updatePin` |
 | 관리자 전용 | `getNotifications` · `clearNotifications` · `getUsers` · `deleteCourse` · `resetUserPin` · `deleteUser` |
 
 `explainError()`는 서버 에러를 사람이 읽는 문구 + 코드(**NET / PIN / AUTH / VER / ERR**)로 변환합니다.
