@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.28.0';
+const APP_VERSION = 'v12.29.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -539,6 +539,7 @@ function openDet(id) {
       <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
+    <div class="lbl">🎯 손실 타수, 어디서 났나 (드라이버=티샷 · 아이언 · 숏게임=어프로치 · 퍼팅)</div>${weaknessHTML(analyze([r]), [r])}
     <button id="rana-btn" onclick="toggleRoundAna(${id})" style="width:100%;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer;padding:11px;margin-bottom:6px">🔍 이 라운드 분석</button>
     <div id="rana-box" style="display:none;margin-bottom:8px"></div>
     <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
@@ -740,7 +741,9 @@ function renderHoleWizard() {
         <div style="font-size:38px;font-weight:800;color:var(--t);line-height:1.1">${(i % 9) + 1}<span style="font-size:16px;font-weight:700;color:var(--t2)">번 홀</span></div>
         <div style="font-size:12px;color:var(--t3);margin-top:2px">${A.sc.course.layouts[i < 9 ? 0 : 1].name}</div>
       </div>
-      <div class="seg" style="margin-bottom:16px">${parTab(3)}${parTab(4)}${parTab(5)}</div>
+      <div class="seg" style="margin-bottom:14px">${parTab(3)}${parTab(4)}${parTab(5)}</div>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">⛳ 티샷 결과</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${chips.join('')}</div>
       <div style="display:flex;gap:10px;margin-bottom:14px">
         <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:14px 8px">
           <div style="font-size:12px;color:var(--t2);margin-bottom:8px">온그린까지</div>
@@ -765,8 +768,6 @@ function renderHoleWizard() {
         <div style="font-size:18px;font-weight:800">${entered ? scoreLabel(d) : '입력 전'}</div>
         <div style="font-size:12px;opacity:.85;margin-top:2px">${entered ? `${vsL(d)} · 총 ${score}타` : `기본값 ${score}타 표시 중 · 조정하면 기록돼요`}</div>
       </div>
-      <div style="font-size:12px;color:var(--t2);margin-bottom:6px">⛳ 티샷 결과</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">${chips.join('')}</div>
       <div style="display:flex;gap:8px">
         ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 108px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">◀ 이전 홀</button>` : ''}
         <button onclick="${i < 17 ? 'hGo(1)' : 'saveRound()'}" style="flex:1;background:var(--g);border:none;border-radius:12px;padding:13px;color:#000;font-size:15px;font-weight:800;cursor:pointer">${i < 17 ? '저장 · 다음 홀 →' : '저장 · 완료'}</button>
