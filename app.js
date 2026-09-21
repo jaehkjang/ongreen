@@ -1618,7 +1618,10 @@ function coreMetricsHTML(rounds, includeSd) {
   const avg = k => rounds.reduce((a, r) => a + (r[k] || 0), 0) / n;
   const scores = rounds.map(r => r.score); const mean = scores.reduce((a, b) => a + b, 0) / n;
   const sd = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
-  return `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', n > 1 ? '평균 스코어' : '스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', n > 1 ? '평균 오버파' : '오버파')}${statCard(avg('putts').toFixed(1), '', n > 1 ? '평균 퍼팅' : '퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${includeSd ? statCard('±' + sd.toFixed(1), '', '기복(편차)') : ''}</div>`;
+  const avgMulli = rounds.reduce((a, r) => a + (r.mulligan || 0), 0) / n;
+  const avgOb = rounds.reduce((a, r) => a + obCountOf(r), 0) / n;
+  const avgHz = rounds.reduce((a, r) => a + hzCountOf(r), 0) / n;
+  return `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', n > 1 ? '평균 스코어' : '스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', n > 1 ? '평균 오버파' : '오버파')}${statCard(avg('putts').toFixed(1), '', n > 1 ? '평균 퍼팅' : '퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${includeSd ? statCard('±' + sd.toFixed(1), '', '기복(편차)') : ''}${statCard(nf(avgMulli), '', n > 1 ? '평균 멀리건' : '멀리건')}${statCard(nf(avgOb), '', n > 1 ? '평균 OB' : 'OB')}${statCard(nf(avgHz), '', n > 1 ? '평균 해저드' : '해저드')}</div>`;
 }
 // ── 도넛(원형) 차트: 값이 서로 겹치지 않고 합쳐서 전체가 되는 비율 데이터용 ──
 // stroke-dasharray 로 원을 나눠 그리는 방식이라 별도 라이브러리 없이 SVG 하나로 끝난다.
@@ -2028,6 +2031,7 @@ function updateNewsHTML() {
 
   ${S('📣 이번 업데이트')}
   ${li('📍 <b>코스평균대비 칩 확대 적용</b> — 통계 화면에만 있던 칩을 라운드 탭(홈)의 최근 라운드 목록과, 라운드를 눌렀을 때 나오는 상세 화면 상단에도 추가했어요. 그 골프장 다른 라운드 평균 대비 몇 타인지 어디서든 바로 확인돼요.')}
+  ${li('📊 <b>핵심 지표에 멀리건·OB·해저드 추가</b> — 통계→스코어 탭 "핵심 지표"에서 평균 멀리건·평균 OB·평균 해저드 숫자를 바로 봐요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
