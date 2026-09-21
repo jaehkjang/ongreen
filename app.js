@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.38.0';
+const APP_VERSION = 'v12.39.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -698,6 +698,8 @@ async function setHolePar(i, p) {
 }
 function hJump(i) { A.sc.hIdx = Math.max(0, Math.min(17, i)); A.sc.half = A.sc.hIdx < 9 ? 0 : 1; const box = Q('sc-body'); if (box) box.scrollTop = 0; renderSC(); }
 function hGo(d) { hJump((A.sc.hIdx || 0) + d); }
+// "저장·다음 홀"/"저장·완료" 버튼 — 아무것도 안 만지고 눌러도 파로 자동 확정 후 진행(confirmPar는 이미 입력된 홀엔 아무 일도 안 함)
+function advanceHole(i) { confirmPar(i); if (i < 17) hGo(1); else saveRound(); }
 
 function renderHoleWizard() {
   const i = A.sc.hIdx || 0, h = getH(), par = h[i];
@@ -753,7 +755,7 @@ function renderHoleWizard() {
       </div>
       <div style="display:flex;gap:8px">
         ${i > 0 ? `<button onclick="hGo(-1)" style="flex:0 0 108px;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:12px;color:var(--t);font-size:14px;font-weight:700;cursor:pointer">◀ 이전 홀</button>` : ''}
-        <button onclick="${i < 17 ? 'hGo(1)' : 'saveRound()'}" style="flex:1;background:var(--g);border:none;border-radius:12px;padding:13px;color:#000;font-size:15px;font-weight:800;cursor:pointer">${i < 17 ? '저장 · 다음 홀 →' : '저장 · 완료'}</button>
+        <button onclick="advanceHole(${i})" style="flex:1;background:var(--g);border:none;border-radius:12px;padding:13px;color:#000;font-size:15px;font-weight:800;cursor:pointer">${i < 17 ? '저장 · 다음 홀 →' : '저장 · 완료'}</button>
       </div>
     </div>`;
   updFt();
@@ -1152,14 +1154,14 @@ async function delCourse(key) {                  // 관리자만 호출 (버튼�
 // ════════════════════════════════════════
 function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? `<span class="su">${u}</span>` : ''}</span><span class="sl">${l}</span></div>`; }
 
-// ── 5부서(티샷 안정성·드라이버·아이언·숏게임·퍼팅) 통합 집계 ──
+// ── 5구간(티샷 안정성·드라이버·아이언·숏게임·퍼팅) 통합 집계 ──
 // 라운드 상세 · 통계 화면이 함께 쓰는 단일 소스. rounds 묶음 하나를 18홀씩 한 번만 훑어
 // 아래 teeStabilityHTML/driverHTML/approachHTML/shortGameHTML/puttingHTML 이 필요로 하는 값을 전부 계산한다.
 function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
   let played = 0,
-      obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0,     // 1) 티샷 안정성(전체, 파3~5)
+      obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0, fwCount = 0,  // 1) 티샷 안정성(전체, 파3~5)
       roughCount = 0, bunkerCount = 0,                                // 러프/벙커 구분(v12.37+ 저장분만)
       par45 = 0, fwHit = 0, fwHitVs = 0, fwMiss = 0, fwMissVs = 0, teeLost = 0,   // 2) 드라이버(파4·5)
       girHit = 0, girHoles = 0, ironExcessSum = 0,                     // 3) 아이언(GIR)
@@ -1180,7 +1182,8 @@ function analyze(rounds) {
       else if (mull) mullCount++;
       else {
         const success = par === 3 ? gi[i] : fi[i];        // 파3=온그린(GIR), 파4·5=페어웨이
-        if (!success) {
+        if (success) fwCount++;
+        else {
           safeMissCount++;
           if (missT === 'rough') roughCount++; else if (missT === 'bunker') bunkerCount++;
         }
@@ -1244,15 +1247,33 @@ function analyze(rounds) {
   const puttLossRound = f1(puttExcessSum, n);
 
   return { n, played,
-    obCount, hzCount, mullCount, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount,
+    obCount, hzCount, mullCount, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
     par45, firPct, teeCostRound, teeCostOk, teeLostPer,
     girPct, ironLossRound, p4n, p4BadPct, p4FwHitN, p4FwHitBadPct, p4FwMissN, p4FwMissBadPct,
     missGreen, scrPct, shortLossRound,
     puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, p1, p2, p3, p4 };
 }
 
+// ── 손실타수 한눈에 보기: 드라이버·아이언웨지·숏게임·퍼팅 손실 타수(라운드 평균)를 같은 단위로 놓고 큰 순서로 비교 ──
+// (통계 화면 전용 — 여러 라운드를 모아야 드라이버 손실의 표본 조건(지킨/놓친 각 5홀↑)이 충족될 가능성이 높다)
+function lossSummaryHTML(a) {
+  if (!a.n) return '';
+  const driverApprox = !a.teeCostOk;
+  const driverV = a.teeCostOk ? a.teeCostRound : (a.obCount * 2 + a.hzCount) / a.n;   // 표본 부족하면 OB·해저드 페널티 타수로 대체 추정
+  const items = [
+    ['🚗 드라이버', driverV, 'var(--r)', driverApprox],
+    ['🎯 아이언·웨지', a.ironLossRound, 'var(--a)', false],
+    ['⛳ 숏게임', a.shortLossRound, 'var(--b)', false],
+    ['🍩 퍼팅', a.puttLossRound, 'var(--p)', false],
+  ].sort((x, y) => y[1] - x[1]);
+  const mx = Math.max(...items.map(x => x[1]), 0.01);
+  const body = items.map(([l, v, co, approx]) => `<div class="br"><div class="bl" style="width:80px;white-space:nowrap">${l}${approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(v / mx * 100))}%;background:${co}"><span>${nf(v)}타</span></div></div></div>`).join('');
+  const worst = items[0];
+  return `<div class="lbl">📉 손실타수 한눈에 보기 (라운드 평균)</div><div class="cb">${body}
+    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">네 구간의 손실 타수를 같은 기준(라운드당 타수)으로 비교해 큰 순서로 나열했어요. <b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? ' · * 표본이 적어 OB·해저드 페널티로 추정한 값이에요' : ''}</div></div>`;
+}
 // ════════════════════════════════════════
-// 5부서 카테고리 카드 (라운드 상세 · 통계 화면 공용 — analyze() 결과 하나로 5개를 그린다)
+// 5구간 카테고리 카드 (라운드 상세 · 통계 화면 공용 — analyze() 결과 하나로 5개를 그린다)
 // ════════════════════════════════════════
 function teeStabilityHTML(a) {
   if (!a.n) return '';
@@ -1260,12 +1281,25 @@ function teeStabilityHTML(a) {
   const breakdown = known
     ? `러프 ${a.roughCount}개 · 벙커 ${a.bunkerCount}개${unknown ? ` · 미상 ${unknown}개(v12.37 이전 기록)` : ''}`
     : (a.safeMissCount ? '러프/벙커 구분 정보 없음(v12.37 이전 기록)' : '');
+  const segs = [
+    { v: a.fwCount, c: 'var(--g)', l: '페어웨이(온그린)' },
+    { v: a.roughCount, c: 'var(--a)', l: '러프' },
+    { v: a.bunkerCount, c: 'var(--p)', l: '벙커' },
+    { v: a.hzCount, c: 'var(--b)', l: '해저드' },
+    { v: a.obCount, c: 'var(--r)', l: 'OB' },
+  ];
+  const pieTotal = segs.reduce((s, x) => s + x.v, 0);
+  const legend = segs.map(s => `<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t2);margin:4px 0">
+    <span style="width:10px;height:10px;border-radius:3px;background:${s.c};flex-shrink:0"></span>
+    <span style="flex:1">${s.l}</span><b style="color:var(--t)">${s.v}개${pieTotal ? ` (${Math.round(s.v / pieTotal * 100)}%)` : ''}</b></div>`).join('');
+  const pie = pieTotal ? `<div class="cb" style="display:flex;align-items:center;gap:16px">${donutSVG(segs, 108, 18)}<div style="flex:1">${legend}</div></div>` : '';
   return `<div class="lbl">🚩 티샷 안정성 (Off-the-Tee · 파3~5 모두)</div><div class="sgd">
     ${statCard(a.teePenaltyPct, '%', '티샷 페널티율')}
     ${statCard(a.obCount, '', 'OB')}
     ${statCard(a.hzCount, '', '해저드')}
     ${statCard(a.mullCount, '', '멀리건')}</div>
-  <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
+  ${pie}
+  <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
 }
 function driverHTML(a) {
   if (!a.n || !a.par45) return '';
@@ -1442,7 +1476,7 @@ function blowupCauseHTML(rounds) {
     <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">한 홀에 원인이 겹칠 수 있어 합계는 ${big}개와 다를 수 있어요. <b style="color:var(--t2)">가장 잦은 범인: ${top[0]}</b> — 여기만 줄여도 큰 점수가 확 줄어요.</div></div>`;
 }
 
-// ── 파 종류별 × 부서 교차: 파3는 GIR, 파4·5는 FIR/GIR과 함께 파 대비를 본다 ──
+// ── 파 종류별 × 구간 교차: 파3는 GIR, 파4·5는 FIR/GIR과 함께 파 대비를 본다 ──
 function parCrossHTML(rounds) {
   const T = { 3: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 }, 4: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 }, 5: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 } };
   rounds.forEach(r => {
@@ -1614,7 +1648,7 @@ function scoreDistHTML(rounds) {
   return `<div class="lbl">타수 분포</div>
   <div class="cb">${[['이글↑', eagle, 'var(--p)'], ['버디', birdie, 'var(--b)'], ['파', par2, 'var(--g)'], ['보기', bogey, 'var(--a)'], ['더블', dbl2, 'var(--r)'], ['트리플+', trip, '#7f1d1d']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>`;
 }
-// 라운드별 카드의 부서 신호 칩 (작은 점 대신 한눈에 보이는 칩) — color 는 sig() 결과(var(--g)/--a/--r/'')
+// 라운드별 카드의 구간 신호 칩 (작은 점 대신 한눈에 보이는 칩) — color 는 sig() 결과(var(--g)/--a/--r/'')
 function sigChip(icon, label, val, color) {
   const em = color === 'var(--g)' ? '🟢' : color === 'var(--a)' ? '🟡' : color === 'var(--r)' ? '🔴' : '';
   return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:.5px solid var(--bd);border-radius:8px;padding:4px 9px;font-size:12px;color:var(--t2)">${em ? em + ' ' : ''}${icon} ${label} <b style="color:var(--t)">${val}</b></span>`;
@@ -1639,9 +1673,9 @@ function sig(val, avg, betterLow, margin, n) {
 }
 function dot(c) { return c ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:4px;vertical-align:middle"></span>` : ''; }
 
-// 통계 [전체] 탭의 하위 카테고리: 0 스코어 · 1 부서별 · 2 추세·기록
+// 통계 [전체] 탭의 하위 카테고리: 0 스코어 · 1 구간별 · 2 추세·기록
 let _statSub = 0;
-const STAT_SUBS = ['스코어', '부서별', '추세·기록'];
+const STAT_SUBS = ['스코어', '구간별', '추세·기록'];
 function setStatSub(s) { _statSub = s; renderStat(0); }
 
 function renderStat(m) {
@@ -1670,7 +1704,7 @@ function renderStat(m) {
       <div style="font-size:13px;color:var(--t2);line-height:1.5">최근 ${segN}R 평균 <b style="color:var(--t)">${recentAvg.toFixed(1)}</b> · 초기 ${segN}R 대비 <b style="color:${prog < 0 ? 'var(--g)' : prog > 0 ? 'var(--r)' : 'var(--t)'}">${prog < 0 ? '▼' : prog > 0 ? '▲' : ''}${Math.abs(prog).toFixed(1)}타</b>${prog < 0 ? ' — 좋아지고 있어요 🎉' : prog > 0 ? '' : ' — 유지 중'}</div></div>`;
     h += `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 4px">💡 추정 핸디 = 최근 20R 중 좋은 라운드의 오버파 평균(간이). 코스 난이도 미반영.</div>`;
 
-    // ── 하위 탭 (스코어 · 부서별 · 추세·기록) ──
+    // ── 하위 탭 (스코어 · 구간별 · 추세·기록) ──
     h += `<div class="seg" style="margin:12px 0">${STAT_SUBS.map((l, i) => `<button class="sg ${i === _statSub ? 'on' : ''}" style="font-size:12.5px;padding:9px 2px" onclick="setStatSub(${i})">${l}</button>`).join('')}</div>`;
 
     if (_statSub === 0) {
@@ -1681,9 +1715,10 @@ function renderStat(m) {
       h += frontBackHTML(rounds);
       h += scoreDistHTML(rounds);
     } else if (_statSub === 1) {
-      // 🚩🚗🎯⛳🍩 부서별 — 티샷 안정성·드라이버·아이언·숏게임·퍼팅
-      h += `<div class="lbl">파 종류별</div>${parCrossHTML(rounds)}`;
+      // 🚩🚗🎯⛳🍩 구간별 — 티샷 안정성·드라이버·아이언·숏게임·퍼팅
       const a = analyze(rounds);
+      h += lossSummaryHTML(a);
+      h += `<div class="lbl">파 종류별</div>${parCrossHTML(rounds)}`;
       h += teeStabilityHTML(a) + driverHTML(a) + approachHTML(a) + shortGameHTML(a) + puttingHTML(a);
     } else {
       // 📈 추세 · 기록
@@ -1955,18 +1990,14 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 통계를 <b>티샷 안정성·드라이버·아이언·숏게임·퍼팅 5부서</b>로 다시 짜고, 티샷 결과에 벙커를 추가했어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 티샷 안정성에 원형그래프를 추가하고, 홀을 안 만지고 넘어가도 파로 자동 입력되게 했어요. 코스 이름 수정 버그도 고쳤어요.</div>
 
-  ${S('📣 이번 업데이트 — 5부서로 다시 짠 통계')}
-  ${li('🚩 <b>부서별 통계 신설</b> — 라운드 상세와 통계→<b>부서별</b> 탭에서 🚩티샷 안정성 · 🚗드라이버 · 🎯아이언·웨지 · ⛳숏게임 · 🍩퍼팅 5부서를 각각 숫자로 보여줘요. 기존 "손실 타수, 어디서 났나"와 "퍼팅·쇼트게임"을 이 5부서로 흡수·정리했어요.')}
-  ${li('🎯 <b>온그린 3타↑ 연관성 분석 추가</b> — 아이언·웨지 카테고리에 파4 기준 온그린 3타↑ 비율을, 페어웨이 지킨 홀과 놓친 홀로 나눠 보여줘요. 지켰는데도 높으면 아이언, 놓쳤을 때만 높으면 드라이버가 원인이에요.')}
-  ${li('🏖️ <b>티샷 결과에 벙커 추가</b> — 파3·4·5 모두 벙커를 고를 수 있어요. 페어웨이=FIR 반영 · 러프·벙커=FIR 미반영(페널티 없음) · 해저드·OB=페널티 · 멀리건=페널티 없음. GIR은 이 선택과 무관하게 "온그린까지 타수"로만 계산돼요. 러프·벙커 구분은 이번 버전부터 입력하는 라운드만 가능해요.')}
-  ${li('🔢 <b>라운드 상세 표시 정리</b> — "멀리건/OB/해저드"를 <b>멀리건</b> 카드와 <b>티샷 패널티</b>(OB·해저드 횟수 분리)로 나눴어요.')}
-  ${li('🔍 <b>라운드 상세 통합</b> — "이 라운드 분석" 토글과 🚦신호등 진단·💊오늘의 처방을 없애고 기본 화면 하나로 정리했어요.')}
-  ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "👆 입력 전" 박스를 탭하면 파가 그대로 입력돼요.')}
-  ${li('💥 <b>큰 실수 기준 수정</b> — "블로업(트리플보기 이상)" 홀만 세도록 바로잡았어요.')}
-  ${li('✂️ <b>표기 통일</b> — "파대비"→<b>오버파</b>, "티샷손실타수"→<b>티샷패널티</b>로 화면마다 다르던 이름을 통일했어요.')}
-  ${li('🎯 <b>비교 정확도 개선</b> — 🟢🟡🔴 비교가 그 라운드 자신을 뺀 "내 다른 라운드" 평균을 쓰도록 고쳤어요.')}
+  ${S('📣 이번 업데이트')}
+  ${li('🚩 <b>티샷 안정성 원형그래프 추가</b> — 페어웨이(온그린)·러프·벙커·해저드·OB 5가지 개수와 비율을 도넛 차트로 한눈에 보여줘요.')}
+  ${li('✅ <b>미입력 홀 자동 파 처리</b> — 아무것도 안 만지고 "저장 · 다음 홀 →" / "저장 · 완료"를 바로 눌러도 그 홀은 파로 자동 확정돼요. 18번 홀에서 그대로 "저장 · 완료"를 눌러도 라운드 상세 기록으로 바로 이동해요.')}
+  ${li('🐛 <b>골프장 코스 수정 버그 수정</b> — 코스 이름을 길게 눌러 전체 선택하다가 모달이 닫히고 골프장 목록으로 튕기던 문제를 고쳤어요.')}
+  ${li('✂️ <b>통계 탭 이름 변경</b> — "부서별"을 <b>구간별</b>로 바꿨어요(내용은 그대로).')}
+  ${li('📉 <b>손실타수 한눈에 보기 추가</b> — 통계→구간별 탭 맨 위에서 드라이버·아이언·웨지·숏게임·퍼팅 손실 타수를 막대그래프로 한 번에 비교해요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2008,7 +2039,7 @@ function guideStatsHTML() {
   const it = (name, desc) => `<div style="margin:6px 0"><div style="font-size:13px;font-weight:700;color:var(--t)">${name}</div><div style="font-size:12px;color:var(--t2);line-height:1.5">${desc}</div></div>`;
   return `
   <p style="color:var(--t2);font-size:13px;line-height:1.6"><b>통계</b> 탭에서 자동 계산되는 지표들의 뜻이에요.</p>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12.5px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">한 줄 요약</b> — 🚩티샷 안정성·🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 5개 부서로 쪼개 어디서 타수가 새는지 보여줘요. 라운드 상세와 통계→부서별 탭에서 확인하세요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:12.5px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">한 줄 요약</b> — 🚩티샷 안정성·🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 5개 구간으로 쪼개 어디서 타수가 새는지 보여줘요. 라운드 상세와 통계→구간별 탭에서 확인하세요.</div>
 
   ${S('📋 요약 · 발전')}
   ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
@@ -2017,10 +2048,10 @@ function guideStatsHTML() {
   ${S('스코어')}
   ${it('평균 스코어·오버파·기복', '총타수 평균 / 오버파(+오버·−언더) / 점수 편차(작을수록 일정).')}
   ${it('실력 비율 · 블로업', '홀 기준 파 이하·보기·더블+ 비율. 블로업 = 라운드당 트리플보기↑ 홀.')}
-  ${it('파 종류별 · 전·후반', '파3·4·5별 오버파 평균에 더해, 파3은 GIR / 파4·5는 FIR·GIR을 함께 보여줘 어느 홀 유형에서 어느 부서가 약한지 진단. / 앞뒤 9홀 평균·차이(후반 무너짐).')}
+  ${it('파 종류별 · 전·후반', '파3·4·5별 오버파 평균에 더해, 파3은 GIR / 파4·5는 FIR·GIR을 함께 보여줘 어느 홀 유형에서 어느 구간이 약한지 진단. / 앞뒤 9홀 평균·차이(후반 무너짐).')}
   ${it('💥 큰 실수의 원인', '블로업(트리플보기 이상) 홀이 티샷 사고·3퍼팅·그린 미스 중 무엇 때문이었는지 원인별로 분해해요(한 홀에 겹칠 수 있음).')}
 
-  ${S('🚩 부서별 (라운드 상세 · 통계 공통)')}
+  ${S('🚩 구간별 (라운드 상세 · 통계 공통)')}
   ${it('티샷 안정성 (Off-the-Tee · 파3~5)', '티샷 페널티율(OB+해저드 홀 ÷ 전체 홀) · OB·해저드·멀리건 홀 수 · 안전 미스(러프·벙커, 페널티 없음) 개수와 비율. 러프·벙커 개별 구분은 v12.37 이후 입력분만 가능해요.')}
   ${it('드라이버 안정성 (Driver · 파4·5)', 'FIR(페어웨이 적중률) · 드라이버 손실 타수(페어웨이 놓친 홀과 지킨 홀의 오버파 평균 차이 × 놓친 홀 수, 표본이 적으면 홀 수로 대체).')}
   ${it('아이언·웨지 정확도 (Approach)', 'GIR(그린 적중률) · 아이언 손실 타수(온그린까지 타수가 정규타수를 초과한 만큼) · 온그린 3타↑ 비율(파4 기준, 페어웨이 지킨/놓친 홀 각각) — 지켰는데도 높으면 아이언·웨지 문제, 놓쳤을 때만 높으면 드라이버가 원인.')}
@@ -2051,13 +2082,13 @@ function philosophyHTML() {
   <p style="font-size:14px;color:var(--t);line-height:1.7;font-weight:600">온그린은 점수를 <u>기록</u>하는 앱이 아니라, 다음 라운드에서 한 타를 줄여줄 <b style="color:var(--g)">코치</b>예요.</p>
   <p style="font-size:12.5px;color:var(--t3);line-height:1.6;margin-top:4px">모든 숫자는 하나의 질문에 답해요 — <b style="color:var(--t2)">"무엇을 연습해야 가장 빨리 줄어드나?"</b></p>
 
-  ${card('🔍', `① 점수가 아니라 '원인'을 본다`, `🚩티샷·🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 5부서로 쪼개 손실 타수를 재요. "90 쳤다"가 아니라 "숏게임에서 3타 샜다"를 말해줘요.`)}
+  ${card('🔍', `① 점수가 아니라 '원인'을 본다`, `🚩티샷·🚗드라이버·🎯아이언·⛳숏게임·🍩퍼팅 5구간으로 쪼개 손실 타수를 재요. "90 쳤다"가 아니라 "숏게임에서 3타 샜다"를 말해줘요.`)}
   ${card('⚖️', '② 두 개의 잣대로 본다', `<b style="color:var(--t2)">세상 기준</b>으로 내 객관적 위치를, <b style="color:var(--t2)">내 평균</b>으로 오늘의 컨디션을 봐요.`)}
   ${card('📈', '③ 과거의 나와 경쟁한다', `남과 비교 대신 <b style="color:var(--t2)">성장 서사</b>로 동기를 만들어요. 발전 추세, 100·90·80 첫 돌파, 기복 추세로요.`)}
   ${card('💎', `④ 스코어에 직결되는 지표로 잰다`, `드라이버는 페어웨이%로 티샷 정확도를(생존율로 사고를 보조), 퍼팅은 라운드 퍼팅 수와 3퍼팅 빈도로 새는 타수를 직접 봐요. (GIR홀 퍼팅은 순수 퍼팅력 참고용)`)}
 
   <div style="font-size:13px;font-weight:800;color:var(--g);margin:16px 0 4px">🧭 그래서 이렇게 안내해요</div>
-  ${card('🚩', '부서별 손실 타수', `티샷·드라이버·아이언·숏게임·퍼팅 5부서를 라운드 상세와 통계에서 각각 숫자로 보여줘요.`)}
+  ${card('🚩', '구간별 손실 타수', `티샷·드라이버·아이언·숏게임·퍼팅 5구간을 라운드 상세와 통계에서 각각 숫자로 보여줘요.`)}
   ${card('💥', '큰 실수의 원인', `블로업(트리플보기↑)이 티샷·3퍼팅·그린미스 중 무엇 때문인지 분해해요.`)}
   ${card('📊', '기복 추세', `라운드를 거듭할수록 점수가 일정해지는지 봐요.`)}
 
@@ -2112,10 +2143,15 @@ function initSwipeBack() {
   app.addEventListener('touchcancel', finish);
 }
 // 아래에서 위로 올라오는 모달(.mo): 뒤 배경을 누르면 닫는다.
+// 시작점(pointerdown)도 배경이어야 닫는다 — 입력창에서 텍스트 전체 선택(길게 눌러 드래그)하다가
+// 선택 손잡이가 시트 밖 배경까지 나가 손을 떼면 그 지점의 click.target이 배경(mo)이 되어,
+// 시작은 시트 안이었는데도 모달이 닫혀버리는 버그(코스 이름 수정 중 전체 선택 시 골프장 목록으로 튕김)가 있었다.
 function initModalBackdrop() {
   document.querySelectorAll('.mo').forEach(mo => {
     if (mo._bdReady) return; mo._bdReady = true;
-    mo.addEventListener('click', e => { if (e.target === mo) cm(mo.id); });   // 시트(.ms) 안쪽 클릭은 통과
+    let downOnBackdrop = false;
+    mo.addEventListener('pointerdown', e => { downOnBackdrop = (e.target === mo); });
+    mo.addEventListener('click', e => { if (e.target === mo && downOnBackdrop) cm(mo.id); });   // 시트(.ms) 안쪽 클릭은 통과
   });
 }
 
