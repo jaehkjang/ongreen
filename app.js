@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.41.0';
+const APP_VERSION = 'v12.42.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -659,7 +659,7 @@ function deriveTeeSel() {                          // 저장된 라운드를 다
 }
 function setTee(i, key) {
   if (A.sc.ro) return;
-  if ((key === 'fw' || key === 'rough') && getH()[i] === 3) return;   // 파3엔 페어웨이 개념 없음
+  if (key === 'fw' && getH()[i] === 3) return;   // 파3엔 페어웨이 개념 없음(직접 그린을 노림) — 러프는 파3도 놓친 결과라 허용
   if (key === 'green' && getH()[i] !== 3) return;                     // 온그린 칩은 파3 전용(파4·5는 온그린까지 숫자로 입력)
   if (!A.sc.teeSel) A.sc.teeSel = Array(18).fill(null);
   if (!A.sc.miss) A.sc.miss = Array(18).fill('');
@@ -745,7 +745,7 @@ function renderHoleWizard() {
   const d = score - par, cc = entered ? cls(score, par) : 'e';
   const ts = teeState(i);
   const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
-  const chips = (par === 3 ? [chip('green', '온그린'), chip('bunker', '벙커')] : [chip('fw', '페어웨이'), chip('rough', '러프'), chip('bunker', '벙커')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
+  const chips = (par === 3 ? [chip('green', '온그린'), chip('rough', '러프'), chip('bunker', '벙커')] : [chip('fw', '페어웨이'), chip('rough', '러프'), chip('bunker', '벙커')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
   const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
   const holeCell = idx => { const on = idx === i, done = A.sc.scores[idx] > 0;
     return `<button onclick="hJump(${idx})" style="flex:1;height:38px;min-width:0;border:none;border-radius:9px;cursor:pointer;font-size:13px;
@@ -2078,13 +2078,10 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> "코스평균대비" 칩을 라운드 탭 목록과 라운드 상세 화면에도 추가했어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 파3 티샷 결과에 "러프"를 추가했어요.</div>
 
   ${S('📣 이번 업데이트')}
-  ${li('📍 <b>코스평균대비 칩 확대 적용</b> — 통계 화면에만 있던 칩을 라운드 탭(홈)의 최근 라운드 목록과, 라운드를 눌렀을 때 나오는 상세 화면 상단에도 추가했어요. 그 골프장 다른 라운드 평균 대비 몇 타인지 어디서든 바로 확인돼요.')}
-  ${li('📊 <b>핵심 지표에 멀리건·OB·해저드 추가</b> — 통계→스코어 탭 "핵심 지표"에서 평균 멀리건·평균 OB·평균 해저드 숫자를 바로 봐요.')}
-  ${li('🌊🚫 <b>티샷 외 해저드·OB 입력칸 추가</b> — 스코어 입력 화면에서 온그린까지·퍼팅 아래에 새로 생겼어요. 첫 샷(티샷) 말고 어프로치 등에서 난 해저드·OB를 기록해두면 나중에 분석에 쓸 수 있어요. 스코어 계산에는 영향 없어요.')}
-  ${li('🎯 <b>아이언 손실 타수 원인 분해</b> — 위 입력칸을 쓴 홀이 있으면, 아이언·웨지 카드에서 손실 타수 중 "벌타 때문"과 "거리감·클럽 선택 등 나머지"를 나눠 보여줘요.')}
+  ${li('🌾 <b>파3 티샷 결과에 러프 추가</b> — 지금까지 파3은 온그린·벙커만 고를 수 있었는데, 러프도 고를 수 있어요. GIR·스코어 계산에는 영향 없어요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2112,7 +2109,7 @@ function guideScorecardHTML() {
   ${btn('퍼팅', '그린에서 홀에 넣기까지 친 횟수. 0(칩인)도 가능해요.')}
   ${btn('결과 배너', '위 두 값으로 계산된 스코어(파·보기·더블 등)를 실시간으로 보여줘요. 오버파도 함께 표시.')}
   ${btn('GIR', '자동 계산돼요. <b>온그린까지 타수 ≤ 파−2</b>면 ON — 따로 누를 필요 없어요.')}
-  ${btn('티샷 결과', '페어웨이 / 러프 / 벙커 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이·러프 대신 온그린·벙커). <b>페어웨이 = FIR 반영</b> · <b>러프·벙커 = FIR 미반영, 페널티 없음</b> · <b>해저드·OB = 페널티</b> · <b>멀리건 = 페널티 없음</b>. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">GIR은 이 선택과 무관하게</b> "온그린까지 타수"만으로 계산돼요(파3도 온그린 칩이 아니라 온그린까지 타수가 1 이하면 GIR).<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
+  ${btn('티샷 결과', '페어웨이 / 러프 / 벙커 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이 대신 온그린이고, 러프·벙커는 파3도 똑같이 골라요). <b>페어웨이 = FIR 반영(파4·5)</b> · <b>온그린·러프·벙커 = FIR 미반영, 페널티 없음</b> · <b>해저드·OB = 페널티</b> · <b>멀리건 = 페널티 없음</b>. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">GIR은 이 선택과 무관하게</b> "온그린까지 타수"만으로 계산돼요(파3도 온그린 칩이 아니라 온그린까지 타수가 1 이하면 GIR).<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
   ${btn('티샷 외 해저드·OB', '위 "티샷 결과"는 첫 샷만 기록해요. 어프로치 등 다른 샷에서 해저드·OB가 났으면 여기 +/- 로 횟수를 더해두세요. <b>스코어에는 영향 없어요</b>(이미 "온그린까지 타수"에 포함돼 있음) — 나중에 원인을 분석할 때만 쓰이는 기록용 값이에요.')}
 
   ${S('⑤ 이동·저장')}
