@@ -1254,6 +1254,24 @@ function analyze(rounds) {
     puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, p1, p2, p3, p4 };
 }
 
+// ── 손실타수 한눈에 보기: 드라이버·아이언웨지·숏게임·퍼팅 손실 타수(라운드 평균)를 같은 단위로 놓고 큰 순서로 비교 ──
+// (통계 화면 전용 — 여러 라운드를 모아야 드라이버 손실의 표본 조건(지킨/놓친 각 5홀↑)이 충족될 가능성이 높다)
+function lossSummaryHTML(a) {
+  if (!a.n) return '';
+  const driverApprox = !a.teeCostOk;
+  const driverV = a.teeCostOk ? a.teeCostRound : (a.obCount * 2 + a.hzCount) / a.n;   // 표본 부족하면 OB·해저드 페널티 타수로 대체 추정
+  const items = [
+    ['🚗 드라이버', driverV, 'var(--r)', driverApprox],
+    ['🎯 아이언·웨지', a.ironLossRound, 'var(--a)', false],
+    ['⛳ 숏게임', a.shortLossRound, 'var(--b)', false],
+    ['🍩 퍼팅', a.puttLossRound, 'var(--p)', false],
+  ].sort((x, y) => y[1] - x[1]);
+  const mx = Math.max(...items.map(x => x[1]), 0.01);
+  const body = items.map(([l, v, co, approx]) => `<div class="br"><div class="bl" style="width:80px;white-space:nowrap">${l}${approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(v / mx * 100))}%;background:${co}"><span>${nf(v)}타</span></div></div></div>`).join('');
+  const worst = items[0];
+  return `<div class="lbl">📉 손실타수 한눈에 보기 (라운드 평균)</div><div class="cb">${body}
+    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">네 구간의 손실 타수를 같은 기준(라운드당 타수)으로 비교해 큰 순서로 나열했어요. <b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? ' · * 표본이 적어 OB·해저드 페널티로 추정한 값이에요' : ''}</div></div>`;
+}
 // ════════════════════════════════════════
 // 5구간 카테고리 카드 (라운드 상세 · 통계 화면 공용 — analyze() 결과 하나로 5개를 그린다)
 // ════════════════════════════════════════
@@ -1698,8 +1716,9 @@ function renderStat(m) {
       h += scoreDistHTML(rounds);
     } else if (_statSub === 1) {
       // 🚩🚗🎯⛳🍩 구간별 — 티샷 안정성·드라이버·아이언·숏게임·퍼팅
-      h += `<div class="lbl">파 종류별</div>${parCrossHTML(rounds)}`;
       const a = analyze(rounds);
+      h += lossSummaryHTML(a);
+      h += `<div class="lbl">파 종류별</div>${parCrossHTML(rounds)}`;
       h += teeStabilityHTML(a) + driverHTML(a) + approachHTML(a) + shortGameHTML(a) + puttingHTML(a);
     } else {
       // 📈 추세 · 기록
@@ -1978,6 +1997,7 @@ function updateNewsHTML() {
   ${li('✅ <b>미입력 홀 자동 파 처리</b> — 아무것도 안 만지고 "저장 · 다음 홀 →" / "저장 · 완료"를 바로 눌러도 그 홀은 파로 자동 확정돼요. 18번 홀에서 그대로 "저장 · 완료"를 눌러도 라운드 상세 기록으로 바로 이동해요.')}
   ${li('🐛 <b>골프장 코스 수정 버그 수정</b> — 코스 이름을 길게 눌러 전체 선택하다가 모달이 닫히고 골프장 목록으로 튕기던 문제를 고쳤어요.')}
   ${li('✂️ <b>통계 탭 이름 변경</b> — "부서별"을 <b>구간별</b>로 바꿨어요(내용은 그대로).')}
+  ${li('📉 <b>손실타수 한눈에 보기 추가</b> — 통계→구간별 탭 맨 위에서 드라이버·아이언·웨지·숏게임·퍼팅 손실 타수를 막대그래프로 한 번에 비교해요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
