@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.39.0';
+const APP_VERSION = 'v12.40.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -457,23 +457,36 @@ function healRoundLabels() {
   });
   return changed;
 }
+// ── 같은 골프장의 "자신을 뺀" 다른 라운드 평균·베스트 — courseCompareHTML과 courseAvgChip이 공유 ──
+function courseOtherAvg(r) {
+  const same = A.rounds.filter(x => !x.isDraft && x.courseName === r.courseName && x.id !== r.id);
+  if (!same.length) return null;
+  return { n: same.length, avg: same.reduce((a, x) => a + (x.score || 0), 0) / same.length, best: Math.min(...same.map(x => x.score)) };
+}
 // ── 같은 골프장 이전 기록과 비교 (코스별 평균을 대신해 스코어카드 안에서 바로 보여줌) ──
 function courseCompareHTML(r) {
-  const same = A.rounds.filter(x => !x.isDraft && x.courseName === r.courseName && x.id !== r.id);
-  if (!same.length) return '';
-  const prevAvg = same.reduce((a, x) => a + (x.score || 0), 0) / same.length;
-  const prevBest = Math.min(...same.map(x => x.score));
-  const d = r.score - prevAvg;                  // 음수면 이전 평균보다 좋음
+  const oa = courseOtherAvg(r);
+  if (!oa) return '';
+  const d = r.score - oa.avg;                  // 음수면 이전 평균보다 좋음
   const arrow = d < -0.05 ? '▼' : d > 0.05 ? '▲' : '·';
   const col = d < -0.05 ? 'var(--g)' : d > 0.05 ? 'var(--r)' : 'var(--t2)';
   const row = (l, v) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--t2);padding:5px 0"><span>${l}</span>${v}</div>`;
   return `<div class="cb" style="margin-top:8px;padding:12px 16px">
-    <div class="cbt" style="margin-bottom:6px">📍 이 골프장 이전 기록과 비교 (이전 ${same.length}R)</div>
-    ${row('이전 평균', `<b style="color:var(--t)">${prevAvg.toFixed(1)}</b>`)}
-    ${row('이전 베스트', `<b style="color:var(--t)">${prevBest}</b>`)}
+    <div class="cbt" style="margin-bottom:6px">📍 이 골프장 이전 기록과 비교 (이전 ${oa.n}R)</div>
+    ${row('이전 평균', `<b style="color:var(--t)">${oa.avg.toFixed(1)}</b>`)}
+    ${row('이전 베스트', `<b style="color:var(--t)">${oa.best}</b>`)}
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--t2);padding:5px 0;border-top:.5px solid var(--bd);margin-top:3px">
       <span>이번 라운드</span><b style="color:${col}">${r.score} <span style="font-size:11px">(평균 대비 ${arrow}${Math.abs(d).toFixed(1)})</span></b></div>
   </div>`;
+}
+// ── 라운드별 목록 카드용: "이 골프장 평균 대비" 작은 칩 (자신을 뺀 같은 골프장 평균 기준) ──
+function courseAvgChip(r) {
+  const oa = courseOtherAvg(r);
+  if (!oa) return '';
+  const d = r.score - oa.avg;
+  const arrow = d < -0.05 ? '▼' : d > 0.05 ? '▲' : '·';
+  const col = d < -0.05 ? 'var(--g)' : d > 0.05 ? 'var(--r)' : 'var(--t2)';
+  return `<span style="display:inline-flex;align-items:center;gap:3px;background:var(--bg3);border:.5px solid var(--bd);border-radius:8px;padding:4px 9px;font-size:12px;color:${col}">⛳ 코스평균대비 ${arrow}${Math.abs(d).toFixed(1)}</span>`;
 }
 function openDet(id) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
@@ -1574,6 +1587,25 @@ function recordsHTML(rsChrono) {
     ${row('8️⃣', '80 깨기 (79↓)', ms(80))}
   </div>`;
 }
+// ── 자주 가는 골프장: 방문 횟수·비율·평균 스코어를 큰 순서로 — 막대그래프(코스 이름이 길어 도넛보다 가독성 좋음) ──
+const COURSE_BAR_COLORS = ['var(--g)', 'var(--b)', 'var(--a)', 'var(--p)', 'var(--r)', 'var(--t2)'];
+function courseFreqHTML(rounds) {
+  const total = rounds.length; if (!total) return '';
+  const map = new Map();
+  rounds.forEach(r => {
+    const nm = r.courseName || '?';
+    if (!map.has(nm)) map.set(nm, { name: nm, cnt: 0, sum: 0 });
+    const e = map.get(nm); e.cnt++; e.sum += r.score || 0;
+  });
+  const stats = [...map.values()].map(e => ({ ...e, avg: e.sum / e.cnt })).sort((a, b) => b.cnt - a.cnt);
+  const mx = Math.max(...stats.map(s => s.cnt), 1);
+  const rows = stats.map((s, i) => `<div class="br">
+    <div class="bl" style="width:92px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${s.name}">${s.name}</div>
+    <div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(s.cnt / mx * 100))}%;background:${COURSE_BAR_COLORS[i % COURSE_BAR_COLORS.length]}"><span>${s.cnt}회 (${Math.round(s.cnt / total * 100)}%)</span></div></div>
+    <div style="width:58px;text-align:right;flex-shrink:0;font-size:11px;color:var(--t2)">평균 ${nf(s.avg)}</div>
+  </div>`).join('');
+  return `<div class="lbl" style="margin-top:14px">⛳ 자주 가는 골프장</div><div class="cb">${rows}</div>`;
+}
 
 // ════════════════════════════════════════
 // 📊 통계 섹션 빌더 (전체 통계 · 라운드별 분석이 함께 끌어 씀 — 단일 소스)
@@ -1724,6 +1756,7 @@ function renderStat(m) {
       // 📈 추세 · 기록
       h += `<div class="lbl">📈 발전 추세 (과거의 나와 비교)</div><div id="trend-wrap">${trendWrapHTML()}</div>`;
       h += `<div class="lbl">🏆 개인기록</div>${recordsHTML(chrono)}`;
+      h += courseFreqHTML(rounds);
     }
 
   } else {
@@ -1735,7 +1768,7 @@ function renderStat(m) {
       const cP = sig(r.putts, AV.putts, true, 2, AV.n), cG = sig(r.gir, AV.gir, false, 10, AV.n), cF = sig(r.fir, AV.fir, false, 10, AV.n);
       h += `<div class="rc" onclick="openDet(${r.id})">
         <div class="rc-top"><div style="flex:1;min-width:0"><div class="rc-name">${r.courseName || '?'} <span style="font-size:12px;color:var(--t3)">${r.courseLbl || ''}</span> ${trophyBadges(r)}</div><div class="rc-sub">${r.date || ''} · ${r.weather || ''}</div></div><div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${sigChip('🚗', 'FIR', r.fir + '%', cF)}${sigChip('🎯', 'GIR', r.gir + '%', cG)}${sigChip('🍩', '퍼팅', r.putts, cP)}${r.mulligan ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#2d0f0f;border:.5px solid #6a2020;border-radius:8px;padding:4px 9px;font-size:12px;color:var(--r)">🔄 멀리건 ${r.mulligan}</span>` : ''}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${sigChip('🚗', 'FIR', r.fir + '%', cF)}${sigChip('🎯', 'GIR', r.gir + '%', cG)}${sigChip('🍩', '퍼팅', r.putts, cP)}${courseAvgChip(r)}${r.mulligan ? `<span style="display:inline-flex;align-items:center;gap:3px;background:#2d0f0f;border:.5px solid #6a2020;border-radius:8px;padding:4px 9px;font-size:12px;color:var(--r)">🔄 멀리건 ${r.mulligan}</span>` : ''}</div>
       </div>`;
     });
   }
@@ -1990,14 +2023,11 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 티샷 안정성에 원형그래프를 추가하고, 홀을 안 만지고 넘어가도 파로 자동 입력되게 했어요. 코스 이름 수정 버그도 고쳤어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 자주 가는 골프장 통계와, 라운드별 목록에 코스 평균 대비 비교를 추가했어요.</div>
 
   ${S('📣 이번 업데이트')}
-  ${li('🚩 <b>티샷 안정성 원형그래프 추가</b> — 페어웨이(온그린)·러프·벙커·해저드·OB 5가지 개수와 비율을 도넛 차트로 한눈에 보여줘요.')}
-  ${li('✅ <b>미입력 홀 자동 파 처리</b> — 아무것도 안 만지고 "저장 · 다음 홀 →" / "저장 · 완료"를 바로 눌러도 그 홀은 파로 자동 확정돼요. 18번 홀에서 그대로 "저장 · 완료"를 눌러도 라운드 상세 기록으로 바로 이동해요.')}
-  ${li('🐛 <b>골프장 코스 수정 버그 수정</b> — 코스 이름을 길게 눌러 전체 선택하다가 모달이 닫히고 골프장 목록으로 튕기던 문제를 고쳤어요.')}
-  ${li('✂️ <b>통계 탭 이름 변경</b> — "부서별"을 <b>구간별</b>로 바꿨어요(내용은 그대로).')}
-  ${li('📉 <b>손실타수 한눈에 보기 추가</b> — 통계→구간별 탭 맨 위에서 드라이버·아이언·웨지·숏게임·퍼팅 손실 타수를 막대그래프로 한 번에 비교해요.')}
+  ${li('⛳ <b>자주 가는 골프장 추가</b> — 통계→추세·기록 탭에서 골프장별 방문 횟수·비율·평균 스코어를 막대그래프로 한눈에 봐요.')}
+  ${li('📍 <b>코스평균대비 칩 추가</b> — 통계→라운드별 목록의 각 라운드 카드에서, 그 골프장 다른 라운드 평균 대비 몇 타인지 바로 확인해요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
