@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.40.0';
+const APP_VERSION = 'v12.41.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -245,7 +245,7 @@ function renderHome() {
         <div class="rc-sub">${r.date || ''} · ${r.weather || ''}${r.partner ? ' · ' + r.partner : ''}${r.memo ? ' · ' + r.memo : ''}</div>
       </div>${draft ? `<span style="background:#3a2a0a;color:var(--a);font-size:11px;font-weight:700;padding:4px 10px;border-radius:10px;flex-shrink:0">✏️ 작성중</span>` : `<div class="pill ${pC(r.vs)}">${r.score} (${vsL(r.vs)})</div>`}</div>
       ${draft ? `<div style="margin-top:10px;padding:8px 12px;background:#2a2a0a;border-radius:8px;font-size:12px;color:var(--a)">탭해서 이어서 입력 →</div>` :
-      `<div class="rc-meta"><span>🚗 FIR ${r.fir}%</span><span>🎯 GIR ${r.gir}%</span><span>🍩 ${r.putts}퍼팅</span>${(r.mulligan || r.tpCount) ? `<span style="color:var(--r)">🔄 M${r.mulligan || 0}·TP${r.tpCount || 0}</span>` : ''}</div>`}
+      `<div class="rc-meta"><span>🚗 FIR ${r.fir}%</span><span>🎯 GIR ${r.gir}%</span><span>🍩 ${r.putts}퍼팅</span>${(r.mulligan || r.tpCount) ? `<span style="color:var(--r)">🔄 M${r.mulligan || 0}·TP${r.tpCount || 0}</span>` : ''}</div>${courseAvgChip(r) ? `<div style="margin-top:8px">${courseAvgChip(r)}</div>` : ''}`}
     </div>`;
   });
   el.innerHTML = h;
@@ -507,6 +507,7 @@ function openDet(id) {
       <div class="sc"><span class="sn">${r.mulligan || 0}</span><span class="sl">멀리건 (페널티 없음)</span></div>
       <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 패널티 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회)</span></div>
     </div>
+    ${courseAvgChip(r) ? `<div style="text-align:center;margin-bottom:10px">${courseAvgChip(r)}</div>` : ''}
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
     ${skillRatioHTML([r])}
     ${blowupCauseHTML([r])}
@@ -2023,11 +2024,10 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 자주 가는 골프장 통계와, 라운드별 목록에 코스 평균 대비 비교를 추가했어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> "코스평균대비" 칩을 라운드 탭 목록과 라운드 상세 화면에도 추가했어요.</div>
 
   ${S('📣 이번 업데이트')}
-  ${li('⛳ <b>자주 가는 골프장 추가</b> — 통계→추세·기록 탭에서 골프장별 방문 횟수·비율·평균 스코어를 막대그래프로 한눈에 봐요.')}
-  ${li('📍 <b>코스평균대비 칩 추가</b> — 통계→라운드별 목록의 각 라운드 카드에서, 그 골프장 다른 라운드 평균 대비 몇 타인지 바로 확인해요.')}
+  ${li('📍 <b>코스평균대비 칩 확대 적용</b> — 통계 화면에만 있던 칩을 라운드 탭(홈)의 최근 라운드 목록과, 라운드를 눌렀을 때 나오는 상세 화면 상단에도 추가했어요. 그 골프장 다른 라운드 평균 대비 몇 타인지 어디서든 바로 확인돼요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
