@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <!-- PWA: 안드로이드에서 크롬 바로가기가 아니라 "앱"으로 설치되려면 manifest 가 반드시 있어야 한다 -->
-<link rel="manifest" href="manifest.json?v=12.35.1">
+<link rel="manifest" href="manifest.json?v=12.36.0">
 <meta name="theme-color" content="#1d9345">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -90,7 +90,7 @@
   <div class="body-sc" id="sc-body"></div>
   <div class="sft">
     <div class="fi"><div class="fl">합계</div><div class="fv" id="f-tot">-</div></div>
-    <div class="fi"><div class="fl">파대비</div><div class="fv" id="f-vs">-</div></div>
+    <div class="fi"><div class="fl">오버파</div><div class="fv" id="f-vs">-</div></div>
     <div class="fi"><div class="fl">GIR</div><div class="fv" id="f-g">-</div></div>
     <div class="fi"><div class="fl">🍩 퍼팅</div><div class="fv" id="f-p">-</div></div>
     <div class="fi"><div class="fl">멀리건/벌타</div><div class="fv" id="f-m" style="color:var(--r)">-</div></div>
@@ -263,7 +263,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.35.1"></script>
-<script src="app.js?v=12.35.1"></script>
+<script src="api.js?v=12.36.0"></script>
+<script src="app.js?v=12.36.0"></script>
 </body>
 </html>
