@@ -25,6 +25,7 @@ let A = {
         scores: Array(18).fill(0), putts: Array(18).fill(2), og: Array(18).fill(0),
         gir: Array(18).fill(false), fir: Array(18).fill(false),
         mulli: Array(18).fill(0), tp: Array(18).fill(0), teeSel: Array(18).fill(null), miss: Array(18).fill(''),
+        xhz: Array(18).fill(0), xob: Array(18).fill(0),
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
 
 // ── 📢 공지 게시판 (읽기 전용) ──
@@ -261,6 +262,7 @@ function goSelectCourse() {
   A.sc.partner = Q('nr-p').value; A.sc.memo = Q('nr-m').value;
   A.sc.eid = null; A.sc.ro = false; A.sc.hIdx = 0; A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
   A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0); A.sc.teeSel = Array(18).fill(null); A.sc.miss = Array(18).fill('');
+  A.sc.xhz = Array(18).fill(0); A.sc.xob = Array(18).fill(0);
   cm('m-nr'); renderCourses(); showPg('course');
 }
 
@@ -282,6 +284,7 @@ function buildRound(isDraft) {
     scores: [...A.sc.scores], puttsArr: [...A.sc.putts], girArr: [...A.sc.gir], firArr: [...A.sc.fir],
     mulliArr: [...A.sc.mulli], tpArr: [...(A.sc.tp || Array(18).fill(0))],
     missArr: [...(A.sc.miss || Array(18).fill(''))],   // 러프/벙커 구분(v12.37+) — 페널티 계산엔 안 쓰고 미스 유형 집계에만 씀
+    xhzArr: [...(A.sc.xhz || Array(18).fill(0))], xobArr: [...(A.sc.xob || Array(18).fill(0))],   // 티샷 외(어프로치 등) 해저드·OB 횟수(v12.42+)
     holePars: [...h]   // ★ 박제: 그날 홀별 파를 라운드에 함께 저장 → 나중에 골프장이 바뀌어도 안 흔들림
   };
 }
@@ -550,6 +553,7 @@ function openSC(id, ro) {
   A.sc.scores = [...r.scores]; A.sc.putts = [...r.puttsArr];
   A.sc.gir = [...r.girArr]; A.sc.fir = [...r.firArr]; A.sc.mulli = [...(r.mulliArr || Array(18).fill(0))]; A.sc.tp = [...(r.tpArr || Array(18).fill(0))];
   A.sc.miss = [...(r.missArr || Array(18).fill(''))];   // 러프/벙커 구분(없는 옛 기록은 빈 값)
+  A.sc.xhz = [...(r.xhzArr || Array(18).fill(0))]; A.sc.xob = [...(r.xobArr || Array(18).fill(0))];   // 티샷 외 해저드·OB(없는 옛 기록은 0)
   // 온그린 타수는 저장하지 않으므로(스코어=온그린+퍼팅) 기존 기록에서 역산해 복원한다.
   A.sc.og = pars.map((p, i) => { const s = A.sc.scores[i] || 0, pt = A.sc.putts[i] || 0; return s > 0 ? Math.max(0, s - pt) : Math.max(1, p - 2); });
   A.sc.teeSel = deriveTeeSel();   // 티샷 선택 칩 상태도 fir/mulli/tp 로부터 추정 복원(러프/미선택은 구분 불가 → 미선택으로)
@@ -694,6 +698,19 @@ function puttAdjW(i, d) {
   A.sc.putts[i] = Math.max(0, Math.min(10, (A.sc.putts[i] || 0) + d));
   recalcHole(i); renderSC(); autoSaveSC();
 }
+// ── 티샷 외(어프로치 등) 해저드·OB 횟수 — 티샷 칩(tp)과 별도로 세는 홀당 카운터. 스코어 계산엔 관여 안 함(이미 og에 반영된 타수임) ──
+function xhzAdj(i, d) {
+  if (A.sc.ro) return;
+  if (!A.sc.xhz) A.sc.xhz = Array(18).fill(0);
+  A.sc.xhz[i] = Math.max(0, Math.min(9, (A.sc.xhz[i] || 0) + d));
+  renderSC(); autoSaveSC();
+}
+function xobAdj(i, d) {
+  if (A.sc.ro) return;
+  if (!A.sc.xob) A.sc.xob = Array(18).fill(0);
+  A.sc.xob[i] = Math.max(0, Math.min(9, (A.sc.xob[i] || 0) + d));
+  renderSC(); autoSaveSC();
+}
 // 스코어 입력 화면에서 이 홀의 파를 바로 바꾼다 — "⛳ 파수정"과 동일하게 공식 코스 데이터에도 반영(마스터와 다를 때만, best-effort).
 async function setHolePar(i, p) {
   if (A.sc.ro) return;
@@ -721,6 +738,9 @@ function renderHoleWizard() {
   if (!A.sc.og) A.sc.og = Array(18).fill(0);
   const og = A.sc.og[i] || Math.max(1, par - 2);
   const putt = A.sc.putts[i] != null ? A.sc.putts[i] : 2;
+  if (!A.sc.xhz) A.sc.xhz = Array(18).fill(0);
+  if (!A.sc.xob) A.sc.xob = Array(18).fill(0);
+  const xhz = A.sc.xhz[i] || 0, xob = A.sc.xob[i] || 0;
   const score = entered ? A.sc.scores[i] : og + putt;
   const d = score - par, cc = entered ? cls(score, par) : 'e';
   const ts = teeState(i);
@@ -763,6 +783,25 @@ function renderHoleWizard() {
           <div style="font-size:11px;color:var(--t3);margin-top:6px">수</div>
         </div>
       </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:10px 8px">
+          <div style="font-size:11px;color:var(--t2);margin-bottom:6px">🌊 티샷 외 해저드</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+            <button class="hb" onclick="xhzAdj(${i},-1)">${SM}</button>
+            <div style="width:26px;font-size:17px;font-weight:700;text-align:center;color:var(--t)">${xhz}</div>
+            <button class="hb" onclick="xhzAdj(${i},1)">${SP}</button>
+          </div>
+        </div>
+        <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:10px 8px">
+          <div style="font-size:11px;color:var(--t2);margin-bottom:6px">🚫 티샷 외 OB</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+            <button class="hb" onclick="xobAdj(${i},-1)">${SM}</button>
+            <div style="width:26px;font-size:17px;font-weight:700;text-align:center;color:var(--t)">${xob}</div>
+            <button class="hb" onclick="xobAdj(${i},1)">${SP}</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--t3);margin:-10px 2px 10px;line-height:1.5">💡 티샷(첫 샷)이 아닌 다른 샷에서 해저드·OB가 났을 때만 여기에 횟수를 더하세요. 스코어에는 영향이 없어요(이미 "온그린까지 타수"에 포함돼 있어요) — 원인 분석용 기록입니다.</div>
       <div class="${entered ? cc : ''}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px${entered ? '' : ';cursor:pointer;background:#0d2e1a;border:1.5px dashed var(--g)'}"${entered ? '' : ` onclick="confirmPar(${i})"`}>
         <div style="font-size:18px;font-weight:800;${entered ? '' : 'color:var(--g)'}">${entered ? scoreLabel(d, score) : '👆 입력 전'}</div>
         <div style="font-size:13px;margin-top:3px;${entered ? 'opacity:.85' : 'color:var(--g);font-weight:800'}">${entered ? `${vsL(d)} · 총 ${score}타` : `탭 한 번으로 파(${par}) 입력!`}</div>
@@ -966,6 +1005,7 @@ function startScoringFromPicker() {
 
   A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
   A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0); A.sc.teeSel = Array(18).fill(null); A.sc.miss = Array(18).fill('');
+  A.sc.xhz = Array(18).fill(0); A.sc.xob = Array(18).fill(0);
   A.sc.eid = null; A.sc.ro = false; A.sc.half = 0; A.sc.hIdx = 0;
   const c = A.sc.course; const [l0, l1] = A.sc.li; const par = getH().reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${A.sc.date} · ${c.layouts[l0].name}+${c.layouts[l1].name} · 파${par}`;
@@ -2032,6 +2072,7 @@ function updateNewsHTML() {
   ${S('📣 이번 업데이트')}
   ${li('📍 <b>코스평균대비 칩 확대 적용</b> — 통계 화면에만 있던 칩을 라운드 탭(홈)의 최근 라운드 목록과, 라운드를 눌렀을 때 나오는 상세 화면 상단에도 추가했어요. 그 골프장 다른 라운드 평균 대비 몇 타인지 어디서든 바로 확인돼요.')}
   ${li('📊 <b>핵심 지표에 멀리건·OB·해저드 추가</b> — 통계→스코어 탭 "핵심 지표"에서 평균 멀리건·평균 OB·평균 해저드 숫자를 바로 봐요.')}
+  ${li('🌊🚫 <b>티샷 외 해저드·OB 입력칸 추가</b> — 스코어 입력 화면에서 온그린까지·퍼팅 아래에 새로 생겼어요. 첫 샷(티샷) 말고 어프로치 등에서 난 해저드·OB를 기록해두면 나중에 분석에 쓸 수 있어요. 스코어 계산에는 영향 없어요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2060,6 +2101,7 @@ function guideScorecardHTML() {
   ${btn('결과 배너', '위 두 값으로 계산된 스코어(파·보기·더블 등)를 실시간으로 보여줘요. 오버파도 함께 표시.')}
   ${btn('GIR', '자동 계산돼요. <b>온그린까지 타수 ≤ 파−2</b>면 ON — 따로 누를 필요 없어요.')}
   ${btn('티샷 결과', '페어웨이 / 러프 / 벙커 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이·러프 대신 온그린·벙커). <b>페어웨이 = FIR 반영</b> · <b>러프·벙커 = FIR 미반영, 페널티 없음</b> · <b>해저드·OB = 페널티</b> · <b>멀리건 = 페널티 없음</b>. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">GIR은 이 선택과 무관하게</b> "온그린까지 타수"만으로 계산돼요(파3도 온그린 칩이 아니라 온그린까지 타수가 1 이하면 GIR).<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
+  ${btn('티샷 외 해저드·OB', '위 "티샷 결과"는 첫 샷만 기록해요. 어프로치 등 다른 샷에서 해저드·OB가 났으면 여기 +/- 로 횟수를 더해두세요. <b>스코어에는 영향 없어요</b>(이미 "온그린까지 타수"에 포함돼 있음) — 나중에 원인을 분석할 때만 쓰이는 기록용 값이에요.')}
 
   ${S('⑤ 이동·저장')}
   <div style="font-size:13px;color:var(--t2);line-height:1.6">맨 위 전반/후반 진행 막대를 탭하면 해당 홀로 바로 이동. 값을 바꾸면 그 즉시 자동 저장되고, <b style="color:var(--g)">저장·다음 홀 →</b>로 다음 홀로 넘어가요. 18번 홀에서는 <b style="color:var(--g)">저장·완료</b>로 마무리. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
