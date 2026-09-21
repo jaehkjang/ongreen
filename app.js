@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.36.0';
+const APP_VERSION = 'v12.37.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -489,8 +489,8 @@ function openDet(id) {
       <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span></div>
       <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
       <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
-      <div class="sc"><span class="sn" style="color:var(--r)">${r.mulligan || 0}<span style="font-size:13px;color:var(--t2)">/</span>${obCountOf(r)}<span style="font-size:13px;color:var(--t2)">/</span>${hzCountOf(r)}</span><span class="sl">멀리건/OB/해저드</span></div>
-      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 손실 타수 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회, 멀리건 제외)</span></div>
+      <div class="sc"><span class="sn">${r.mulligan || 0}</span><span class="sl">멀리건 (페널티 없음)</span></div>
+      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 패널티 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회)</span></div>
     </div>
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
     ${skillRatioHTML([r])}
@@ -698,7 +698,7 @@ function renderHoleWizard() {
   const d = score - par, cc = entered ? cls(score, par) : 'e';
   const ts = teeState(i);
   const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
-  const chips = (par === 3 ? [chip('green', '온그린')] : [chip('fw', '페어웨이'), chip('rough', '러프')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
+  const chips = (par === 3 ? [chip('green', '온그린'), chip('bunker', '벙커')] : [chip('fw', '페어웨이'), chip('rough', '러프'), chip('bunker', '벙커')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
   const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
   const holeCell = idx => { const on = idx === i, done = A.sc.scores[idx] > 0;
     return `<button onclick="hJump(${idx})" style="flex:1;height:38px;min-width:0;border:none;border-radius:9px;cursor:pointer;font-size:13px;
@@ -781,7 +781,7 @@ function holeDetail(id, i) {
   const teeTxt = mm ? '<b style="color:#ffcc80">멀리건 (다시 침 · 벌타 없음)</b>'
     : tpv === 2 ? '<b style="color:#ff8a80">OB (스코어에 벌타 포함됨)</b>'
     : tpv ? '<b style="color:#ff8a80">해저드 (스코어에 벌타 포함됨)</b>'
-    : (par !== 3 && !ff) ? '<span style="color:var(--t3)">러프 (사고 없음)</span>' : '<span style="color:var(--t3)">사고 없음</span>';
+    : (par !== 3 && !ff) ? '<span style="color:var(--t3)">러프/벙커 (사고 없음)</span>' : '<span style="color:var(--t3)">사고 없음</span>';
   const teeRow = row('⛳ 티샷 사고', teeTxt);
   Q('hd-t').textContent = `${i + 1}번 홀 · 파${par}`;
   Q('hd-body').innerHTML = `
@@ -1238,7 +1238,7 @@ const TREND_METRICS = [
   { k: 'putts', lbl: '퍼팅',   low: true,  u: '' },
   { k: 'gir',   lbl: 'GIR',    low: false, u: '%' },
   { k: 'fir',   lbl: 'FIR',    low: false, u: '%' },
-  { k: 'lossStrokes', lbl: '티샷손실', low: true, u: '타' },   // 티샷 OB·해저드로 깎아먹은 타수
+  { k: 'lossStrokes', lbl: '티샷패널티', low: true, u: '타' },   // 티샷 OB·해저드 페널티로 깎아먹은 타수
   { k: 'consist', lbl: '기복', low: true,  u: '' },   // 최근 5R 스코어 편차(작을수록 일정)
 ];
 function setTrend(k) { _trendMetric = k; const w = Q('trend-wrap'); if (w) w.innerHTML = trendWrapHTML(); }
@@ -1900,15 +1900,17 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 탭을 더 줄여 화면 하나에서 바로 보이게 정리했고, 스코어 입력에 원터치 파 입력을 추가했어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 티샷 결과에 <b>벙커</b>를 추가하고, 라운드 상세의 멀리건·티샷 패널티 표시를 정리했어요.</div>
 
   ${S('📣 이번 업데이트 — 더 짧고 빠르고 정확하게')}
+  ${li('🏖️ <b>티샷 결과에 벙커 추가</b> — 파3·4·5 모두 티샷 결과에 <b>벙커</b>를 고를 수 있어요. 페어웨이=FIR 반영 · 러프·벙커=FIR 미반영(페널티 없음) · 해저드·OB=페널티 · 멀리건=페널티 없음으로 정리했어요. GIR은 이 선택과 무관하게 "온그린까지 타수"로만 계산됩니다.')}
+  ${li('🔢 <b>라운드 상세 표시 정리</b> — "멀리건/OB/해저드"로 뭉쳐 있던 걸 <b>멀리건</b> 카드로 따로 빼고, 나머지는 <b>티샷 패널티</b>로 묶어 OB·해저드 횟수를 따로 보여줘요.')}
   ${li('🔍 <b>라운드 상세 통합</b> — "이 라운드 분석" 토글을 없애고 정확도·숏게임·퍼팅(스크램블링 포함) 내용을 기본 화면에 바로 노출. 🚦신호등 진단·💊오늘의 처방은 없앴어요.')}
   ${li('📊 <b>통계 탭 정리</b> — 진단 탭을 없애고 <b>스코어·숏게임·퍼팅·추세·기록</b> 3개 탭으로 줄였어요. "정확도·퍼팅"은 <b>숏게임·퍼팅</b>으로 이름을 바꿨어요.')}
   ${li('✅ <b>스코어 원터치 입력</b> — 아직 안 만진 홀의 "👆 입력 전" 박스(초록 점선 테두리로 눈에 띄게)를 탭하면 파가 그대로 입력돼요.')}
   ${li('💥 <b>큰 실수 기준 수정</b> — "큰 실수의 원인"이 더블보기 이상이 아니라 <b>블로업(트리플보기 이상)</b> 홀만 세도록 바로잡았고, 원인 이름이 한 줄로 보이게 고쳤어요.')}
   ${li('🗑️ <b>분석 기준값 설정 삭제</b> — 신호등 진단 기능이 없어지며 안 쓰이게 된 설정 → "분석 기준" 화면을 정리했어요.')}
-  ${li('✂️ <b>표기 통일</b> — "파대비"·"티샷손실타수"처럼 화면마다 다르게 부르던 이름을 <b>오버파</b>·<b>티샷손실</b>로 통일했어요.')}
+  ${li('✂️ <b>표기 통일</b> — "파대비"·"티샷손실타수"처럼 화면마다 다르게 부르던 이름을 <b>오버파</b>·<b>티샷패널티</b>로 통일했어요.')}
   ${li('🎯 <b>비교 정확도 개선</b> — 라운드 상세·라운드별 목록의 🟢🟡🔴 색이, 그 라운드 자신을 뺀 "내 다른 라운드" 평균과 비교하도록 고쳤어요(전엔 자기 자신도 평균에 섞여 있었어요).')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
@@ -1937,7 +1939,7 @@ function guideScorecardHTML() {
   ${btn('퍼팅', '그린에서 홀에 넣기까지 친 횟수. 0(칩인)도 가능해요.')}
   ${btn('결과 배너', '위 두 값으로 계산된 스코어(파·보기·더블 등)를 실시간으로 보여줘요. 오버파도 함께 표시.')}
   ${btn('GIR', '자동 계산돼요. <b>온그린까지 타수 ≤ 파−2</b>면 ON — 따로 누를 필요 없어요.')}
-  ${btn('티샷 결과', '페어웨이 / 러프 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이·러프 제외). <b>페어웨이를 고르면 FIR이 자동으로 반영</b>돼요. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
+  ${btn('티샷 결과', '페어웨이 / 러프 / 벙커 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이·러프 대신 온그린·벙커). <b>페어웨이 = FIR 반영</b> · <b>러프·벙커 = FIR 미반영, 페널티 없음</b> · <b>해저드·OB = 페널티</b> · <b>멀리건 = 페널티 없음</b>. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">GIR은 이 선택과 무관하게</b> "온그린까지 타수"만으로 계산돼요(파3도 온그린 칩이 아니라 온그린까지 타수가 1 이하면 GIR).<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
 
   ${S('⑤ 이동·저장')}
   <div style="font-size:13px;color:var(--t2);line-height:1.6">맨 위 전반/후반 진행 막대를 탭하면 해당 홀로 바로 이동. 값을 바꾸면 그 즉시 자동 저장되고, <b style="color:var(--g)">저장·다음 홀 →</b>로 다음 홀로 넘어가요. 18번 홀에서는 <b style="color:var(--g)">저장·완료</b>로 마무리. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
@@ -1955,7 +1957,7 @@ function guideStatsHTML() {
 
   ${S('📋 요약 · 발전')}
   ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
-  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/티샷손실/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
+  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/티샷패널티/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
   ${it('🎯 손실 타수, 어디서 났나', '드라이버·아이언·숏게임·퍼팅 4부서의 라운드당 손실 타수를 실측값으로 계산해 고칠 순서를 ⭐최우선부터 보여줘요(라운드 상세에서 확인).')}
 
   ${S('스코어')}
