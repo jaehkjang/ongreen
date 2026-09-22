@@ -27,4 +27,14 @@ self.addEventListener('activate', e => e.waitUntil((async () => {
 })()));
 
 // 저장하지 않고 그대로 통과 — 설치 조건을 만족시키기 위한 최소 핸들러
-self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));
+// ⚠️ 다른 출처(Apps Script API 등) 요청은 절대 가로채지 않는다:
+//   Apps Script `/exec` 는 GET/POST 모두 script.googleusercontent.com 으로
+//   302 리다이렉트하는데, 본문(body)이 있는 POST 요청이 교차출처로 리다이렉트되면
+//   SW 가 가로챈 fetch() 가 "Failed to fetch"로 실패하는 브라우저 제약이 있다.
+//   이게 로그인(POST) 요청에서만 NET 에러가 나던 실사고 원인이었다(v12.45.1).
+//   그래서 같은 출처(GitHub Pages) 요청만 통과시키고, 나머지는 SW 를 거치지 않고
+//   브라우저가 직접 처리하게 둔다(설치 인식용 fetch 핸들러는 그대로 유지됨).
+self.addEventListener('fetch', e => {
+  if (new URL(e.request.url).origin !== self.location.origin) return;
+  e.respondWith(fetch(e.request));
+});
