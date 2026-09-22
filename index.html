@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <!-- PWA: 안드로이드에서 크롬 바로가기가 아니라 "앱"으로 설치되려면 manifest 가 반드시 있어야 한다 -->
-<link rel="manifest" href="manifest.json?v=12.46.0">
+<link rel="manifest" href="manifest.json?v=12.47.0">
 <meta name="theme-color" content="#1d9345">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -26,7 +26,7 @@
 <!-- 로그인 -->
 <div class="page on" id="pg-login" style="justify-content:center;align-items:center">
   <div style="text-align:center;padding:40px 28px;width:100%;max-width:360px;margin:0 auto">
-    <div style="font-size:68px;margin-bottom:8px">⛳</div>
+    <img src="mascot.png" alt="" style="height:88px;margin-bottom:8px">
     <div style="font-size:32px;font-weight:800;color:var(--g);margin-bottom:4px">온그린</div>
     <div style="font-size:13px;color:var(--t2);margin-bottom:36px">골프 스코어 & 통계</div>
     <div style="text-align:left;font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;margin-bottom:6px">이름</div>
@@ -43,7 +43,7 @@
 <!-- 홈 -->
 <div class="page" id="pg-home">
   <div class="top">
-    <div class="t-col" style="flex-direction:row;align-items:baseline;gap:8px"><div class="t-ttl">⛳ 온그린</div><div class="t-sub" id="h-user" style="margin-top:0"></div></div>
+    <div class="t-col" style="flex-direction:row;align-items:baseline;gap:8px"><div class="t-ttl" style="display:flex;align-items:center;gap:6px"><img src="mascot.png" alt="" style="height:22px;vertical-align:middle">온그린</div><div class="t-sub" id="h-user" style="margin-top:0"></div></div>
     <div class="t-acts">
       <div class="ic-wrap"><button class="ic-btn" onclick="goNotice()">📢</button><span class="badge" id="nb">0</span></div>
       <div class="ic-wrap"><button class="ic-btn" onclick="goSet()">⚙️</button><span class="badge" id="ab">0</span></div>
@@ -263,7 +263,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.46.0"></script>
-<script src="app.js?v=12.46.0"></script>
+<script src="api.js?v=12.47.0"></script>
+<script src="app.js?v=12.47.0"></script>
 </body>
 </html>
