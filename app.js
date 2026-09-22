@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.43.0';
+const APP_VERSION = 'v12.44.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -2078,10 +2078,10 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 앱 아이콘을 새로 바꿨어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 앱 아이콘의 진한 테두리를 없앴어요.</div>
 
   ${S('📣 이번 업데이트')}
-  ${li('🐩 <b>앱 아이콘 교체</b> — 골프공을 물고 걷는 새 마스코트 일러스트로 바꿨어요. 홈 화면 아이콘·브라우저 탭 아이콘 모두 적용돼요(홈 화면에 이미 추가했다면 새로 추가해야 바뀐 아이콘이 보여요).')}
+  ${li('🐩 <b>앱 아이콘 테두리 제거</b> — 지난 업데이트의 새 아이콘이 홈 화면에서 진한 초록 테두리가 비쳐 보이던 문제를 고쳤어요. 이제 배경이 끝까지 초록으로 꽉 차요(홈 화면에 이미 추가했다면 삭제 후 다시 추가해야 바뀐 아이콘이 보여요).')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
