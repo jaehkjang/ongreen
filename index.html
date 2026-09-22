@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <!-- PWA: 안드로이드에서 크롬 바로가기가 아니라 "앱"으로 설치되려면 manifest 가 반드시 있어야 한다 -->
-<link rel="manifest" href="manifest.json?v=12.46.0">
+<link rel="manifest" href="manifest.json?v=12.48.0">
 <meta name="theme-color" content="#1d9345">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -60,7 +60,7 @@
 <!-- 코스 선택 -->
 <div class="page" id="pg-course">
   <div class="top">
-    <button class="back" onclick="goHome()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
+    <button class="back" onclick="backOut()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
     <div class="t-ttl">골프장 선택</div>
     <button class="add" onclick="openAddCourse()">+ 추가</button>
   </div>
@@ -74,7 +74,7 @@
 <!-- 스코어카드 -->
 <div class="page" id="pg-sc">
   <div class="top">
-    <button class="back" onclick="scBack()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
+    <button class="back" onclick="backOut()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
     <div class="sc-mid"><div class="t-ttl" id="sc-t" style="font-size:17px"></div><div style="font-size:11px;color:var(--t2)" id="sc-s"></div></div>
     <div class="t-acts">
       <button class="sv" id="sv" onclick="saveRound()">저장</button>
@@ -110,7 +110,7 @@
 <!-- 설정 -->
 <div class="page" id="pg-set">
   <div class="top">
-    <button class="back" onclick="goHome()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
+    <button class="back" onclick="backOut()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
     <div class="t-ttl">설정</div><div style="width:60px"></div>
   </div>
   <div class="body">
@@ -161,7 +161,7 @@
 <!-- 공지 게시판 (읽기 전용) -->
 <div class="page" id="pg-notice">
   <div class="top">
-    <button class="back" onclick="goHome()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
+    <button class="back" onclick="backOut()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--g)" stroke-width="2.5" stroke-linecap="round"/></svg>뒤로</button>
     <div class="t-ttl">공지 게시판</div><div style="width:60px"></div>
   </div>
   <div class="body" id="notice-body"></div>
@@ -263,7 +263,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <!-- ?v= 쿼리: 버전이 바뀌면 HTTP 캐시도 강제로 우회(app.js 의 APP_VERSION 과 맞춤) -->
-<script src="api.js?v=12.47.0"></script>
-<script src="app.js?v=12.47.0"></script>
+<script src="api.js?v=12.48.0"></script>
+<script src="app.js?v=12.48.0"></script>
 </body>
 </html>

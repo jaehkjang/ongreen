@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.47.0';
+const APP_VERSION = 'v12.48.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -53,7 +53,14 @@ const Q = id => document.getElementById(id);
 const vsL = v => v === 0 ? 'E' : v > 0 ? '+' + v : String(v);
 const pC = v => v < 0 ? 'gp' : v > 0 ? 'rp' : 'ep';
 function cls(s, p) { if (!s) return 'e'; const d = s - p; return d <= -2 ? 'eag' : d === -1 ? 'bir' : d === 0 ? 'par' : d === 1 ? 'bog' : d === 2 ? 'dbl' : 'wrs'; }
-function showPg(id) { document.querySelectorAll('.page').forEach(p => p.classList.remove('on')); Q('pg-' + id).classList.add('on'); }
+// BACK_ACTIONS 에 등록된(뒤로 갈 곳이 있는) 화면에 들어갈 때 히스토리에 "보초" 항목을 하나 쌓아둔다.
+// 안드로이드 하드웨어/제스처 뒤로가기가 앱을 바로 나가버리지 않고 그 보초를 먼저 소비하게 만들어서,
+// popstate 핸들러(아래 initSwipeBack 근처)가 스와이프 백과 같은 동작을 그대로 실행할 수 있게 한다.
+let backGuardPushed = false;
+function showPg(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('on')); Q('pg-' + id).classList.add('on');
+  if (BACK_ACTIONS[id] && !backGuardPushed) { history.pushState({ og: 1 }, '', location.href); backGuardPushed = true; }
+}
 // 현재 보이는 페이지 id(예: 'home','set','stat'). 백그라운드 데이터 갱신이 사용자가 보던 화면을 함부로 바꾸지 않도록 판단에 씀.
 function curPg() { const p = document.querySelector('.page.on'); return p ? p.id.replace('pg-', '') : ''; }
 function cm(id) { Q(id).classList.remove('on'); }
@@ -2186,6 +2193,20 @@ function philosophyHTML() {
 // ════════════════════════════════════════
 // 페이지별 "뒤로" 동작. 뒤로 갈 곳이 없는 화면(홈·통계·로그인)은 등록하지 않음.
 const BACK_ACTIONS = { course: goHome, sc: scBack, set: goHome, notice: goHome };
+// 화면의 "뒤로" 버튼 · 스와이프 백이 공통으로 부르는 통로.
+// showPg() 가 쌓아둔 히스토리 보초가 있으면 history.back() 으로 소비해 안드로이드 뒤로가기와 동기화하고,
+// (드물게) 보초가 없으면 동작을 바로 실행한다.
+function backOut() {
+  const action = BACK_ACTIONS[curPg()];
+  if (!action) return;
+  if (backGuardPushed) history.back(); else action();
+}
+// 안드로이드 하드웨어/제스처 뒤로가기: 위 보초 항목이 팝되면서 오는 이벤트.
+// 스와이프 백과 똑같이 현재 화면에 등록된 동작을 실행해 "이전 메뉴로" 돌아가게 한다.
+window.addEventListener('popstate', () => {
+  const action = BACK_ACTIONS[curPg()];
+  if (action) { backGuardPushed = false; action(); }
+});
 function initSwipeBack() {
   const app = document.querySelector('.app');
   if (!app || app._swipeBackReady) return;
@@ -2218,7 +2239,7 @@ function initSwipeBack() {
     el.style.transition = 'transform .2s ease, opacity .2s ease';
     if (dir === 1 && dx > W() * 0.33) {                     // 충분히 끌었으면 뒤로 완료
       el.style.transform = `translateX(${W()}px)`; el.style.opacity = '0';
-      setTimeout(() => { action(); el.style.transition = el.style.transform = el.style.opacity = ''; }, 180);
+      setTimeout(() => { backOut(); el.style.transition = el.style.transform = el.style.opacity = ''; }, 180);
     } else {                                                // 아니면 제자리 복귀
       el.style.transform = ''; el.style.opacity = '';
       setTimeout(() => { el.style.transition = ''; }, 200);
