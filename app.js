@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.48.0';
+const APP_VERSION = 'v12.49.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -504,18 +504,20 @@ function openDet(id) {
   const AV = playerAvgs(r.id);   // 이 라운드 자신은 빼고 "내 다른 라운드" 평균과 비교
   const cP = sig(r.putts, AV.putts, true, 2, AV.n), cG = sig(r.gir, AV.gir, false, 10, AV.n), cF = sig(r.fir, AV.fir, false, 10, AV.n);
   const a = analyze([r]);
+  const avgTag = t => (AV.n && t != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${t}</span>` : '';
   Q('det-t').textContent = `${r.courseName} ${r.date}`;
   const trs = roundTrophies(r);
   Q('det-body').innerHTML = `
     ${trs.length ? `<div style="text-align:center;margin-bottom:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${trs.map(x => `<span style="background:var(--bg3);border:.5px solid var(--bd);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--t)">${x.i} ${x.l}</span>`).join('')}</div>` : ''}
     <div class="sgd" style="margin-bottom:12px">
-      <div class="sc"><span class="sn">${r.score}</span><span class="sl">총 스코어</span></div>
-      <div class="sc"><span class="sn" style="color:${r.vs > 0 ? 'var(--r)' : 'var(--g)'}">${vsL(r.vs)}</span><span class="sl">오버파</span></div>
-      <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span></div>
-      <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span></div>
-      <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span></div>
-      <div class="sc"><span class="sn">${r.mulligan || 0}</span><span class="sl">멀리건 (페널티 없음)</span></div>
-      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 패널티 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회)</span></div>
+      <div class="sc"><span class="sn">${r.score}</span><span class="sl">총 스코어</span>${avgTag(nf(AV.score))}</div>
+      <div class="sc"><span class="sn" style="color:${r.vs > 0 ? 'var(--r)' : 'var(--g)'}">${vsL(r.vs)}</span><span class="sl">오버파</span>${avgTag(nfs(AV.vs))}</div>
+      <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span>${avgTag(nf(AV.fir) + '%')}</div>
+      <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span>${avgTag(nf(AV.gir) + '%')}</div>
+      <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span>${avgTag(nf(AV.putts))}</div>
+      <div class="sc"><span class="sn">${r.mulligan || 0}</span><span class="sl">멀리건 (페널티 없음)</span>${avgTag(nf(AV.mulligan))}</div>
+      <div class="sc"><span class="sn">${blowupCountOf(r)}</span><span class="sl">블로업 (트리플+)</span>${avgTag(nf(AV.blowup))}</div>
+      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 패널티 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회)</span>${avgTag(AV.n ? nf(AV.loss) + '타' : null)}</div>
     </div>
     ${courseAvgChip(r) ? `<div style="text-align:center;margin-bottom:10px">${courseAvgChip(r)}</div>` : ''}
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
@@ -527,7 +529,7 @@ function openDet(id) {
     ${approachHTML(a)}
     ${shortGameHTML(a)}
     ${puttingHTML(a)}
-    ${frontBackHTML([r])}
+    ${frontBackHTML([r], AV)}
     <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : 'var(--r)'; return `<div onclick="holeDetail(${id},${i})" style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
     </div>
@@ -1456,6 +1458,15 @@ function estHandicap(rsChrono) {
 function obCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 2 ? 1 : 0), 0); }
 function hzCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 1 ? 1 : 0), 0); }
 function lossStrokesOf(r) { return obCountOf(r) * 2 + hzCountOf(r); }
+// ── 블로업(트리플보기 이상) 홀 수 — blowupCauseHTML과 같은 기준 ──
+function blowupCountOf(r) {
+  const hp = roundPars(r), sc = r.scores || []; let c = 0;
+  for (let i = 0; i < 18; i++) { const s = sc[i]; if (s > 0 && s - (hp[i] || 4) >= 3) c++; }
+  return c;
+}
+// ── 전반(1-9)/후반(10-18) 합계 — 18홀 모두 기록된 라운드만 값이 있고, 아니면 null ──
+function frontNineOf(r) { const fr = (r.scores || []).slice(0, 9); return fr.length === 9 && fr.every(x => x > 0) ? fr.reduce((a, b) => a + b, 0) : null; }
+function backNineOf(r) { const bk = (r.scores || []).slice(9, 18); return bk.length === 9 && bk.every(x => x > 0) ? bk.reduce((a, b) => a + b, 0) : null; }
 
 // ── 발전 추세: 지표 선택 그래프(이동평균) + 추세 판정 + 구간 비교 ──
 const TREND_METRICS = [
@@ -1721,7 +1732,8 @@ function skillRatioHTML(rounds) {
   <div style="font-size:10px;color:var(--t3);margin:6px 2px 4px">💡 블로업 = 트리플보기 이상 홀(라운드당 ${nf(blowup)}홀). 줄이면 스코어가 크게 떨어져요.</div>`;
 }
 // 전반 / 후반
-function frontBackHTML(rounds) {
+// avgRef: playerAvgs() 결과(f9/n)를 넘기면 전반/후반 네모 안에 "평균 X"를 작게 함께 보여준다(라운드 상세 전용).
+function frontBackHTML(rounds, avgRef) {
   const f9 = [0, 0], b9 = [0, 0];
   rounds.forEach(r => {
     const sc = r.scores || []; const fr = sc.slice(0, 9), bk = sc.slice(9, 18);
@@ -1729,9 +1741,10 @@ function frontBackHTML(rounds) {
     if (bk.length === 9 && bk.every(x => x > 0)) { b9[0] += bk.reduce((a, b) => a + b, 0); b9[1]++; }
   });
   const f9a = f9[1] ? f9[0] / f9[1] : null, b9a = b9[1] ? b9[0] / b9[1] : null;
+  const avgTag = v => (avgRef && avgRef.n && v != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${v.toFixed(1)}</span>` : '';
   return `<div class="lbl">전반 / 후반</div><div class="sgd">
-    ${statCard(f9a == null ? '-' : f9a.toFixed(1), '', '전반(1-9)')}
-    ${statCard(b9a == null ? '-' : b9a.toFixed(1), '', '후반(10-18)')}
+    <div class="sc"><span class="sn">${f9a == null ? '-' : f9a.toFixed(1)}</span><span class="sl">전반(1-9)</span>${avgTag(avgRef && avgRef.f9)}</div>
+    <div class="sc"><span class="sn">${b9a == null ? '-' : b9a.toFixed(1)}</span><span class="sl">후반(10-18)</span>${avgTag(avgRef && avgRef.b9)}</div>
     ${statCard((f9a != null && b9a != null) ? ((b9a - f9a >= 0 ? '+' : '') + (b9a - f9a).toFixed(1)) : '-', '', '후반 차이')}</div>`;
 }
 // 타수 분포
@@ -1755,7 +1768,14 @@ function playerAvgs(excludeId) {
   const rs = A.rounds.filter(r => !r.isDraft && (excludeId == null || !sameId(r.id, excludeId))); const n = rs.length;
   if (!n) return { n: 0 };
   const m = k => rs.reduce((a, r) => a + (r[k] || 0), 0) / n;
-  return { n, score: m('score'), putts: m('putts'), gir: m('gir'), fir: m('fir') };
+  const mf = f => rs.reduce((a, r) => a + f(r), 0) / n;
+  const f9s = rs.map(frontNineOf).filter(x => x != null), b9s = rs.map(backNineOf).filter(x => x != null);
+  return {
+    n, score: m('score'), putts: m('putts'), gir: m('gir'), fir: m('fir'), vs: m('vs'), mulligan: m('mulligan'),
+    loss: mf(lossStrokesOf), blowup: mf(blowupCountOf),
+    f9: f9s.length ? f9s.reduce((a, b) => a + b, 0) / f9s.length : null,
+    b9: b9s.length ? b9s.reduce((a, b) => a + b, 0) / b9s.length : null,
+  };
 }
 // 색 반환: betterLow=작을수록 좋음. margin=노랑(평균수준) 구간 폭. 라운드 3개 미만이면 색 없음
 function sig(val, avg, betterLow, margin, n) {
