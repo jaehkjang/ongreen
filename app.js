@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.49.0';
+const APP_VERSION = 'v12.50.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -63,8 +63,23 @@ function showPg(id) {
 }
 // 현재 보이는 페이지 id(예: 'home','set','stat'). 백그라운드 데이터 갱신이 사용자가 보던 화면을 함부로 바꾸지 않도록 판단에 씀.
 function curPg() { const p = document.querySelector('.page.on'); return p ? p.id.replace('pg-', '') : ''; }
-function cm(id) { Q(id).classList.remove('on'); }
-function om(id) { Q(id).classList.add('on'); }
+// ── 모달도 안드로이드 뒤로가기로 닫히게: 열린 모달을 스택으로 추적하며 om() 마다 히스토리를 하나씩 쌓는다.
+// (라운드 상세처럼 모달로 뜨는 화면은 지금까지 뒤로가기와 전혀 연동돼 있지 않아, 뒤로가기를 눌러도
+//  모달은 그대로 있고 그 아래 화면의 보초만 소비돼 버튼이 "안 먹히는" 것처럼 보이는 문제가 있었다.)
+let _modalStack = [];          // 열린 모달 id들(연 순서). 뒤로가기가 오면 맨 위(가장 최근 연) 것부터 닫는다.
+let _modalPopFromBack = false; // 지금 닫는 게 popstate(뒤로가기)가 이미 소비한 히스토리에 대한 반응인지
+let _suppressPageBack = false; // 모달을 직접(X·배경탭 등으로) 닫아 히스토리만 맞출 때, 그 아래 페이지의 뒤로 동작까지 같이 실행되지 않게 막는다
+function cm(id) {
+  Q(id).classList.remove('on');
+  const idx = _modalStack.lastIndexOf(id); if (idx === -1) return;
+  _modalStack.splice(idx, 1);
+  if (_modalPopFromBack) { _modalPopFromBack = false; return; }   // 뒤로가기가 이미 이 모달의 히스토리를 소비함
+  _suppressPageBack = true; history.back();                        // 직접 닫았으니 쌓아둔 히스토리도 소비
+}
+function om(id) {
+  Q(id).classList.add('on');
+  if (!_modalStack.includes(id)) { _modalStack.push(id); history.pushState({ mog: 1 }, '', location.href); }
+}
 function load(msg) { Q('ldm').textContent = msg || '불러오는 중...'; Q('ld').classList.add('on'); }
 function hide() { Q('ld').classList.remove('on'); }
 function toast(m, t) { const el = Q('toast'); el.textContent = m; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), t || 2600); }
@@ -503,6 +518,9 @@ function openDet(id) {
   const hh = roundPars(r);
   const AV = playerAvgs(r.id);   // 이 라운드 자신은 빼고 "내 다른 라운드" 평균과 비교
   const cP = sig(r.putts, AV.putts, true, 2, AV.n), cG = sig(r.gir, AV.gir, false, 10, AV.n), cF = sig(r.fir, AV.fir, false, 10, AV.n);
+  const cS = sig(r.score, AV.score, true, 3, AV.n), cV = sig(r.vs, AV.vs, true, 3, AV.n);
+  const cM = sig(r.mulligan || 0, AV.mulligan, true, 1, AV.n), cB = sig(blowupCountOf(r), AV.blowup, true, 1, AV.n);
+  const cL = sig(lossStrokesOf(r), AV.loss, true, 2, AV.n);
   const a = analyze([r]);
   const avgTag = t => (AV.n && t != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${t}</span>` : '';
   Q('det-t').textContent = `${r.courseName} ${r.date}`;
@@ -510,14 +528,14 @@ function openDet(id) {
   Q('det-body').innerHTML = `
     ${trs.length ? `<div style="text-align:center;margin-bottom:10px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${trs.map(x => `<span style="background:var(--bg3);border:.5px solid var(--bd);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--t)">${x.i} ${x.l}</span>`).join('')}</div>` : ''}
     <div class="sgd" style="margin-bottom:12px">
-      <div class="sc"><span class="sn">${r.score}</span><span class="sl">총 스코어</span>${avgTag(nf(AV.score))}</div>
-      <div class="sc"><span class="sn" style="color:${r.vs > 0 ? 'var(--r)' : 'var(--g)'}">${vsL(r.vs)}</span><span class="sl">오버파</span>${avgTag(nfs(AV.vs))}</div>
+      <div class="sc"><span class="sn">${dot(cS)}${r.score}</span><span class="sl">총 스코어</span>${avgTag(nf(AV.score))}</div>
+      <div class="sc"><span class="sn" style="color:${r.vs > 0 ? 'var(--r)' : 'var(--g)'}">${dot(cV)}${vsL(r.vs)}</span><span class="sl">오버파</span>${avgTag(nfs(AV.vs))}</div>
       <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span>${avgTag(nf(AV.fir) + '%')}</div>
       <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span>${avgTag(nf(AV.gir) + '%')}</div>
       <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span>${avgTag(nf(AV.putts))}</div>
-      <div class="sc"><span class="sn">${r.mulligan || 0}</span><span class="sl">멀리건 (페널티 없음)</span>${avgTag(nf(AV.mulligan))}</div>
-      <div class="sc"><span class="sn">${blowupCountOf(r)}</span><span class="sl">블로업 (트리플+)</span>${avgTag(nf(AV.blowup))}</div>
-      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 패널티 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회)</span>${avgTag(AV.n ? nf(AV.loss) + '타' : null)}</div>
+      <div class="sc"><span class="sn">${dot(cM)}${r.mulligan || 0}</span><span class="sl">멀리건 (페널티 없음)</span>${avgTag(nf(AV.mulligan))}</div>
+      <div class="sc"><span class="sn">${dot(cB)}${blowupCountOf(r)}</span><span class="sl">블로업 (트리플+)</span>${avgTag(nf(AV.blowup))}</div>
+      <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${lossStrokesOf(r) > 0 ? 'var(--r)' : 'var(--g)'}">${dot(cL)}${lossStrokesOf(r)}<span style="font-size:14px;color:var(--t2)">타</span></span><span class="sl">티샷 패널티 (OB ${obCountOf(r)}회 · 해저드 ${hzCountOf(r)}회)</span>${avgTag(AV.n ? nf(AV.loss) + '타' : null)}</div>
     </div>
     ${courseAvgChip(r) ? `<div style="text-align:center;margin-bottom:10px">${courseAvgChip(r)}</div>` : ''}
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
@@ -1742,9 +1760,11 @@ function frontBackHTML(rounds, avgRef) {
   });
   const f9a = f9[1] ? f9[0] / f9[1] : null, b9a = b9[1] ? b9[0] / b9[1] : null;
   const avgTag = v => (avgRef && avgRef.n && v != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${v.toFixed(1)}</span>` : '';
+  const cF9 = f9a != null ? sig(f9a, avgRef && avgRef.f9, true, 2, avgRef && avgRef.n) : '';
+  const cB9 = b9a != null ? sig(b9a, avgRef && avgRef.b9, true, 2, avgRef && avgRef.n) : '';
   return `<div class="lbl">전반 / 후반</div><div class="sgd">
-    <div class="sc"><span class="sn">${f9a == null ? '-' : f9a.toFixed(1)}</span><span class="sl">전반(1-9)</span>${avgTag(avgRef && avgRef.f9)}</div>
-    <div class="sc"><span class="sn">${b9a == null ? '-' : b9a.toFixed(1)}</span><span class="sl">후반(10-18)</span>${avgTag(avgRef && avgRef.b9)}</div>
+    <div class="sc"><span class="sn">${dot(cF9)}${f9a == null ? '-' : f9a.toFixed(1)}</span><span class="sl">전반(1-9)</span>${avgTag(avgRef && avgRef.f9)}</div>
+    <div class="sc"><span class="sn">${dot(cB9)}${b9a == null ? '-' : b9a.toFixed(1)}</span><span class="sl">후반(10-18)</span>${avgTag(avgRef && avgRef.b9)}</div>
     ${statCard((f9a != null && b9a != null) ? ((b9a - f9a >= 0 ? '+' : '') + (b9a - f9a).toFixed(1)) : '-', '', '후반 차이')}</div>`;
 }
 // 타수 분포
@@ -2222,10 +2242,14 @@ function backOut() {
   if (backGuardPushed) history.back(); else action();
 }
 // 안드로이드 하드웨어/제스처 뒤로가기: 위 보초 항목이 팝되면서 오는 이벤트.
-// 스와이프 백과 똑같이 현재 화면에 등록된 동작을 실행해 "이전 메뉴로" 돌아가게 한다.
+// 열린 모달이 있으면 맨 위 모달부터 닫고(페이지는 그대로 둠), 없으면 스와이프 백과 똑같이
+// 현재 화면에 등록된 동작을 실행해 "이전 메뉴로" 돌아가게 한다.
 window.addEventListener('popstate', () => {
+  if (_modalStack.length) { _modalPopFromBack = true; cm(_modalStack[_modalStack.length - 1]); return; }
+  if (_suppressPageBack) { _suppressPageBack = false; return; }   // 모달을 직접 닫으며 쌓인 히스토리만 소비한 것 — 페이지는 그대로
+  backGuardPushed = false;                                        // 페이지 보초는 실제 소비 여부와 무관하게 항상 초기화(안 그러면 다음 진입 때 다시 안 쌓여 뒤로가기가 먹통이 된다)
   const action = BACK_ACTIONS[curPg()];
-  if (action) { backGuardPushed = false; action(); }
+  if (action) action();
 });
 function initSwipeBack() {
   const app = document.querySelector('.app');
