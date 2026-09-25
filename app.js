@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.50.2';
+const APP_VERSION = 'v12.51.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -25,7 +25,7 @@ let A = {
         scores: Array(18).fill(0), putts: Array(18).fill(2), og: Array(18).fill(0),
         gir: Array(18).fill(false), fir: Array(18).fill(false),
         mulli: Array(18).fill(0), tp: Array(18).fill(0), teeSel: Array(18).fill(null), miss: Array(18).fill(''),
-        xhz: Array(18).fill(0), xob: Array(18).fill(0),
+        xhz: Array(18).fill(0), xob: Array(18).fill(0), ap: Array(18).fill(''),
         date: '', wx: '☀️ 맑음', partner: '', memo: '' } };
 
 // ── 📢 공지 게시판 (읽기 전용) ──
@@ -56,10 +56,16 @@ function cls(s, p) { if (!s) return 'e'; const d = s - p; return d <= -2 ? 'eag'
 // BACK_ACTIONS 에 등록된(뒤로 갈 곳이 있는) 화면에 들어갈 때 히스토리에 "보초" 항목을 하나 쌓아둔다.
 // 안드로이드 하드웨어/제스처 뒤로가기가 앱을 바로 나가버리지 않고 그 보초를 먼저 소비하게 만들어서,
 // popstate 핸들러(아래 initSwipeBack 근처)가 스와이프 백과 같은 동작을 그대로 실행할 수 있게 한다.
+// ── 아이폰/아이패드(iOS)는 이 히스토리 연동을 쓰지 않는다 ──
+// iOS엔 하드웨어 뒤로가기 버튼이 없어 보초가 필요 없고, 오히려 iOS 사파리/홈 화면 앱은 사용자 탭 없이 쌓인
+// pushState 항목을 건너뛰거나 history.back() 이 popstate 를 보내지 않는 경우가 있어 화면의 "뒤로" 버튼이
+// 먹통이 됐다. 그래서 iOS에선 보초를 아예 쌓지 않고 "뒤로" 버튼·스와이프가 동작을 바로 실행한다(backOut 참고).
+// 안드로이드(삼성 등) 하드웨어/제스처 뒤로가기 동작은 기존 그대로 유지.
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let backGuardPushed = false;
 function showPg(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('on')); Q('pg-' + id).classList.add('on');
-  if (BACK_ACTIONS[id] && !backGuardPushed) { history.pushState({ og: 1 }, '', location.href); backGuardPushed = true; }
+  if (!IS_IOS && BACK_ACTIONS[id] && !backGuardPushed) { history.pushState({ og: 1 }, '', location.href); backGuardPushed = true; }
 }
 // 현재 보이는 페이지 id(예: 'home','set','stat'). 백그라운드 데이터 갱신이 사용자가 보던 화면을 함부로 바꾸지 않도록 판단에 씀.
 function curPg() { const p = document.querySelector('.page.on'); return p ? p.id.replace('pg-', '') : ''; }
@@ -73,12 +79,13 @@ function cm(id) {
   Q(id).classList.remove('on');
   const idx = _modalStack.lastIndexOf(id); if (idx === -1) return;
   _modalStack.splice(idx, 1);
+  if (IS_IOS) return;                                               // iOS는 모달 히스토리를 쌓지 않음
   if (_modalPopFromBack) { _modalPopFromBack = false; return; }   // 뒤로가기가 이미 이 모달의 히스토리를 소비함
   _suppressPageBack = true; history.back();                        // 직접 닫았으니 쌓아둔 히스토리도 소비
 }
 function om(id) {
   Q(id).classList.add('on');
-  if (!_modalStack.includes(id)) { _modalStack.push(id); history.pushState({ mog: 1 }, '', location.href); }
+  if (!_modalStack.includes(id)) { _modalStack.push(id); if (!IS_IOS) history.pushState({ mog: 1 }, '', location.href); }
 }
 function load(msg) { Q('ldm').textContent = msg || '불러오는 중...'; Q('ld').classList.add('on'); }
 function hide() { Q('ld').classList.remove('on'); }
@@ -98,7 +105,7 @@ function shareApp() {
   const url = location.href.split('#')[0];   // 현재 앱 주소(쿼리는 유지, 앵커만 제거)
   const text =
     `🟢 온그린 — 골프 스코어카드\n${url}\n\n` +
-    `📱 아이폰: 사파리(Safari)로 열고 → 아래 공유 버튼 → '홈 화면에 추가'를 누르면 앱처럼 쓸 수 있어요.\n` +
+    `📱 아이폰: 사파리(Safari)로 열고 → 아래 공유 버튼(주소창 옆에 없으면 '•••' → 공유) → '홈 화면에 추가'를 누르면 앱처럼 쓸 수 있어요.\n` +
     `🤖 안드로이드: 크롬(Chrome)으로 열고 → 메뉴(⋮) → '홈 화면에 추가'.`;
   shareText('온그린 — 골프 스코어카드', text);
 }
@@ -284,7 +291,7 @@ function goSelectCourse() {
   A.sc.partner = Q('nr-p').value; A.sc.memo = Q('nr-m').value;
   A.sc.eid = null; A.sc.ro = false; A.sc.hIdx = 0; A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
   A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0); A.sc.teeSel = Array(18).fill(null); A.sc.miss = Array(18).fill('');
-  A.sc.xhz = Array(18).fill(0); A.sc.xob = Array(18).fill(0);
+  A.sc.xhz = Array(18).fill(0); A.sc.xob = Array(18).fill(0); A.sc.ap = Array(18).fill('');
   cm('m-nr'); renderCourses(); showPg('course');
 }
 
@@ -307,6 +314,7 @@ function buildRound(isDraft) {
     mulliArr: [...A.sc.mulli], tpArr: [...(A.sc.tp || Array(18).fill(0))],
     missArr: [...(A.sc.miss || Array(18).fill(''))],   // 러프/벙커 구분(v12.37+) — 페널티 계산엔 안 쓰고 미스 유형 집계에만 씀
     xhzArr: [...(A.sc.xhz || Array(18).fill(0))], xobArr: [...(A.sc.xob || Array(18).fill(0))],   // 티샷 외(어프로치 등) 해저드·OB 횟수(v12.42+)
+    apArr: [...(A.sc.ap || Array(18).fill(''))],   // 레귤러온 실패 홀의 어프로치 붙인 거리('ok'=컨시드·'10'=10m 이내·'20'=10~20m·'far'=20m 이상, v12.51+)
     holePars: [...h]   // ★ 박제: 그날 홀별 파를 라운드에 함께 저장 → 나중에 골프장이 바뀌어도 안 흔들림
   };
 }
@@ -581,12 +589,13 @@ function openSC(id, ro) {
   A.sc.gir = [...r.girArr]; A.sc.fir = [...r.firArr]; A.sc.mulli = [...(r.mulliArr || Array(18).fill(0))]; A.sc.tp = [...(r.tpArr || Array(18).fill(0))];
   A.sc.miss = [...(r.missArr || Array(18).fill(''))];   // 러프/벙커 구분(없는 옛 기록은 빈 값)
   A.sc.xhz = [...(r.xhzArr || Array(18).fill(0))]; A.sc.xob = [...(r.xobArr || Array(18).fill(0))];   // 티샷 외 해저드·OB(없는 옛 기록은 0)
+  A.sc.ap = [...(r.apArr || Array(18).fill(''))];   // 어프로치 붙인 거리(없는 옛 기록은 빈 값)
   // 온그린 타수는 저장하지 않으므로(스코어=온그린+퍼팅) 기존 기록에서 역산해 복원한다.
   A.sc.og = pars.map((p, i) => { const s = A.sc.scores[i] || 0, pt = A.sc.putts[i] || 0; return s > 0 ? Math.max(0, s - pt) : Math.max(1, p - 2); });
   A.sc.teeSel = deriveTeeSel();   // 티샷 선택 칩 상태도 fir/mulli/tp 로부터 추정 복원(러프/미선택은 구분 불가 → 미선택으로)
   const par = pars.reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${r.date} · ${n0}+${n1} · 파${par}`;
-  Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${n0} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${n1} (10-18)</button>`;
+  Q('sc-seg').innerHTML = halfSegHTML(n0, n1);
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = ro ? 'none' : 'block';
   clearTimeout(_asTimer); _asTimer = null; setSaveHint('');   // 다른 라운드를 열었으니 자동저장 상태 초기화
   { const box = Q('sc-body'); if (box) box.scrollTop = 0; }   // 새로 연 라운드는 첫 홀부터
@@ -738,6 +747,14 @@ function xobAdj(i, d) {
   A.sc.xob[i] = Math.max(0, Math.min(9, (A.sc.xob[i] || 0) + d));
   renderSC(); autoSaveSC();
 }
+// ── 어프로치 붙인 거리(레귤러온 실패 홀만 입력) — 같은 걸 다시 누르면 해제. 스코어 계산엔 관여 안 함 ──
+const AP_OPTS = [['ok', '컨시드'], ['10', '10m 이내'], ['20', '10~20m'], ['far', '20m 이상']];
+function setAp(i, key) {
+  if (A.sc.ro) return;
+  if (!A.sc.ap) A.sc.ap = Array(18).fill('');
+  A.sc.ap[i] = A.sc.ap[i] === key ? '' : key;
+  renderSC(); autoSaveSC();
+}
 // 스코어 입력 화면에서 이 홀의 파를 바로 바꾼다 — "⛳ 파수정"과 동일하게 공식 코스 데이터에도 반영(마스터와 다를 때만, best-effort).
 async function setHolePar(i, p) {
   if (A.sc.ro) return;
@@ -771,6 +788,34 @@ function renderHoleWizard() {
   const score = entered ? A.sc.scores[i] : og + putt;
   const d = score - par, cc = entered ? cls(score, par) : 'e';
   const ts = teeState(i);
+  // 레귤러온 실패(온그린까지 타수 > 파−2)일 때만 숏게임 창을 띄운다: 어프로치 붙인 거리 + 티샷 외 해저드·OB.
+  // (이미 티샷 외 해저드·OB 값이 들어 있는 홀은 숨겨서 값이 안 보이게 되는 일이 없도록 함께 보여줌)
+  const regMiss = og > Math.max(1, par - 2);
+  const apv = (A.sc.ap && A.sc.ap[i]) || '';
+  const apChip = ([k, l]) => `<button class="lb ${apv === k ? 'on' : ''}" style="flex:1;min-width:0;padding:10px 2px;font-size:12.5px;white-space:nowrap" onclick="setAp(${i},'${k}')">${l}</button>`;
+  const shortPanel = (regMiss || xhz || xob) ? `<div style="background:var(--bg2);border:1px solid var(--a);border-radius:14px;padding:12px 10px;margin-bottom:14px">
+      ${regMiss ? `<div style="font-size:12px;color:var(--a);font-weight:700;margin-bottom:8px">🏌️ 레귤러온 실패 — 어프로치를 얼마나 붙였나요?</div>
+      <div style="display:flex;gap:6px;margin-bottom:12px">${AP_OPTS.map(apChip).join('')}</div>` : ''}
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <div style="flex:1;text-align:center;background:var(--bg3);border-radius:12px;padding:10px 8px">
+          <div style="font-size:11px;color:var(--t2);margin-bottom:6px">🌊 티샷 외 해저드</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+            <button class="hb" onclick="xhzAdj(${i},-1)">${SM}</button>
+            <div style="width:26px;font-size:17px;font-weight:700;text-align:center;color:var(--t)">${xhz}</div>
+            <button class="hb" onclick="xhzAdj(${i},1)">${SP}</button>
+          </div>
+        </div>
+        <div style="flex:1;text-align:center;background:var(--bg3);border-radius:12px;padding:10px 8px">
+          <div style="font-size:11px;color:var(--t2);margin-bottom:6px">🚫 티샷 외 OB</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+            <button class="hb" onclick="xobAdj(${i},-1)">${SM}</button>
+            <div style="width:26px;font-size:17px;font-weight:700;text-align:center;color:var(--t)">${xob}</div>
+            <button class="hb" onclick="xobAdj(${i},1)">${SP}</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--t3);line-height:1.5">💡 붙인 거리·티샷 외 해저드/OB는 스코어에 영향이 없어요(이미 "온그린까지 타수"에 포함) — 숏게임 원인 분석용 기록입니다. 티샷 외 해저드/OB는 첫 샷이 아닌 샷에서 났을 때만 더하세요.</div>
+    </div>` : '';
   const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
   const chips = (par === 3 ? [chip('green', '온그린'), chip('rough', '러프'), chip('bunker', '벙커')] : [chip('fw', '페어웨이'), chip('rough', '러프'), chip('bunker', '벙커')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
   const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
@@ -810,25 +855,7 @@ function renderHoleWizard() {
           <div style="font-size:11px;color:var(--t3);margin-top:6px">수</div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:14px">
-        <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:10px 8px">
-          <div style="font-size:11px;color:var(--t2);margin-bottom:6px">🌊 티샷 외 해저드</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:8px">
-            <button class="hb" onclick="xhzAdj(${i},-1)">${SM}</button>
-            <div style="width:26px;font-size:17px;font-weight:700;text-align:center;color:var(--t)">${xhz}</div>
-            <button class="hb" onclick="xhzAdj(${i},1)">${SP}</button>
-          </div>
-        </div>
-        <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:10px 8px">
-          <div style="font-size:11px;color:var(--t2);margin-bottom:6px">🚫 티샷 외 OB</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:8px">
-            <button class="hb" onclick="xobAdj(${i},-1)">${SM}</button>
-            <div style="width:26px;font-size:17px;font-weight:700;text-align:center;color:var(--t)">${xob}</div>
-            <button class="hb" onclick="xobAdj(${i},1)">${SP}</button>
-          </div>
-        </div>
-      </div>
-      <div style="font-size:10px;color:var(--t3);margin:-10px 2px 10px;line-height:1.5">💡 티샷(첫 샷)이 아닌 다른 샷에서 해저드·OB가 났을 때만 여기에 횟수를 더하세요. 스코어에는 영향이 없어요(이미 "온그린까지 타수"에 포함돼 있어요) — 원인 분석용 기록입니다.</div>
+      ${shortPanel}
       <div class="${entered ? cc : ''}" style="border-radius:14px;padding:14px;text-align:center;margin-bottom:18px${entered ? '' : ';cursor:pointer;background:#0d2e1a;border:1.5px dashed var(--g)'}"${entered ? '' : ` onclick="confirmPar(${i})"`}>
         <div style="font-size:18px;font-weight:800;${entered ? '' : 'color:var(--g)'}">${entered ? scoreLabel(d, score) : '👆 입력 전'}</div>
         <div style="font-size:13px;margin-top:3px;${entered ? 'opacity:.85' : 'color:var(--g);font-weight:800'}">${entered ? `${vsL(d)} · 총 ${score}타` : `탭 한 번으로 파(${par}) 입력!`}</div>
@@ -840,6 +867,11 @@ function renderHoleWizard() {
     </div>`;
   updFt();
   const done = A.sc.scores.every(x => x > 0); const b = Q('sv'); b.className = done ? 'sv done' : 'sv'; b.textContent = done ? '✓ 완료' : '저장'; b.disabled = false;
+}
+// 전반/후반 탭 — 나인 이름과 홀 범위를 한 줄로(줄바꿈 없이). 이름이 길면 말줄임.
+function halfSegHTML(n0, n1) {
+  const b = (n, name, rng, on) => `<button class="sg sg-half ${on ? 'on' : ''}" onclick="swHalf(${n},this)"><span class="sg-nm">${name}</span><span class="sg-rg">${rng}</span></button>`;
+  return b(0, n0, '1-9', true) + b(1, n1, '10-18', false);
 }
 function swHalf(n, el) {
   A.sc.half = n; document.querySelectorAll('#sc-seg .sg').forEach(b => b.classList.remove('on')); el.classList.add('on');
@@ -1032,11 +1064,11 @@ function startScoringFromPicker() {
 
   A.sc.scores = Array(18).fill(0); A.sc.putts = Array(18).fill(2); A.sc.og = Array(18).fill(0);
   A.sc.gir = Array(18).fill(false); A.sc.fir = Array(18).fill(false); A.sc.mulli = Array(18).fill(0); A.sc.tp = Array(18).fill(0); A.sc.teeSel = Array(18).fill(null); A.sc.miss = Array(18).fill('');
-  A.sc.xhz = Array(18).fill(0); A.sc.xob = Array(18).fill(0);
+  A.sc.xhz = Array(18).fill(0); A.sc.xob = Array(18).fill(0); A.sc.ap = Array(18).fill('');
   A.sc.eid = null; A.sc.ro = false; A.sc.half = 0; A.sc.hIdx = 0;
   const c = A.sc.course; const [l0, l1] = A.sc.li; const par = getH().reduce((a, b) => a + b, 0);
   Q('sc-t').textContent = c.name; Q('sc-s').textContent = `${A.sc.date} · ${c.layouts[l0].name}+${c.layouts[l1].name} · 파${par}`;
-  Q('sc-seg').innerHTML = `<button class="sg on" onclick="swHalf(0,this)">${c.layouts[l0].name} (1-9)</button><button class="sg" onclick="swHalf(1,this)">${c.layouts[l1].name} (10-18)</button>`;
+  Q('sc-seg').innerHTML = halfSegHTML(c.layouts[l0].name, c.layouts[l1].name);
   Q('sc-bnr').innerHTML = '';
   const eb = Q('sc-edit-holes'); if (eb) eb.style.display = 'block';
   clearTimeout(_asTimer); _asTimer = null; setSaveHint('');   // 새 라운드 시작 — 자동저장 상태 초기화
@@ -1233,6 +1265,10 @@ async function delCourse(key) {                  // 관리자만 호출 (버튼�
 // ════════════════════════════════════════
 // 통계 (서버 없이 라운드 기록으로 즉시 계산)
 // ════════════════════════════════════════
+// ── "어떻게 계산하나요?" 접이식 설명 상자 — 지표 카드 바로 아래에 붙인다(탭하면 펼침) ──
+function explainBox(title, html) {
+  return `<details class="xpl"><summary>ℹ️ ${title}</summary><div class="xpl-b">${html}</div></details>`;
+}
 function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? `<span class="su">${u}</span>` : ''}</span><span class="sl">${l}</span></div>`; }
 
 // ── 5구간(티샷 안정성·드라이버·아이언·숏게임·퍼팅) 통합 집계 ──
@@ -1241,6 +1277,7 @@ function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? 
 function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
+  const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, save: 0, three: 0 }; });   // 어프로치 거리 구간별 집계
   let played = 0,
       obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0, fwCount = 0,  // 1) 티샷 안정성(전체, 파3~5)
       roughCount = 0, bunkerCount = 0,                                // 러프/벙커 구분(v12.37+ 저장분만)
@@ -1249,11 +1286,13 @@ function analyze(rounds) {
       xPenHoles = 0,                                                   // 티샷 외 벌타가 한 번이라도 있었던 홀 수(표본 안내용)
       p4n = 0, p4Bad = 0, p4FwHitN = 0, p4FwHitBad = 0, p4FwMissN = 0, p4FwMissBad = 0,  // 어프로치 낭비(파4)
       missGreen = 0, scrSave = 0, missLossSum = 0,                     // 4) 숏게임(스크램블)
+      apN = 0, xPenCnt = 0,                                            //    어프로치 붙인 거리 기록 홀 수(v12.51+) · 티샷 외 해저드·OB 횟수 합
       puttSum = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, girPuttSum = 0, girPuttN = 0, puttExcessSum = 0;  // 5) 퍼팅(1/2/3/4+ 분포)
   rounds.forEach(r => {
     const hh = roundPars(r);
     const sc = r.scores || [], pa = r.puttsArr || [], gi = r.girArr || [], fi = r.firArr || [], mu = r.mulliArr || [], tpa = r.tpArr || [], mi = r.missArr || [];
     const xh = r.xhzArr || [], xo = r.xobArr || [];   // 티샷 외(어프로치 등) 해저드·OB 횟수 — 최근 입력분만 있을 수 있음
+    const ap = r.apArr || [];                         // 어프로치 붙인 거리(v12.51+ 입력분만)
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!s || s <= 0) continue;        // 미입력 홀 스킵
       played++;
@@ -1293,6 +1332,9 @@ function analyze(rounds) {
 
       // ── 4) 숏게임(스크램블링): 그린 놓친 홀 중 파 이하로 막은 비율 ──
       if (!gi[i]) { missGreen++; if (s <= par) scrSave++; else missLossSum += d; }
+      //    어프로치 붙인 거리별: 레귤러온 실패 홀 중 거리를 기록한 홀만. 거리별 파세이브·평균 퍼트를 함께 모은다.
+      if (!gi[i] && apB[ap[i]]) { const b = apB[ap[i]]; apN++; b.n++; b.putt += putt; if (s <= par) b.save++; if (putt >= 3) b.three++; }
+      xPenCnt += (xh[i] || 0) + (xo[i] || 0);
 
       // ── 5) 퍼팅 (1/2/3/4+ 분포) ──
       puttSum += putt;
@@ -1326,6 +1368,10 @@ function analyze(rounds) {
   // 4) 숏게임
   const scrPct = missGreen ? pct(scrSave, missGreen) : null;
   const shortLossRound = f1(missLossSum, n);
+  const apNearPct = apN ? pct(apB.ok.n + apB['10'].n, apN) : null;   // 근접률: 컨시드 + 10m 이내로 붙인 비율
+  const apStats = AP_OPTS.map(([k, l]) => { const b = apB[k];
+    return { k, l, n: b.n, pct: pct(b.n, apN), savePct: b.n ? pct(b.save, b.n) : null, puttAvg: b.n ? f1(b.putt, b.n) : null, threePct: b.n ? pct(b.three, b.n) : null }; });
+  const xPenRound = f1(xPenCnt, n);                                   // 라운드당 티샷 외 해저드·OB 횟수
 
   // 5) 퍼팅
   const threePutt = p3 + p4;
@@ -1338,7 +1384,7 @@ function analyze(rounds) {
     obCount, hzCount, mullCount, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
     par45, firPct, teeCostRound, teeCostOk, teeLostPer,
     girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles, p4n, p4BadPct, p4FwHitN, p4FwHitBadPct, p4FwMissN, p4FwMissBadPct,
-    missGreen, scrPct, shortLossRound,
+    missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound,
     puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, p1, p2, p3, p4 };
 }
 
@@ -1411,15 +1457,35 @@ function approachHTML(a) {
   return `<div class="lbl">🎯 아이언·웨지 정확도 (Approach)</div><div class="sgd">
     ${statCard(a.girPct, '%', 'GIR')}
     ${statCard(nf(a.ironLossRound) + '타', '', '아이언 손실')}</div>
+  ${explainBox('아이언 손실 타수는 어떻게 계산하나요?', `<b>레귤러온 타수</b> = 파 − 2 (파3은 1타, 파4는 2타, 파5는 3타 만에 그린에 올리는 것).<br>
+    홀마다 <b>온그린까지 친 타수 − 레귤러온 타수</b>(0보다 작으면 0)를 더한 뒤, 라운드 수로 나눈 값이에요.<br>
+    예) 파4에서 온그린까지 4타 → 4 − 2 = <b>2타 손실</b> · 파5에서 3타 만에 온그린 → 0타.<br>
+    그린에 올리기 전까지의 모든 샷이 포함되므로, 티샷 OB·해저드로 늘어난 타수도 여기에 함께 잡혀요. 티샷 외 해저드·OB를 기록한 홀은 아래에서 "벌타 몫"을 따로 나눠 보여줘요.`)}
   ${penaltyBreak}
   <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6"><div class="cbt" style="margin-bottom:6px">온그린 3타↑ 비율 (파4 기준)</div>${corr}
     <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">💡 ${note}</div></div>`;
 }
 function shortGameHTML(a) {
   if (!a.n) return '';
+  const cols = { ok: 'var(--g)', '10': 'var(--b)', '20': 'var(--a)', far: 'var(--r)' };
+  // 붙인 거리 분포 + 거리별 파세이브율·평균 퍼트 (거리 기록이 있을 때만)
+  const apBox = a.apN ? `<div class="cb"><div class="cbt">어프로치 붙인 거리 (레귤러온 실패 ${a.apN}홀)</div>
+    ${a.apStats.map(x => `<div class="br"><div class="bl" style="white-space:nowrap">${x.l}</div><div class="bt"><div class="bf" style="width:${x.pct}%;background:${cols[x.k]}"><span>${x.n}</span></div></div></div>`).join('')}
+    <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.7">${a.apStats.filter(x => x.n).map(x => `<div style="display:flex;justify-content:space-between;gap:8px"><span>${x.l}</span><span>파세이브 <b style="color:var(--t)">${x.savePct}%</b> · 평균 <b style="color:var(--t)">${nf(x.puttAvg)}</b>퍼트${x.threePct ? ` · 3퍼트↑ <b style="color:var(--r)">${x.threePct}%</b>` : ''}</span></div>`).join('')}</div>
+    <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">💡 근접률이 낮으면 어프로치 거리감(웨지) 연습을, 가깝게 붙였는데도 파세이브가 낮으면 짧은 퍼트 연습을 우선하세요.</div></div>`
+    : `<div style="font-size:10px;color:var(--t3);margin:-6px 2px 8px;line-height:1.5">💡 스코어 입력 때 레귤러온을 놓친 홀에서 "어프로치를 얼마나 붙였나요?"를 고르면 근접률·거리별 파세이브가 여기 나와요.</div>`;
   return `<div class="lbl">⛳ 숏게임 능력 (Short Game)</div><div class="sgd">
     ${statCard(a.scrPct == null ? '-' : a.scrPct, a.scrPct == null ? '' : '%', '스크램블링')}
-    ${statCard(nf(a.shortLossRound) + '타', '', '숏게임 손실')}</div>`;
+    ${statCard(nf(a.shortLossRound) + '타', '', '숏게임 손실')}
+    ${statCard(a.apNearPct == null ? '-' : a.apNearPct, a.apNearPct == null ? '' : '%', '근접률(10m↓)')}
+    ${statCard(nf(a.xPenRound), '', '티샷 외 해저드·OB/R')}</div>
+  ${explainBox('숏게임 지표는 어떻게 계산하나요?', `<b>숏게임 손실 타수</b> — 레귤러온(GIR)을 놓친 홀 중 <b>파를 못 지킨 홀</b>만 골라 (스코어 − 파)를 더한 뒤 라운드 수로 나눈 값이에요.<br>
+    예) 파4에서 그린을 놓치고 6타 → <b>2타 손실</b> · 그린을 놓쳤지만 붙여서 파 → 0타(스크램블링 성공).<br>
+    그 홀의 오버파 전체를 세기 때문에 아이언 손실·퍼팅 손실과 일부 겹칠 수 있어요. 구간끼리 어디가 더 새는지 비교하는 용도로 보세요.<br>
+    <b>스크램블링</b> — 그린 놓친 홀 중 파 이하로 막은 비율.<br>
+    <b>근접률(10m↓)</b> — 붙인 거리를 기록한 레귤러온 실패 홀 중 컨시드·10m 이내로 붙인 비율.<br>
+    <b>티샷 외 해저드·OB/R</b> — 첫 샷이 아닌 샷에서 난 해저드·OB 횟수의 라운드 평균.`)}
+  ${apBox}`;
 }
 function puttingHTML(a) {
   if (!a.n) return '';
@@ -1574,7 +1640,13 @@ function blowupCauseHTML(rounds) {
   const body = rows.map(([l, c, co]) => `<div class="br"><div class="bl" style="width:74px;white-space:nowrap">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co};min-width:${c ? 18 : 0}px"><span>${c}</span></div></div></div>`).join('');
   const top = [...rows].sort((a, b) => b[1] - a[1])[0];
   return `<div class="cb"><div class="cbt">💥 블로업(트리플보기↑) ${big}개의 원인</div>${body}
-    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">한 홀에 원인이 겹칠 수 있어 합계는 ${big}개와 다를 수 있어요. <b style="color:var(--t2)">가장 잦은 범인: ${top[0]}</b> — 여기만 줄여도 큰 점수가 확 줄어요.</div></div>`;
+    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">한 홀에 원인이 겹칠 수 있어 합계는 ${big}개와 다를 수 있어요. <b style="color:var(--t2)">가장 잦은 범인: ${top[0]}</b> — 여기만 줄여도 큰 점수가 확 줄어요.</div>
+    ${explainBox('블로업 원인은 어떻게 나누나요?', `<b>블로업</b> = 파보다 3타 이상 더 친 홀(트리플보기 이상). 예) 파4에서 7타 이상.<br>
+      블로업 홀마다 아래 조건을 각각 확인해 해당하는 원인에 1씩 더해요.<br>
+      · <b>🚗 티샷 사고</b> — 그 홀 티샷 결과를 <b>해저드</b> 또는 <b>OB</b>로 고른 경우(멀리건은 벌타가 없어 제외)<br>
+      · <b>🍩 3퍼팅↑</b> — 그 홀 퍼팅 수가 3 이상<br>
+      · <b>🎯 그린 미스</b> — 레귤러온(GIR)을 못 했고, 티샷 사고도 아닌 경우(아이언·어프로치에서 무너진 홀)<br>
+      예) 파4 8타 = 티샷 OB + 3퍼팅 → 티샷 사고 1, 3퍼팅↑ 1 에 모두 더해져요.`)}</div>`;
 }
 
 // ── 파 종류별 × 구간 교차: 파3는 GIR, 파4·5는 FIR/GIR과 함께 파 대비를 본다 ──
@@ -2157,7 +2229,7 @@ function guideScorecardHTML() {
   ${btn('결과 배너', '위 두 값으로 계산된 스코어(파·보기·더블 등)를 실시간으로 보여줘요. 오버파도 함께 표시.')}
   ${btn('GIR', '자동 계산돼요. <b>온그린까지 타수 ≤ 파−2</b>면 ON — 따로 누를 필요 없어요.')}
   ${btn('티샷 결과', '페어웨이 / 러프 / 벙커 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이 대신 온그린이고, 러프·벙커는 파3도 똑같이 골라요). <b>페어웨이 = FIR 반영(파4·5)</b> · <b>온그린·러프·벙커 = FIR 미반영, 페널티 없음</b> · <b>해저드·OB = 페널티</b> · <b>멀리건 = 페널티 없음</b>. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">GIR은 이 선택과 무관하게</b> "온그린까지 타수"만으로 계산돼요(파3도 온그린 칩이 아니라 온그린까지 타수가 1 이하면 GIR).<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
-  ${btn('티샷 외 해저드·OB', '위 "티샷 결과"는 첫 샷만 기록해요. 어프로치 등 다른 샷에서 해저드·OB가 났으면 여기 +/- 로 횟수를 더해두세요. <b>스코어에는 영향 없어요</b>(이미 "온그린까지 타수"에 포함돼 있음) — 나중에 원인을 분석할 때만 쓰이는 기록용 값이에요.')}
+  ${btn('레귤러온 실패 시 숏게임 창', '"온그린까지" 타수가 정규타수(파−2)보다 많아지면 아래에 숏게임 창이 새로 떠요. <b>어프로치를 얼마나 붙였나요?</b>에서 컨시드 / 10m 이내 / 10~20m / 20m 이상 중 하나를 고르고(다시 누르면 해제), 필요하면 <b>티샷 외 해저드·OB</b> 횟수도 같이 더하세요. 티샷 결과는 첫 샷만 기록하므로, 어프로치 등 다른 샷에서 난 해저드·OB는 여기에 기록해요. <b>스코어에는 영향 없어요</b>(이미 "온그린까지 타수"에 포함) — 통계의 숏게임 근접률·거리별 파세이브 분석에 쓰여요.')}
 
   ${S('⑤ 이동·저장')}
   <div style="font-size:13px;color:var(--t2);line-height:1.6">맨 위 전반/후반 진행 막대를 탭하면 해당 홀로 바로 이동. 값을 바꾸면 그 즉시 자동 저장되고, <b style="color:var(--g)">저장·다음 홀 →</b>로 다음 홀로 넘어가요. 18번 홀에서는 <b style="color:var(--g)">저장·완료</b>로 마무리. 덜 쳤는데 뒤로 가면 <b style="color:var(--a)">작성중</b>으로 임시저장돼 이어서 입력 가능. 저장 후 라운드를 탭하면 🔧수정·🗑삭제·📤공유.</div>
@@ -2181,13 +2253,13 @@ function guideStatsHTML() {
   ${it('평균 스코어·오버파·기복', '총타수 평균 / 오버파(+오버·−언더) / 점수 편차(작을수록 일정).')}
   ${it('실력 비율 · 블로업', '홀 기준 파 이하·보기·더블+ 비율. 블로업 = 라운드당 트리플보기↑ 홀.')}
   ${it('파 종류별 · 전·후반', '파3·4·5별 오버파 평균에 더해, 파3은 GIR / 파4·5는 FIR·GIR을 함께 보여줘 어느 홀 유형에서 어느 구간이 약한지 진단. / 앞뒤 9홀 평균·차이(후반 무너짐).')}
-  ${it('💥 큰 실수의 원인', '블로업(트리플보기 이상) 홀이 티샷 사고·3퍼팅·그린 미스 중 무엇 때문이었는지 원인별로 분해해요(한 홀에 겹칠 수 있음).')}
+  ${it('💥 큰 실수의 원인', '블로업(트리플보기 이상, 파보다 3타↑) 홀이 무엇 때문이었는지 원인별로 세요(한 홀에 겹칠 수 있음). 티샷 사고 = 티샷 결과가 해저드·OB · 3퍼팅↑ = 퍼팅 3 이상 · 그린 미스 = GIR 실패이면서 티샷 사고가 아닌 홀.')}
 
   ${S('🚩 구간별 (라운드 상세 · 통계 공통)')}
   ${it('티샷 안정성 (Off-the-Tee · 파3~5)', '티샷 페널티율(OB+해저드 홀 ÷ 전체 홀) · OB·해저드·멀리건 홀 수 · 안전 미스(러프·벙커, 페널티 없음) 개수와 비율. 러프·벙커 개별 구분은 v12.37 이후 입력분만 가능해요.')}
   ${it('드라이버 안정성 (Driver · 파4·5)', 'FIR(페어웨이 적중률) · 드라이버 손실 타수(페어웨이 놓친 홀과 지킨 홀의 오버파 평균 차이 × 놓친 홀 수, 표본이 적으면 홀 수로 대체).')}
-  ${it('아이언·웨지 정확도 (Approach)', 'GIR(그린 적중률) · 아이언 손실 타수(온그린까지 타수가 정규타수를 초과한 만큼) · 온그린 3타↑ 비율(파4 기준, 페어웨이 지킨/놓친 홀 각각) — 지켰는데도 높으면 아이언·웨지 문제, 놓쳤을 때만 높으면 드라이버가 원인. 스코어 입력 화면의 "티샷 외 해저드·OB" 칸을 쓴 홀이 있으면, 아이언 손실 타수를 "벌타 때문"과 "거리감·클럽 선택 등 나머지"로 나눠서도 보여줌.')}
-  ${it('숏게임 능력 (Short Game)', '스크램블링(그린 놓친 홀을 파 이하로 막은 비율) · 숏게임 손실 타수(그린 놓치고 파도 못 지킨 홀의 초과 타수).')}
+  ${it('아이언·웨지 정확도 (Approach)', 'GIR(그린 적중률) · 아이언 손실 타수(홀마다 "온그린까지 타수 − (파−2)"를 더해 라운드 평균, 예: 파4 온그린 4타 = 2타 손실) · 온그린 3타↑ 비율(파4 기준, 페어웨이 지킨/놓친 홀 각각) — 지켰는데도 높으면 아이언·웨지 문제, 놓쳤을 때만 높으면 드라이버가 원인. 스코어 입력 화면의 "티샷 외 해저드·OB" 칸을 쓴 홀이 있으면, 아이언 손실 타수를 "벌타 때문"과 "거리감·클럽 선택 등 나머지"로 나눠서도 보여줌.')}
+  ${it('숏게임 능력 (Short Game)', '스크램블링(그린 놓친 홀을 파 이하로 막은 비율) · 숏게임 손실 타수(그린 놓치고 파도 못 지킨 홀의 "스코어 − 파"를 더해 라운드 평균, 예: 파4 그린 미스 6타 = 2타 손실) · 근접률(레귤러온 실패 홀에서 어프로치를 컨시드·10m 이내로 붙인 비율) · 붙인 거리(컨시드/10m 이내/10~20m/20m 이상) 분포와 거리별 파세이브율·평균 퍼트·3퍼트율 · 라운드당 티샷 외 해저드·OB 횟수. 붙인 거리는 v12.51 이후 입력분만 집계돼요.')}
   ${it('퍼팅 효율성 (Putting)', 'PPR(총 퍼팅) · 홀당 평균 · GIR 시 평균 퍼트(순수 퍼팅력) · 3퍼트 이상 비율 · 1퍼트율 · 퍼팅 손실 타수(2퍼팅 기준 초과분) · 퍼팅 분포(1/2/3/4+).')}
 
   ${S('🏆 기록 · 트로피')}
@@ -2239,12 +2311,14 @@ const BACK_ACTIONS = { course: goHome, sc: scBack, set: goHome, notice: goHome }
 function backOut() {
   const action = BACK_ACTIONS[curPg()];
   if (!action) return;
+  if (IS_IOS) { action(); return; }                               // iOS: 히스토리 거치지 않고 바로 실행
   if (backGuardPushed) history.back(); else action();
 }
 // 안드로이드 하드웨어/제스처 뒤로가기: 위 보초 항목이 팝되면서 오는 이벤트.
 // 열린 모달이 있으면 맨 위 모달부터 닫고(페이지는 그대로 둠), 없으면 스와이프 백과 똑같이
 // 현재 화면에 등록된 동작을 실행해 "이전 메뉴로" 돌아가게 한다.
 window.addEventListener('popstate', () => {
+  if (IS_IOS) return;                                             // iOS는 보초를 안 쌓으므로 반응할 것이 없음
   if (_modalStack.length) { _modalPopFromBack = true; cm(_modalStack[_modalStack.length - 1]); return; }
   if (_suppressPageBack) { _suppressPageBack = false; return; }   // 모달을 직접 닫으며 쌓인 히스토리만 소비한 것 — 페이지는 그대로
   backGuardPushed = false;                                        // 페이지 보초는 실제 소비 여부와 무관하게 항상 초기화(안 그러면 다음 진입 때 다시 안 쌓여 뒤로가기가 먹통이 된다)
