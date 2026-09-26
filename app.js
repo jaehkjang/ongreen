@@ -1434,18 +1434,25 @@ function analyze(rounds) {
 // (통계 화면 전용 — 여러 라운드를 모아야 드라이버 손실이 고정값보다 본인 기록 쪽으로 수렴한다)
 function lossSummaryHTML(a) {
   if (!a.n) return '';
+  // [이름, 값(라운드당 타수), 색, 고정값 추정 여부, 무엇을 센 타수인지]
   const items = [
-    ['🚗 드라이버', a.driveLossRound, 'var(--r)', a.driveApprox],   // 드라이버 카드와 같은 값(analyze 단일 소스)
-    ['🎯 아이언·웨지', a.ironLossRound, 'var(--a)', false],
-    ['⛳ 숏게임', a.shortLossRound, 'var(--b)', false],
-    ['🍩 퍼팅', a.puttLossRound, 'var(--p)', false],
+    ['🚗 드라이버', a.driveLossRound, 'var(--r)', a.driveApprox, '티샷이 러프·벙커·해저드·OB로 가서 잃은 타수'],   // 드라이버 카드와 같은 값(analyze 단일 소스)
+    ['🎯 아이언·웨지', a.ironLossRound, 'var(--a)', false, '그린에 올리기까지 더 친 타수'],
+    ['⛳ 숏게임', a.shortLossRound, 'var(--b)', false, '그린을 놓친 뒤 칩+1퍼트로 못 막아 잃은 타수'],
+    ['🍩 퍼팅', a.puttLossRound, 'var(--p)', false, '레귤러온한 홀에서 2퍼트보다 더 친 타수'],
   ].sort((x, y) => y[1] - x[1]);
   const mx = Math.max(...items.map(x => x[1]), 0.01);
-  const body = items.map(([l, v, co, approx]) => `<div class="br"><div class="bl" style="width:80px;white-space:nowrap">${l}${approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(Math.max(0, v) / mx * 100))}%;background:${co}"><span>${nfs(v)}타</span></div></div></div>`).join('');
+  const body = items.map(([l, v, co, approx, desc]) => `<div style="padding:7px 0;border-bottom:1px solid var(--bg3)">
+    <div style="display:flex;align-items:baseline;gap:8px;white-space:nowrap"><span style="font-size:13.5px;color:var(--t)">${l}${approx ? '*' : ''}</span>
+      <span style="flex:1"></span><b style="font-size:15px;color:${v > 0 ? co : 'var(--g)'}">${nfs(v)}타</b><span style="font-size:10px;color:var(--t3)">/라운드</span></div>
+    <div style="font-size:10.5px;color:var(--t3);margin:2px 0 5px">${desc}</div>
+    <div style="height:5px;border-radius:3px;background:var(--bg3)"><div style="height:100%;border-radius:3px;width:${Math.round(Math.max(0, v) / mx * 100)}%;background:${co}"></div></div></div>`).join('');
   const worst = items[0];
   const total = items.reduce((t, x) => t + x[1], 0);
-  return `<div class="lbl">📉 손실타수 한눈에 보기 (라운드 평균)</div><div class="cb">${body}
-    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">네 구간은 한 타를 한 구간에만 배정해 겹치지 않아요 — 합계 <b style="color:var(--t2)">${nfs(total)}타</b> = 라운드 평균 오버파 ${nfs(a.vsRound)}타. 음수(−)는 그 구간에서 번 타수예요. <b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? ' · * 드라이버는 기록이 적어 고정값(OB 2타·해저드 1타·그 외 0타) 비중이 커요' : ''}</div></div>`;
+  return `<div class="lbl">📉 손실타수 한눈에 보기</div><div class="cb">
+    <div style="font-size:12px;color:var(--t2);line-height:1.55;margin-bottom:4px">숫자는 모두 <b style="color:var(--t)">타수</b>예요 — 한 라운드에 그 구간 때문에 파보다 <b style="color:var(--t)">평균 몇 타를 더 쳤는지</b>를 뜻해요. (예: +3타 = 라운드마다 3타를 잃음, −1타 = 1타를 번 것)</div>
+    ${body}
+    <div style="font-size:10.5px;color:var(--t3);line-height:1.6;margin-top:8px">한 타는 한 구간에만 세서 겹치지 않아요 → 네 구간 합계 <b style="color:var(--t2)">${nfs(total)}타</b> = 내 라운드 평균 오버파 <b style="color:var(--t2)">${nfs(a.vsRound)}타</b>.<br><b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? '<br>* 드라이버는 기록이 적어 고정값(OB 2타·해저드 1타·그 외 0타) 비중이 커요' : ''}</div></div>`;
 }
 // ════════════════════════════════════════
 // 5구간 카테고리 카드 (라운드 상세 · 통계 화면 공용 — analyze() 결과 하나로 5개를 그린다)
@@ -1479,9 +1486,11 @@ function teeStabilityHTML(a) {
 function driverHTML(a) {
   if (!a.n || !a.par45) return '';
   const used = a.driveCats.filter(c => c.n);
-  const mx = Math.max(...used.map(c => c.lossRound), 0.01);
-  const rows = used.map(c => `<div class="br"><div class="bl" style="width:70px;white-space:nowrap">${c.l}${c.approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(c.lossRound / mx * 100))}%;background:var(--r)"><span>${nf(c.lossRound)}타</span></div></div></div>
-    <div style="font-size:10px;color:var(--t3);margin:-2px 0 6px 2px">${c.n}회 × 1회당 ${nf(c.cost)}타 · 내 기록 반영 ${c.realPct}%</div>`).join('');
+  // 결과마다 한 줄: 이름 · (횟수 × 1회당 손실 · 내 기록 반영 %) · 라운드당 손실
+  const rows = used.map(c => `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--bg3);font-size:13px;white-space:nowrap">
+    <span style="color:var(--t);min-width:52px">${c.l}${c.approx ? '*' : ''}</span>
+    <span style="flex:1;font-size:10.5px;color:var(--t3);overflow:hidden;text-overflow:ellipsis">${c.n}회 × 1회당 ${nf(c.cost)}타 · 내 기록 ${c.realPct}%</span>
+    <b style="color:${c.lossRound > 0 ? 'var(--r)' : 'var(--t2)'}">${nf(c.lossRound)}타</b></div>`).join('');
   const breakdown = used.length ? `<div class="cb"><div class="cbt" style="margin-bottom:6px">어떤 미스가 몇 타를 먹었나 (라운드 평균)</div>${rows}
     ${a.driveApprox ? `<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:4px">* 아직 기록이 적어 1회당 손실의 절반 이상을 고정값(OB 2타·해저드 1타·러프/벙커/멀리건 0타)으로 채웠어요. 라운드가 쌓일수록 내 기록 비중이 커져요.</div>` : ''}</div>` : '';
   return `<div class="lbl">🚗 드라이버 안정성 (Driver · 파4·5)</div><div class="sgd">
@@ -1515,7 +1524,11 @@ function shortGameHTML(a) {
   // 붙인 거리 분포 + 거리별 파세이브율·평균 퍼트 (거리 기록이 있을 때만)
   const apBox = a.apN ? `<div class="cb"><div class="cbt">어프로치 붙인 거리 (레귤러온 실패 ${a.apN}홀)</div>
     ${a.apStats.map(x => `<div class="br"><div class="bl" style="white-space:nowrap">${x.l}</div><div class="bt"><div class="bf" style="width:${x.pct}%;background:${cols[x.k]}"><span>${x.n}</span></div></div></div>`).join('')}
-    <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.7">${a.apStats.filter(x => x.n).map(x => `<div style="display:flex;justify-content:space-between;gap:8px"><span>${x.l}</span><span>파세이브 <b style="color:var(--t)">${x.savePct}%</b> · 평균 <b style="color:var(--t)">${nf(x.puttAvg)}</b>퍼트${x.threePct ? ` · 3퍼트↑ <b style="color:var(--r)">${x.threePct}%</b>` : ''} · 손실 <b style="color:var(--t)">${nfs(x.lossRound)}</b>타/R</span></div>`).join('')}</div>
+    <div style="margin-top:12px;display:grid;grid-template-columns:1.25fr repeat(4,1fr);gap:6px 4px;font-size:12.5px;color:var(--t);text-align:center;align-items:baseline">
+      ${['붙인 거리', '파세이브', '평균 퍼트', '3퍼트↑', '손실/R'].map((h, k) => `<div style="font-size:10px;color:var(--t3);${k ? '' : 'text-align:left'}">${h}</div>`).join('')}
+      ${a.apStats.filter(x => x.n).map(x => `<div style="text-align:left;color:var(--t2);white-space:nowrap">${x.l}</div><div>${x.savePct}%</div><div>${nf(x.puttAvg)}</div><div style="color:${x.threePct ? 'var(--r)' : 'var(--t3)'}">${x.threePct}%</div><div style="font-weight:700;color:${x.lossRound > 0 ? 'var(--r)' : 'var(--g)'}">${nfs(x.lossRound)}타</div>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.55">파세이브 = 그 거리로 붙였을 때 파 이하로 막은 비율 · 손실/R = 칩+1퍼트 기준으로 라운드마다 잃은 타수</div>
     <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">💡 근접률이 낮으면 어프로치 거리감(웨지) 연습을, 가깝게 붙였는데도 파세이브가 낮으면 짧은 퍼트 연습을 우선하세요.</div></div>`
     : `<div style="font-size:10px;color:var(--t3);margin:-6px 2px 8px;line-height:1.5">💡 스코어 입력 때 레귤러온을 놓친 홀에서 "어프로치를 얼마나 붙였나요?"를 고르면 근접률·거리별 파세이브가 여기 나와요.</div>`;
   return `<div class="lbl">⛳ 숏게임 능력 (Short Game)</div><div class="sgd">
