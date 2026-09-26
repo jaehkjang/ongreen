@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.52.0';
+const APP_VERSION = 'v12.53.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1289,18 +1289,19 @@ function teeCatOf(fir, mull, tpv, missT) {
 function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
-  const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, save: 0, three: 0 }; });   // 어프로치 거리 구간별 집계
+  const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, save: 0, three: 0, loss: 0 }; });   // 어프로치 거리 구간별 집계(loss: 숏게임 손실 합)
+  const holes = [];   // 홀별 타수 분해용 기록 — 드라이버 1회당 손실이 전체 집계 뒤에 정해지므로 루프 뒤에서 한 번 더 훑는다
   const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, ex: 0 }; });   // 드라이버: 티샷 결과별 홀 수·온그린까지 초과 타수 합
   let played = 0,
       obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0, fwCount = 0,  // 1) 티샷 안정성(전체, 파3~5)
       roughCount = 0, bunkerCount = 0,                                // 러프/벙커 구분(v12.37+ 저장분만)
       par45 = 0, fwHit = 0,                                           // 2) 드라이버(파4·5) — 결과별 집계는 아래 dc
-      girHit = 0, girHoles = 0, ironExcessSum = 0, ironPenaltySum = 0, // 3) 아이언(GIR) — ironPenaltySum: 그중 "티샷 외" 벌타(해저드·OB) 몫
+      girHit = 0, girHoles = 0,                                       // 3) 아이언(GIR) — 손실 타수는 루프 뒤 타수 분해에서 계산
       xPenHoles = 0,                                                   // 티샷 외 벌타가 한 번이라도 있었던 홀 수(표본 안내용)
       p4n = 0, p4Bad = 0, p4FwHitN = 0, p4FwHitBad = 0, p4FwMissN = 0, p4FwMissBad = 0,  // 어프로치 낭비(파4)
-      missGreen = 0, scrSave = 0, missLossSum = 0,                     // 4) 숏게임(스크램블)
+      missGreen = 0, scrSave = 0,                                      // 4) 숏게임(스크램블)
       apN = 0, xPenCnt = 0,                                            //    어프로치 붙인 거리 기록 홀 수(v12.51+) · 티샷 외 해저드·OB 횟수 합
-      puttSum = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, girPuttSum = 0, girPuttN = 0, puttExcessSum = 0;  // 5) 퍼팅(1/2/3/4+ 분포)
+      puttSum = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, girPuttSum = 0, girPuttN = 0;  // 5) 퍼팅(1/2/3/4+ 분포)
   rounds.forEach(r => {
     const hh = roundPars(r);
     const sc = r.scores || [], pa = r.puttsArr || [], gi = r.girArr || [], fi = r.firArr || [], mu = r.mulliArr || [], tpa = r.tpArr || [], mi = r.missArr || [];
@@ -1326,19 +1327,18 @@ function analyze(rounds) {
 
       // ── 2) 드라이버(파4·5만): 티샷 결과별로 "온그린까지 타수 − 레귤러온 타수(파−2)"를 모아, 페어웨이 홀 대비 몇 타 더 걸렸는지로 손실 추정
       //    (홀 스코어가 아니라 온그린까지 타수를 써서 퍼팅 결과가 드라이버 손실에 섞이지 않게 한다)
+      const cat = par > 3 ? teeCatOf(fi[i], mull, tpv, missT) : null;   // 결과 미선택(또는 옛 기록의 구분 불가 미스) 홀은 null → 드라이버 손실 계산에서 제외
       if (par > 3) {
         par45++;
         if (fi[i] && !mull && !tpv) fwHit++;
-        const cat = teeCatOf(fi[i], mull, tpv, missT);     // 결과 미선택(또는 옛 기록의 구분 불가 미스) 홀은 null → 손실 계산에서 제외
         if (cat) { dc[cat].n++; dc[cat].ex += og - (par - 2); }
       }
 
       // ── 3) 아이언(GIR) + 어프로치 낭비(파4 기준 온그린 3타↑) ──
       girHoles++; if (gi[i]) girHit++;
-      const holeExcess = Math.max(0, og - (par - 2));     // 정규타수(파−2) 초과분
-      ironExcessSum += holeExcess;
       const holePenalty = (xo[i] || 0) * 2 + (xh[i] || 0);   // 티샷 외 벌타 추정 타수(OB=2타·해저드=1타)
-      if (holePenalty > 0) { xPenHoles++; ironPenaltySum += Math.min(holeExcess, holePenalty); }   // 아이언 손실 중 "벌타" 몫만(초과분을 넘지 않게)
+      if (holePenalty > 0) xPenHoles++;
+      holes.push({ ex: og - (par - 2), putt, gir: !!gi[i], cat, ap: gi[i] ? '' : ap[i], pen: holePenalty });   // ex: 레귤러온(파−2) 대비 온그린까지 초과 타수
       if (par === 4) {
         p4n++; const bad = og >= 3;
         if (bad) p4Bad++;
@@ -1346,7 +1346,7 @@ function analyze(rounds) {
       }
 
       // ── 4) 숏게임(스크램블링): 그린 놓친 홀 중 파 이하로 막은 비율 ──
-      if (!gi[i]) { missGreen++; if (s <= par) scrSave++; else missLossSum += d; }
+      if (!gi[i]) { missGreen++; if (s <= par) scrSave++; }
       //    어프로치 붙인 거리별: 레귤러온 실패 홀 중 거리를 기록한 홀만. 거리별 파세이브·평균 퍼트를 함께 모은다.
       if (!gi[i] && apB[ap[i]]) { const b = apB[ap[i]]; apN++; b.n++; b.putt += putt; if (s <= par) b.save++; if (putt >= 3) b.three++; }
       xPenCnt += (xh[i] || 0) + (xo[i] || 0);
@@ -1355,7 +1355,6 @@ function analyze(rounds) {
       puttSum += putt;
       if (putt <= 1) p1++; else if (putt === 2) p2++; else if (putt === 3) p3++; else p4++;
       if (gi[i]) { girPuttSum += putt; girPuttN++; }
-      puttExcessSum += Math.max(0, putt - 2);
     }
   });
   const f1 = (a, b) => b ? a / b : 0, pct = (a, b) => b ? Math.round(a / b * 100) : 0;
@@ -1380,19 +1379,36 @@ function analyze(rounds) {
   const driveApprox = driveCats.some(c => c.n && c.approx);
   const driveKnown = dc.fw.n + driveCats.reduce((t, c) => t + c.n, 0);   // 티샷 결과를 선택한 파4·5 홀 수
 
+  // ── 타수 분해: 홀마다 (스코어 − 파)를 드라이버·아이언·숏게임·퍼팅에 겹치지 않게 한 번씩만 배정한다 ──
+  //   드라이버 D = 그 홀 티샷 결과의 1회당 손실(위 driveCats, 페어웨이·미선택·파3은 0)
+  //   그린 적중 홀: 아이언 = 초과 타수 − D, 퍼팅 = 퍼트 − 2
+  //   그린 놓친 홀: 아이언 = 초과 타수 − 1(칩 1타는 1퍼트로 만회 가능한 정상 경로) − D, 숏게임 = 퍼트 − 1(업앤다운 기준)
+  //   → 홀마다 D + 아이언 + 숏게임 + 퍼팅 = 스코어 − 파. 값이 음수면 그 구간에서 번 타수(예: 1퍼트, 칩인).
+  const costOf = {}; driveCats.forEach(c => { costOf[c.k] = c.cost; });
+  let ironSum = 0, ironPenaltySum = 0, shortSum = 0, puttNetSum = 0, vsSum = 0;
+  holes.forEach(h => {
+    const D = costOf[h.cat] || 0;
+    const iron = h.gir ? h.ex - D : h.ex - 1 - D;
+    ironSum += iron;
+    if (h.pen > 0) ironPenaltySum += Math.min(Math.max(0, iron), h.pen);   // 아이언 몫 중 "티샷 외 벌타" 부분(아이언 몫을 넘지 않게)
+    if (h.gir) puttNetSum += h.putt - 2;
+    else { const sh = h.putt - 1; shortSum += sh; if (apB[h.ap]) apB[h.ap].loss += sh; }
+    vsSum += h.ex + h.putt - 2;                                            // = 스코어 − 파 (검산용 합계)
+  });
+
   // 3) 아이언 + 어프로치 낭비
   const girPct = pct(girHit, girHoles);
-  const ironLossRound = f1(ironExcessSum, n);
+  const ironLossRound = f1(ironSum, n);
   const ironPenaltyLossRound = f1(ironPenaltySum, n);     // 아이언 손실 중 "티샷 외 벌타" 몫(입력한 홀이 있을 때만 의미 있음)
-  const ironOtherLossRound = Math.max(0, ironLossRound - ironPenaltyLossRound);   // 나머지(거리감·클럽 선택 등)
+  const ironOtherLossRound = ironLossRound - ironPenaltyLossRound;   // 나머지(거리감·클럽 선택 등)
   const p4BadPct = pct(p4Bad, p4n), p4FwHitBadPct = pct(p4FwHitBad, p4FwHitN), p4FwMissBadPct = pct(p4FwMissBad, p4FwMissN);
 
   // 4) 숏게임
   const scrPct = missGreen ? pct(scrSave, missGreen) : null;
-  const shortLossRound = f1(missLossSum, n);
+  const shortLossRound = f1(shortSum, n);
   const apNearPct = apN ? pct(apB.ok.n + apB['10'].n, apN) : null;   // 근접률: 컨시드 + 10m 이내로 붙인 비율
   const apStats = AP_OPTS.map(([k, l]) => { const b = apB[k];
-    return { k, l, n: b.n, pct: pct(b.n, apN), savePct: b.n ? pct(b.save, b.n) : null, puttAvg: b.n ? f1(b.putt, b.n) : null, threePct: b.n ? pct(b.three, b.n) : null }; });
+    return { k, l, n: b.n, pct: pct(b.n, apN), savePct: b.n ? pct(b.save, b.n) : null, puttAvg: b.n ? f1(b.putt, b.n) : null, threePct: b.n ? pct(b.three, b.n) : null, lossRound: f1(b.loss, n) }; });
   const xPenRound = f1(xPenCnt, n);                                   // 라운드당 티샷 외 해저드·OB 횟수
 
   // 5) 퍼팅
@@ -1400,14 +1416,15 @@ function analyze(rounds) {
   const puttAvg = f1(puttSum, n), puttPerHole = f1(puttSum, played), threeAvg = f1(threePutt, n);
   const threePct = pct(threePutt, played), onePuttPct = pct(p1, played);
   const girPuttAvg = girPuttN ? f1(girPuttSum, girPuttN) : null;
-  const puttLossRound = f1(puttExcessSum, n);
+  const puttLossRound = f1(puttNetSum, n);                  // 그린 적중 홀만(순수 퍼팅), 2퍼트 기준 순손실(1퍼트는 −1)
+  const vsRound = f1(vsSum, n);                            // 네 구간 합계와 같아야 하는 라운드 평균 오버파
 
   return { n, played,
     obCount, hzCount, mullCount, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
     par45, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
     girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles, p4n, p4BadPct, p4FwHitN, p4FwHitBadPct, p4FwMissN, p4FwMissBadPct,
     missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound,
-    puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, p1, p2, p3, p4 };
+    puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, vsRound, p1, p2, p3, p4 };
 }
 
 // ── 손실타수 한눈에 보기: 드라이버·아이언웨지·숏게임·퍼팅 손실 타수(라운드 평균)를 같은 단위로 놓고 큰 순서로 비교 ──
@@ -1421,10 +1438,11 @@ function lossSummaryHTML(a) {
     ['🍩 퍼팅', a.puttLossRound, 'var(--p)', false],
   ].sort((x, y) => y[1] - x[1]);
   const mx = Math.max(...items.map(x => x[1]), 0.01);
-  const body = items.map(([l, v, co, approx]) => `<div class="br"><div class="bl" style="width:80px;white-space:nowrap">${l}${approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(v / mx * 100))}%;background:${co}"><span>${nf(v)}타</span></div></div></div>`).join('');
+  const body = items.map(([l, v, co, approx]) => `<div class="br"><div class="bl" style="width:80px;white-space:nowrap">${l}${approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(Math.max(0, v) / mx * 100))}%;background:${co}"><span>${nfs(v)}타</span></div></div></div>`).join('');
   const worst = items[0];
+  const total = items.reduce((t, x) => t + x[1], 0);
   return `<div class="lbl">📉 손실타수 한눈에 보기 (라운드 평균)</div><div class="cb">${body}
-    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">네 구간의 손실 타수를 같은 기준(라운드당 타수)으로 비교해 큰 순서로 나열했어요. <b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? ' · * 드라이버는 기록이 적어 고정값(OB 2타·해저드 1타·그 외 0타) 비중이 커요' : ''}</div></div>`;
+    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">네 구간은 한 타를 한 구간에만 배정해 겹치지 않아요 — 합계 <b style="color:var(--t2)">${nfs(total)}타</b> = 라운드 평균 오버파 ${nfs(a.vsRound)}타. 음수(−)는 그 구간에서 번 타수예요. <b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? ' · * 드라이버는 기록이 적어 고정값(OB 2타·해저드 1타·그 외 0타) 비중이 커요' : ''}</div></div>`;
 }
 // ════════════════════════════════════════
 // 5구간 카테고리 카드 (라운드 상세 · 통계 화면 공용 — analyze() 결과 하나로 5개를 그린다)
@@ -1482,16 +1500,16 @@ function approachHTML(a) {
   const note = (a.p4n && a.p4FwHitN >= 3 && a.p4FwHitBadPct >= 30)
     ? '페어웨이를 지켰는데도 온그린 3타↑ 비율이 높아요 — 아이언·웨지 거리감·클럽 선택 문제일 가능성이 커요.'
     : '페어웨이를 놓쳤을 때 온그린 3타↑ 비율이 눈에 띄게 높다면 드라이버가, 지켰을 때도 높다면 아이언이 원인이에요.';
-  const penaltyBreak = a.xPenHoles ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6"><div class="cbt" style="margin-bottom:6px">아이언 손실 ${nf(a.ironLossRound)}타, 원인별로 보면</div>
-    ⚠️ 벌타(티샷 외 해저드·OB) <b style="color:var(--r)">${nf(a.ironPenaltyLossRound)}타</b> · 🎯 거리감·클럽 선택 등 <b style="color:var(--t)">${nf(a.ironOtherLossRound)}타</b>
+  const penaltyBreak = a.xPenHoles ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6"><div class="cbt" style="margin-bottom:6px">아이언 손실 ${nfs(a.ironLossRound)}타, 원인별로 보면</div>
+    ⚠️ 벌타(티샷 외 해저드·OB) <b style="color:var(--r)">${nf(a.ironPenaltyLossRound)}타</b> · 🎯 거리감·클럽 선택 등 <b style="color:var(--t)">${nfs(a.ironOtherLossRound)}타</b>
     <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">💡 벌타 손실이 크면 안전하게 치는 클럽 선택을, 나머지가 크면 거리감·정확도 연습을 우선하세요.</div></div>` : '';
   return `<div class="lbl">🎯 아이언·웨지 정확도 (Approach)</div><div class="sgd">
     ${statCard(a.girPct, '%', 'GIR')}
-    ${statCard(nf(a.ironLossRound) + '타', '', '아이언 손실')}</div>
+    ${statCard(nfs(a.ironLossRound) + '타', '', '아이언 손실')}</div>
   ${explainBox('아이언 손실 타수는 어떻게 계산하나요?', `<b>레귤러온 타수</b> = 파 − 2 (파3은 1타, 파4는 2타, 파5는 3타 만에 그린에 올리는 것).<br>
-    홀마다 <b>온그린까지 친 타수 − 레귤러온 타수</b>(0보다 작으면 0)를 더한 뒤, 라운드 수로 나눈 값이에요.<br>
-    예) 파4에서 온그린까지 4타 → 4 − 2 = <b>2타 손실</b> · 파5에서 3타 만에 온그린 → 0타.<br>
-    그린에 올리기 전까지의 모든 샷이 포함되므로, 티샷 OB·해저드로 늘어난 타수도 여기에 함께 잡혀요. 티샷 외 해저드·OB를 기록한 홀은 아래에서 "벌타 몫"을 따로 나눠 보여줘요.`)}
+    홀마다 <b>온그린까지 친 타수 − 레귤러온 타수</b>에서 ① 드라이버 몫(그 홀 티샷 결과의 1회당 손실)을 빼고 ② 그린을 놓친 홀이면 칩 1타를 더 빼요. 그린을 놓쳐도 칩 + 1퍼트면 파라서, 칩 1타 자체는 손실이 아니라 숏게임이 만회할 몫으로 보기 때문이에요.<br>
+    예) 파4 페어웨이 → 온그린까지 3타(그린 미스 후 칩 온) → 3 − 2 − 1 = <b>0타</b> · 칩을 두 번 해서 4타 → <b>1타 손실</b> · 파5에서 2타 만에 온그린 → <b>−1타(이득)</b>.<br>
+    파3 티샷은 아이언 샷이라 여기에 들어가요. 티샷 결과를 고르지 않은 파4·5 홀은 드라이버 몫을 뺄 수 없어 티샷 손실도 여기에 잡혀요. 그린 주변 뒤땅처럼 칩을 여러 번 친 경우도 입력만으로는 구분이 안 돼 아이언으로 잡혀요.`)}
   ${penaltyBreak}
   <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6"><div class="cbt" style="margin-bottom:6px">온그린 3타↑ 비율 (파4 기준)</div>${corr}
     <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">💡 ${note}</div></div>`;
@@ -1502,17 +1520,17 @@ function shortGameHTML(a) {
   // 붙인 거리 분포 + 거리별 파세이브율·평균 퍼트 (거리 기록이 있을 때만)
   const apBox = a.apN ? `<div class="cb"><div class="cbt">어프로치 붙인 거리 (레귤러온 실패 ${a.apN}홀)</div>
     ${a.apStats.map(x => `<div class="br"><div class="bl" style="white-space:nowrap">${x.l}</div><div class="bt"><div class="bf" style="width:${x.pct}%;background:${cols[x.k]}"><span>${x.n}</span></div></div></div>`).join('')}
-    <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.7">${a.apStats.filter(x => x.n).map(x => `<div style="display:flex;justify-content:space-between;gap:8px"><span>${x.l}</span><span>파세이브 <b style="color:var(--t)">${x.savePct}%</b> · 평균 <b style="color:var(--t)">${nf(x.puttAvg)}</b>퍼트${x.threePct ? ` · 3퍼트↑ <b style="color:var(--r)">${x.threePct}%</b>` : ''}</span></div>`).join('')}</div>
+    <div style="margin-top:10px;font-size:12px;color:var(--t2);line-height:1.7">${a.apStats.filter(x => x.n).map(x => `<div style="display:flex;justify-content:space-between;gap:8px"><span>${x.l}</span><span>파세이브 <b style="color:var(--t)">${x.savePct}%</b> · 평균 <b style="color:var(--t)">${nf(x.puttAvg)}</b>퍼트${x.threePct ? ` · 3퍼트↑ <b style="color:var(--r)">${x.threePct}%</b>` : ''} · 손실 <b style="color:var(--t)">${nfs(x.lossRound)}</b>타/R</span></div>`).join('')}</div>
     <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">💡 근접률이 낮으면 어프로치 거리감(웨지) 연습을, 가깝게 붙였는데도 파세이브가 낮으면 짧은 퍼트 연습을 우선하세요.</div></div>`
     : `<div style="font-size:10px;color:var(--t3);margin:-6px 2px 8px;line-height:1.5">💡 스코어 입력 때 레귤러온을 놓친 홀에서 "어프로치를 얼마나 붙였나요?"를 고르면 근접률·거리별 파세이브가 여기 나와요.</div>`;
   return `<div class="lbl">⛳ 숏게임 능력 (Short Game)</div><div class="sgd">
     ${statCard(a.scrPct == null ? '-' : a.scrPct, a.scrPct == null ? '' : '%', '스크램블링')}
-    ${statCard(nf(a.shortLossRound) + '타', '', '숏게임 손실')}
+    ${statCard(nfs(a.shortLossRound) + '타', '', '숏게임 손실')}
     ${statCard(a.apNearPct == null ? '-' : a.apNearPct, a.apNearPct == null ? '' : '%', '근접률(10m↓)')}
     ${statCard(nf(a.xPenRound), '', '티샷 외 해저드·OB/R')}</div>
-  ${explainBox('숏게임 지표는 어떻게 계산하나요?', `<b>숏게임 손실 타수</b> — 레귤러온(GIR)을 놓친 홀 중 <b>파를 못 지킨 홀</b>만 골라 (스코어 − 파)를 더한 뒤 라운드 수로 나눈 값이에요.<br>
-    예) 파4에서 그린을 놓치고 6타 → <b>2타 손실</b> · 그린을 놓쳤지만 붙여서 파 → 0타(스크램블링 성공).<br>
-    그 홀의 오버파 전체를 세기 때문에 아이언 손실·퍼팅 손실과 일부 겹칠 수 있어요. 구간끼리 어디가 더 새는지 비교하는 용도로 보세요.<br>
+  ${explainBox('숏게임 지표는 어떻게 계산하나요?', `<b>숏게임 손실 타수</b> — 레귤러온(GIR)을 놓친 홀에서 <b>업앤다운(칩 1타 + 1퍼트)</b>을 기준으로, (퍼트 수 − 1)을 더해 라운드 수로 나눈 값이에요. 칩을 멀리 붙여 늘어난 퍼트가 숏게임 손실이 돼요.<br>
+    예) 그린 미스 → 칩 온 → 2퍼트 = <b>1타 손실</b> · 칩 온 → 1퍼트 = 0타 · 칩인 = <b>−1타(이득)</b>.<br>
+    그린에 올라가기까지 칩을 여러 번 친 타수는 아이언 쪽에 잡혀서, 네 구간이 서로 겹치지 않아요. 붙인 거리를 기록한 홀은 아래에서 거리별 손실도 보여줘요.<br>
     <b>스크램블링</b> — 그린 놓친 홀 중 파 이하로 막은 비율.<br>
     <b>근접률(10m↓)</b> — 붙인 거리를 기록한 레귤러온 실패 홀 중 컨시드·10m 이내로 붙인 비율.<br>
     <b>티샷 외 해저드·OB/R</b> — 첫 샷이 아닌 샷에서 난 해저드·OB 횟수의 라운드 평균.`)}
@@ -1527,7 +1545,10 @@ function puttingHTML(a) {
     ${statCard(a.girPuttAvg == null ? '-' : nf(a.girPuttAvg), '', 'GIR 시 평균 퍼트')}
     ${statCard(a.threePct, '%', '3퍼트 이상')}
     ${statCard(a.onePuttPct, '%', '1퍼트율')}
-    ${statCard(nf(a.puttLossRound) + '타', '', '퍼팅 손실')}</div>
+    ${statCard(nfs(a.puttLossRound) + '타', '', '퍼팅 손실(GIR 홀)')}</div>
+  ${explainBox('퍼팅 손실 타수는 어떻게 계산하나요?', `<b>그린에 레귤러온한 홀</b>에서만 (퍼트 수 − 2)를 더해 라운드 수로 나눈 값이에요. 1퍼트는 −1(이득), 3퍼트는 +1(손실)로 서로 상쇄돼요.<br>
+    그린을 놓친 홀의 퍼트는 칩을 얼마나 붙였는지에 좌우되므로 숏게임 손실 쪽에서 세요. 그래서 이 값은 긴 퍼트 거리감·짧은 퍼트 성공률 같은 <b>순수 퍼팅력</b>을 보여줘요.<br>
+    위 PPR·홀당 평균·3퍼트 비율·분포는 모든 홀 기준 그대로예요.`)}
   <div class="cb"><div class="cbt">퍼팅 분포 (홀 수)</div>${[['1퍼팅', a.p1, 'var(--g)'], ['2퍼팅', a.p2, 'var(--b)'], ['3퍼팅', a.p3, 'var(--a)'], ['4+', a.p4, 'var(--r)']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / pmx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>`;
 }
 // ════════════════════════════════════════
@@ -2289,9 +2310,9 @@ function guideStatsHTML() {
   ${S('🚩 구간별 (라운드 상세 · 통계 공통)')}
   ${it('티샷 안정성 (Off-the-Tee · 파3~5)', '티샷 페널티율(OB+해저드 홀 ÷ 전체 홀) · OB·해저드·멀리건 홀 수 · 안전 미스(러프·벙커, 페널티 없음) 개수와 비율. 러프·벙커 개별 구분은 v12.37 이후 입력분만 가능해요.')}
   ${it('드라이버 안정성 (Driver · 파4·5)', 'FIR(페어웨이 적중률) · 드라이버 손실 타수(티샷 결과별로 "그 결과 홀의 온그린까지 타수 평균 − 페어웨이 홀의 온그린까지 타수 평균" × 횟수를 더해 라운드 평균, 퍼팅 제외 · 본인 기록 기준 · 기록이 적을수록 고정값 OB 2타·해저드 1타·그 외 0타 쪽으로 섞어 추정) · 러프/벙커/해저드/OB/멀리건별 손실 내역. 티샷 결과를 선택하지 않은 홀은 제외.')}
-  ${it('아이언·웨지 정확도 (Approach)', 'GIR(그린 적중률) · 아이언 손실 타수(홀마다 "온그린까지 타수 − (파−2)"를 더해 라운드 평균, 예: 파4 온그린 4타 = 2타 손실) · 온그린 3타↑ 비율(파4 기준, 페어웨이 지킨/놓친 홀 각각) — 지켰는데도 높으면 아이언·웨지 문제, 놓쳤을 때만 높으면 드라이버가 원인. 스코어 입력 화면의 "티샷 외 해저드·OB" 칸을 쓴 홀이 있으면, 아이언 손실 타수를 "벌타 때문"과 "거리감·클럽 선택 등 나머지"로 나눠서도 보여줌.')}
-  ${it('숏게임 능력 (Short Game)', '스크램블링(그린 놓친 홀을 파 이하로 막은 비율) · 숏게임 손실 타수(그린 놓치고 파도 못 지킨 홀의 "스코어 − 파"를 더해 라운드 평균, 예: 파4 그린 미스 6타 = 2타 손실) · 근접률(레귤러온 실패 홀에서 어프로치를 컨시드·10m 이내로 붙인 비율) · 붙인 거리(컨시드/10m 이내/10~20m/20m 이상) 분포와 거리별 파세이브율·평균 퍼트·3퍼트율 · 라운드당 티샷 외 해저드·OB 횟수. 붙인 거리는 v12.51 이후 입력분만 집계돼요.')}
-  ${it('퍼팅 효율성 (Putting)', 'PPR(총 퍼팅) · 홀당 평균 · GIR 시 평균 퍼트(순수 퍼팅력) · 3퍼트 이상 비율 · 1퍼트율 · 퍼팅 손실 타수(2퍼팅 기준 초과분) · 퍼팅 분포(1/2/3/4+).')}
+  ${it('아이언·웨지 정확도 (Approach)', 'GIR(그린 적중률) · 아이언 손실 타수(홀마다 "온그린까지 타수 − (파−2)"에서 드라이버 몫과, 그린 미스 홀이면 칩 1타를 빼서 더한 라운드 평균, 예: 파4 페어웨이→칩 두 번 만에 온그린 4타 = 1타 손실) · 온그린 3타↑ 비율(파4 기준, 페어웨이 지킨/놓친 홀 각각) — 지켰는데도 높으면 아이언·웨지 문제, 놓쳤을 때만 높으면 드라이버가 원인. 스코어 입력 화면의 "티샷 외 해저드·OB" 칸을 쓴 홀이 있으면, 아이언 손실 타수를 "벌타 때문"과 "거리감·클럽 선택 등 나머지"로 나눠서도 보여줌.')}
+  ${it('숏게임 능력 (Short Game)', '스크램블링(그린 놓친 홀을 파 이하로 막은 비율) · 숏게임 손실 타수(그린 놓친 홀에서 업앤다운 기준 "퍼트 − 1"을 더해 라운드 평균, 예: 칩 온 후 2퍼트 = 1타 손실, 칩인 = −1타) · 근접률(레귤러온 실패 홀에서 어프로치를 컨시드·10m 이내로 붙인 비율) · 붙인 거리(컨시드/10m 이내/10~20m/20m 이상) 분포와 거리별 파세이브율·평균 퍼트·3퍼트율·손실 타수 · 라운드당 티샷 외 해저드·OB 횟수. 붙인 거리는 v12.51 이후 입력분만 집계돼요.')}
+  ${it('퍼팅 효율성 (Putting)', 'PPR(총 퍼팅) · 홀당 평균 · GIR 시 평균 퍼트(순수 퍼팅력) · 3퍼트 이상 비율 · 1퍼트율 · 퍼팅 손실 타수(그린 적중 홀만, 2퍼트 기준 순손실 — 1퍼트는 −1). 드라이버·아이언·숏게임·퍼팅 손실은 한 타를 한 구간에만 배정해 합계가 평균 오버파와 같아요 · 퍼팅 분포(1/2/3/4+).')}
 
   ${S('🏆 기록 · 트로피')}
   ${it('개인기록 · 마일스톤', '베스트·최소퍼팅·최고GIR/FIR·최다버디 기록 / 100·90·80 첫 돌파 날짜.')}
