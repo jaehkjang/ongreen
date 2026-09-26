@@ -1273,7 +1273,7 @@ function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? 
 
 // ── 드라이버 손실: 티샷 결과(미스) 종류 · 표시 이름 · 표본 부족 시 쓰는 고정 손실값(벌타 기준) ──
 const DRIVE_CATS = [['rough', '러프', 0], ['bunker', '벙커', 0], ['hazard', '해저드', 1], ['ob', 'OB', 2], ['mull', '멀리건', 0]];
-const DRIVE_MIN = 5;   // 페어웨이·각 결과가 이 홀 수 이상일 때만 본인 기록으로 실측
+const DRIVE_K = 5;   // 고정값의 무게(홀 수 환산). 본인 기록이 이만큼 쌓이면 실측값과 고정값을 반반 섞고, 더 쌓일수록 실측값 쪽으로 옮겨감
 // 파4·5 티샷 결과 분류(setTee 의 저장 규칙과 같은 우선순위). 미선택 · 옛 기록의 구분 불가 미스는 null
 function teeCatOf(fir, mull, tpv, missT) {
   if (mull) return 'mull';
@@ -1290,7 +1290,7 @@ function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
   const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, save: 0, three: 0 }; });   // 어프로치 거리 구간별 집계
-  const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, vs: 0 }; });   // 드라이버: 티샷 결과별 홀 수·오버파 합
+  const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, ex: 0 }; });   // 드라이버: 티샷 결과별 홀 수·온그린까지 초과 타수 합
   let played = 0,
       obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0, fwCount = 0,  // 1) 티샷 안정성(전체, 파3~5)
       roughCount = 0, bunkerCount = 0,                                // 러프/벙커 구분(v12.37+ 저장분만)
@@ -1324,12 +1324,13 @@ function analyze(rounds) {
         }
       }
 
-      // ── 2) 드라이버(파4·5만): 티샷 결과별로 오버파를 모아, 페어웨이 홀 대비 몇 타 더 쳤는지로 손실 추정 ──
+      // ── 2) 드라이버(파4·5만): 티샷 결과별로 "온그린까지 타수 − 레귤러온 타수(파−2)"를 모아, 페어웨이 홀 대비 몇 타 더 걸렸는지로 손실 추정
+      //    (홀 스코어가 아니라 온그린까지 타수를 써서 퍼팅 결과가 드라이버 손실에 섞이지 않게 한다)
       if (par > 3) {
         par45++;
         if (fi[i] && !mull && !tpv) fwHit++;
         const cat = teeCatOf(fi[i], mull, tpv, missT);     // 결과 미선택(또는 옛 기록의 구분 불가 미스) 홀은 null → 손실 계산에서 제외
-        if (cat) { dc[cat].n++; dc[cat].vs += d; }
+        if (cat) { dc[cat].n++; dc[cat].ex += og - (par - 2); }
       }
 
       // ── 3) 아이언(GIR) + 어프로치 낭비(파4 기준 온그린 3타↑) ──
@@ -1364,14 +1365,16 @@ function analyze(rounds) {
   const safeMissPct = pct(safeMissCount, played);
   const missKnownCount = roughCount + bunkerCount;
 
-  // 2) 드라이버 — 결과별 "그 결과 홀의 오버파 평균 − 페어웨이 홀의 오버파 평균" = 그 티샷 1개당 손해 타수(본인 기록 기준)
-  //    페어웨이·해당 결과가 각각 DRIVE_MIN 홀 이상일 때만 실측값을 쓰고, 아니면 고정값(OB 2·해저드 1·그 외 0)으로 대체
+  // 2) 드라이버 — 결과별 "그 결과 홀의 온그린까지 초과 타수 평균 − 페어웨이 홀의 평균" = 그 티샷 1개당 손해 타수(본인 기록 기준)
+  //    표본이 적을수록 고정값(OB 2·해저드 1·그 외 0) 쪽으로 당겨 섞는다(축소 추정). 실측 무게 w = 두 표본의 조화 결합(n·nFw/(n+nFw))
   const firPct = pct(fwHit, par45);
-  const fwAvg = f1(dc.fw.vs, dc.fw.n);
+  const fwAvg = f1(dc.fw.ex, dc.fw.n);
   const driveCats = DRIVE_CATS.map(([k, l, fixed]) => {
-    const c = dc[k], ok = dc.fw.n >= DRIVE_MIN && c.n >= DRIVE_MIN;
-    const cost = ok ? Math.max(0, f1(c.vs, c.n) - fwAvg) : fixed;   // 페어웨이보다 오히려 잘 친 결과는 0(손실 없음)
-    return { k, l, n: c.n, cost, approx: !ok, lossRound: f1(cost * c.n, n) };
+    const c = dc[k], w = (c.n && dc.fw.n) ? c.n * dc.fw.n / (c.n + dc.fw.n) : 0;
+    const measured = w ? Math.max(0, f1(c.ex, c.n) - fwAvg) : 0;   // 페어웨이보다 오히려 잘 친 결과는 0(손실 없음)
+    const cost = (w * measured + DRIVE_K * fixed) / (w + DRIVE_K);
+    const realPct = Math.round(w / (w + DRIVE_K) * 100);            // 1회당 손실 중 본인 기록(실측)이 차지하는 비중
+    return { k, l, n: c.n, cost, realPct, approx: w < DRIVE_K, lossRound: f1(cost * c.n, n) };
   });
   const driveLossRound = driveCats.reduce((t, c) => t + c.lossRound, 0);
   const driveApprox = driveCats.some(c => c.n && c.approx);
@@ -1408,7 +1411,7 @@ function analyze(rounds) {
 }
 
 // ── 손실타수 한눈에 보기: 드라이버·아이언웨지·숏게임·퍼팅 손실 타수(라운드 평균)를 같은 단위로 놓고 큰 순서로 비교 ──
-// (통계 화면 전용 — 여러 라운드를 모아야 드라이버 손실의 표본 조건(결과별 DRIVE_MIN홀↑)이 충족될 가능성이 높다)
+// (통계 화면 전용 — 여러 라운드를 모아야 드라이버 손실이 고정값보다 본인 기록 쪽으로 수렴한다)
 function lossSummaryHTML(a) {
   if (!a.n) return '';
   const items = [
@@ -1421,7 +1424,7 @@ function lossSummaryHTML(a) {
   const body = items.map(([l, v, co, approx]) => `<div class="br"><div class="bl" style="width:80px;white-space:nowrap">${l}${approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(v / mx * 100))}%;background:${co}"><span>${nf(v)}타</span></div></div></div>`).join('');
   const worst = items[0];
   return `<div class="lbl">📉 손실타수 한눈에 보기 (라운드 평균)</div><div class="cb">${body}
-    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">네 구간의 손실 타수를 같은 기준(라운드당 타수)으로 비교해 큰 순서로 나열했어요. <b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? ' · * 표본이 적은 티샷 결과는 고정값(OB 2타·해저드 1타·러프/벙커/멀리건 0타)으로 추정했어요' : ''}</div></div>`;
+    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">네 구간의 손실 타수를 같은 기준(라운드당 타수)으로 비교해 큰 순서로 나열했어요. <b style="color:var(--t2)">가장 크게 새는 곳: ${worst[0]}</b>${items.some(x => x[3]) ? ' · * 드라이버는 기록이 적어 고정값(OB 2타·해저드 1타·그 외 0타) 비중이 커요' : ''}</div></div>`;
 }
 // ════════════════════════════════════════
 // 5구간 카테고리 카드 (라운드 상세 · 통계 화면 공용 — analyze() 결과 하나로 5개를 그린다)
@@ -1457,17 +1460,18 @@ function driverHTML(a) {
   const used = a.driveCats.filter(c => c.n);
   const mx = Math.max(...used.map(c => c.lossRound), 0.01);
   const rows = used.map(c => `<div class="br"><div class="bl" style="width:70px;white-space:nowrap">${c.l}${c.approx ? '*' : ''}</div><div class="bt"><div class="bf" style="width:${Math.max(4, Math.round(c.lossRound / mx * 100))}%;background:var(--r)"><span>${nf(c.lossRound)}타</span></div></div></div>
-    <div style="font-size:10px;color:var(--t3);margin:-2px 0 6px 2px">${c.n}회 × 1회당 ${nf(c.cost)}타</div>`).join('');
+    <div style="font-size:10px;color:var(--t3);margin:-2px 0 6px 2px">${c.n}회 × 1회당 ${nf(c.cost)}타 · 내 기록 반영 ${c.realPct}%</div>`).join('');
   const breakdown = used.length ? `<div class="cb"><div class="cbt" style="margin-bottom:6px">어떤 미스가 몇 타를 먹었나 (라운드 평균)</div>${rows}
-    ${a.driveApprox ? `<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:4px">* 페어웨이·해당 결과가 각각 ${DRIVE_MIN}홀 미만이라 고정값(OB 2타·해저드 1타·러프/벙커/멀리건 0타)으로 추정했어요.</div>` : ''}</div>` : '';
+    ${a.driveApprox ? `<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:4px">* 아직 기록이 적어 1회당 손실의 절반 이상을 고정값(OB 2타·해저드 1타·러프/벙커/멀리건 0타)으로 채웠어요. 라운드가 쌓일수록 내 기록 비중이 커져요.</div>` : ''}</div>` : '';
   return `<div class="lbl">🚗 드라이버 안정성 (Driver · 파4·5)</div><div class="sgd">
     ${statCard(a.firPct, '%', 'FIR')}
     ${statCard(nf(a.driveLossRound) + '타' + (a.driveApprox ? '*' : ''), '', '드라이버 손실/R')}</div>
   ${breakdown}
-  ${explainBox('드라이버 손실 타수는 어떻게 계산하나요?', `파4·5 홀을 <b>티샷 결과별</b>(페어웨이·러프·벙커·해저드·OB·멀리건)로 묶어, 결과마다 <b>그 홀들의 평균 오버파 − 페어웨이 홀의 평균 오버파</b>를 "1회당 손실"로 삼아요(0보다 작으면 0).<br>
+  ${explainBox('드라이버 손실 타수는 어떻게 계산하나요?', `파4·5 홀을 <b>티샷 결과별</b>(페어웨이·러프·벙커·해저드·OB·멀리건)로 묶어, 결과마다 <b>그린에 올라가기까지 걸린 타수</b>를 페어웨이 홀과 비교해, 평균적으로 더 걸린 타수를 "1회당 손실"로 삼아요(0보다 작으면 0). 퍼팅은 빼고 보기 때문에 3퍼트 같은 실수는 드라이버 손실에 섞이지 않아요.<br>
+    예) 페어웨이 홀은 평균 2.2타 만에 온그린, 러프 홀은 2.6타 → 러프 1회당 0.4타 손실. 한 라운드에 러프 4번이면 1.6타.<br>
+    기록이 적을 땐 숫자가 튀지 않도록 고정값(OB 2타·해저드 1타·그 외 0타)과 섞고, 기록이 쌓일수록 내 기록 비중을 키워요("내 기록 반영 %").<br>
     드라이버 손실 = 결과별 (1회당 손실 × 횟수)를 더해 라운드 수로 나눈 값이에요.<br>
-    예) 내 기록에서 페어웨이 홀 평균 +0.8, 러프 홀 평균 +1.2 → 러프 1회당 0.4타 손실. 한 라운드에 러프 4번이면 1.6타.<br>
-    기준이 <b>본인 기록</b>이라 프로 통계의 Strokes Gained(거리·라이 기준표 사용)와는 다른 간이 추정치예요. 홀 점수 전체를 쓰므로 아이언·숏게임·퍼팅 손실과 일부 겹쳐요.<br>
+    기준이 <b>본인 기록</b>이라 프로 통계의 Strokes Gained(거리·라이 기준표 사용)와는 다른 간이 추정치예요. 온그린까지의 아이언·어프로치 샷은 포함되므로 아이언 손실과 일부 겹쳐요.<br>
     티샷 결과를 선택하지 않은 홀은 계산에서 빠져요(현재 ${a.driveKnown}/${a.par45}홀 반영).`)}`;
 }
 function approachHTML(a) {
@@ -2284,7 +2288,7 @@ function guideStatsHTML() {
 
   ${S('🚩 구간별 (라운드 상세 · 통계 공통)')}
   ${it('티샷 안정성 (Off-the-Tee · 파3~5)', '티샷 페널티율(OB+해저드 홀 ÷ 전체 홀) · OB·해저드·멀리건 홀 수 · 안전 미스(러프·벙커, 페널티 없음) 개수와 비율. 러프·벙커 개별 구분은 v12.37 이후 입력분만 가능해요.')}
-  ${it('드라이버 안정성 (Driver · 파4·5)', 'FIR(페어웨이 적중률) · 드라이버 손실 타수(티샷 결과별로 "그 결과 홀의 평균 오버파 − 페어웨이 홀의 평균 오버파" × 횟수를 더해 라운드 평균, 본인 기록 기준 · 결과별 표본이 5홀 미만이면 고정값 OB 2타·해저드 1타·그 외 0타로 추정) · 러프/벙커/해저드/OB/멀리건별 손실 내역. 티샷 결과를 선택하지 않은 홀은 제외.')}
+  ${it('드라이버 안정성 (Driver · 파4·5)', 'FIR(페어웨이 적중률) · 드라이버 손실 타수(티샷 결과별로 "그 결과 홀의 온그린까지 타수 평균 − 페어웨이 홀의 온그린까지 타수 평균" × 횟수를 더해 라운드 평균, 퍼팅 제외 · 본인 기록 기준 · 기록이 적을수록 고정값 OB 2타·해저드 1타·그 외 0타 쪽으로 섞어 추정) · 러프/벙커/해저드/OB/멀리건별 손실 내역. 티샷 결과를 선택하지 않은 홀은 제외.')}
   ${it('아이언·웨지 정확도 (Approach)', 'GIR(그린 적중률) · 아이언 손실 타수(홀마다 "온그린까지 타수 − (파−2)"를 더해 라운드 평균, 예: 파4 온그린 4타 = 2타 손실) · 온그린 3타↑ 비율(파4 기준, 페어웨이 지킨/놓친 홀 각각) — 지켰는데도 높으면 아이언·웨지 문제, 놓쳤을 때만 높으면 드라이버가 원인. 스코어 입력 화면의 "티샷 외 해저드·OB" 칸을 쓴 홀이 있으면, 아이언 손실 타수를 "벌타 때문"과 "거리감·클럽 선택 등 나머지"로 나눠서도 보여줌.')}
   ${it('숏게임 능력 (Short Game)', '스크램블링(그린 놓친 홀을 파 이하로 막은 비율) · 숏게임 손실 타수(그린 놓치고 파도 못 지킨 홀의 "스코어 − 파"를 더해 라운드 평균, 예: 파4 그린 미스 6타 = 2타 손실) · 근접률(레귤러온 실패 홀에서 어프로치를 컨시드·10m 이내로 붙인 비율) · 붙인 거리(컨시드/10m 이내/10~20m/20m 이상) 분포와 거리별 파세이브율·평균 퍼트·3퍼트율 · 라운드당 티샷 외 해저드·OB 횟수. 붙인 거리는 v12.51 이후 입력분만 집계돼요.')}
   ${it('퍼팅 효율성 (Putting)', 'PPR(총 퍼팅) · 홀당 평균 · GIR 시 평균 퍼트(순수 퍼팅력) · 3퍼트 이상 비율 · 1퍼트율 · 퍼팅 손실 타수(2퍼팅 기준 초과분) · 퍼팅 분포(1/2/3/4+).')}
