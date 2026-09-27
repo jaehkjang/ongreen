@@ -1303,7 +1303,7 @@ function teeCatOf(fir, mull, tpv, missT) {
 function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
-  const apB = {}; [...AP_OPTS, ...AP_LEGACY].forEach(([k]) => { apB[k] = { n: 0, putt: 0, save: 0, three: 0, loss: 0 }; });   // 어프로치 거리 구간별 집계(loss: 숏게임 손실 합)
+  const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, save: 0, three: 0, loss: 0 }; });   // 어프로치 거리 구간별 집계(loss: 숏게임 손실 합). 옛 m 기준 키(AP_LEGACY)는 통계에서 제외
   const holes = [];   // 홀별 타수 분해용 기록 — 드라이버 1회당 손실이 전체 집계 뒤에 정해지므로 루프 뒤에서 한 번 더 훑는다
   const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, ex: 0 }; });   // 드라이버: 티샷 결과별 홀 수·온그린까지 초과 타수 합
   let played = 0,
@@ -1413,10 +1413,9 @@ function analyze(rounds) {
   // 4) 숏게임
   const scrPct = missGreen ? pct(scrSave, missGreen) : null;
   const shortLossRound = f1(shortSum, n);
-  // 근접률: 컨시드 + 5발자국 이내로 붙인 비율. 분모는 새(발자국) 기준으로 기록한 홀 + 컨시드만(옛 m 기준 기록은 경계가 달라 제외)
-  const apNewN = AP_OPTS.reduce((t, [k]) => t + apB[k].n, 0);
-  const apNearPct = apNewN ? pct(AP_NEAR.reduce((t, k) => t + apB[k].n, 0), apNewN) : null;
-  const apStats = [...AP_OPTS, ...AP_LEGACY.filter(([k]) => apB[k].n)].map(([k, l]) => { const b = apB[k];
+  // 근접률: 컨시드 + 5발자국 이내로 붙인 비율(분모 apN 은 발자국 기준으로 기록한 홀만 — 옛 m 기준 기록은 경계가 달라 제외)
+  const apNearPct = apN ? pct(AP_NEAR.reduce((t, k) => t + apB[k].n, 0), apN) : null;
+  const apStats = AP_OPTS.map(([k, l]) => { const b = apB[k];
     return { k, l, n: b.n, pct: pct(b.n, apN), savePct: b.n ? pct(b.save, b.n) : null, puttAvg: b.n ? f1(b.putt, b.n) : null, threePct: b.n ? pct(b.three, b.n) : null, lossRound: f1(b.loss, n) }; });
   const xPenRound = f1(xHzCnt + xObCnt, n);                           // 라운드당 티샷 외 해저드·OB 횟수
   const xPenStrokesRound = f1(xHzCnt + xObCnt * 2, n);                // 라운드당 티샷 외 벌타 추정 타수(해저드 1·OB 2)
@@ -1527,7 +1526,7 @@ function approachHTML(a) {
 }
 function shortGameHTML(a, stepLegend) {
   if (!a.n) return '';
-  const cols = { ok: 'var(--g)', s5: 'var(--b)', s10: 'var(--a)', s20: 'var(--p)', sfar: 'var(--r)', '10': 'var(--t3)', '20': 'var(--t3)', far: 'var(--t3)' };
+  const cols = { ok: 'var(--g)', s5: 'var(--b)', s10: 'var(--a)', s20: 'var(--p)', sfar: 'var(--r)' };
   // 붙인 거리 분포 + 거리별 파세이브율·평균 퍼트 (거리 기록이 있을 때만)
   const apBox = a.apN ? `<div class="cb"><div class="cbt">어프로치 붙인 거리 (레귤러온 실패 ${a.apN}홀)</div>
     ${a.apStats.map(x => `<div class="br"><div class="bl" style="white-space:nowrap;width:92px">${x.l}</div><div class="bt"><div class="bf" style="width:${x.pct}%;background:${cols[x.k]}"><span>${x.n}</span></div></div></div>`).join('')}
@@ -1547,7 +1546,7 @@ function shortGameHTML(a, stepLegend) {
     예) 그린 미스 → 칩 온 → 2퍼트 = <b>1타 손실</b> · 칩 온 → 1퍼트 = 0타 · 칩인 = <b>−1타(이득)</b>.<br>
     그린에 올라가기까지 칩을 여러 번 친 타수는 아이언 쪽에 잡혀서, 네 구간이 서로 겹치지 않아요. 붙인 거리를 기록한 홀은 아래에서 거리별 손실도 보여줘요.<br>
     <b>스크램블링</b> — 그린 놓친 홀 중 파 이하로 막은 비율.<br>
-    <b>근접률(👣5↓)</b> — 붙인 거리를 기록한 레귤러온 실패 홀 중 컨시드·👣5(약 4m) 이내로 붙인 비율. 👣는 발자국 수이고 한 걸음 약 0.8m로 계산해요. v12.55 이전의 m 기준 기록은 구간 경계가 달라 근접률에서 빠지고, 표에는 "(옛 기록)"으로 따로 보여요.`)}
+    <b>근접률(👣5↓)</b> — 붙인 거리를 기록한 레귤러온 실패 홀 중 컨시드·👣5(약 4m) 이내로 붙인 비율. 👣는 발자국 수이고 한 걸음 약 0.8m로 계산해요. v12.55 이전의 m 기준(10m 이내 등) 기록은 구간 경계가 달라 근접률·붙인 거리 통계에서 빠져요.`)}
   ${apBox}`;
 }
 // ── ⚠️ 티샷 외 해저드·OB — 숏게임과 따로, 첫 샷이 아닌 샷(세컨·어프로치 등)에서 난 벌타만 모아 보여준다 ──
