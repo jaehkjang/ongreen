@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.54.0';
+const APP_VERSION = 'v12.55.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -548,7 +548,7 @@ function openDet(id) {
     ${courseAvgChip(r) ? `<div style="text-align:center;margin-bottom:10px">${courseAvgChip(r)}</div>` : ''}
     ${AV.n >= 3 ? `<div style="font-size:11px;color:var(--t3);text-align:center;margin-bottom:10px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : ''}
     ${skillRatioHTML([r])}
-    ${blowupCauseHTML([r])}
+    <div class="lbl">💥 블로업 홀별 원인</div>${blowupHolesHTML(r)}
     <div class="lbl">파 종류별</div>${parCrossHTML([r])}
     ${teeStabilityHTML(a)}
     ${driverHTML(a)}
@@ -1667,39 +1667,118 @@ function trendChartSVG(vals, M, lc) {
 
 
 // ── 💥 블로업(트리플보기 이상) 홀의 원인 분해 ──
-// 한 홀에 원인이 겹칠 수 있으므로(예: 티샷 OB + 3퍼팅) 각 원인별로 따로 셉니다.
-// "블로업"은 실력 비율 카드(skillRatioHTML)와 같은 기준(트리플보기 이상)을 씁니다.
+// 블로업 홀마다 (스코어 − 파)를 원인별로 "겹치지 않게" 한 타씩 한 곳에만 나눈다 → 원인별 타수 합 = 그 홀 오버파.
+//   🚗 티샷 벌타     : 티샷 OB 2타 · 해저드 1타(손실타수 카드와 같은 환산). 멀리건은 벌타가 없어 0
+//   ⚠️ 티샷 외 벌타 : 세컨드 이후 OB 2타 · 해저드 1타(홀 입력의 "티샷 외 해저드·OB" 카운터)
+//   🎯 온그린까지   : 온그린까지 친 타수 − 레귤러온 타수(파−2) − 위 벌타 − (그린 놓친 홀이면 칩 1타)
+//   ⛳ 숏게임       : 그린 놓친 홀의 퍼트 − 1 (칩 + 1퍼트 = 업앤다운 기준)
+//   🍩 퍼팅         : 그린 적중 홀의 퍼트 − 2
+// "블로업"은 실력 비율 카드(skillRatioHTML)·blowupCountOf 와 같은 기준(트리플보기 이상)을 쓴다.
+// 구간별 손실타수(analyze)와 달리 드라이버 몫을 본인 기록으로 추정하지 않고 벌타만 고정값으로 떼어,
+// 한 홀만 봐도 바로 이해되는 분해를 쓴다.
+const BLOWUP_CATS = [
+  ['tee', '🚗 티샷 벌타', 'var(--r)'],
+  ['xpen', '⚠️ 티샷 외 벌타', 'var(--p)'],
+  ['iron', '🎯 온그린까지', 'var(--a)'],
+  ['short', '⛳ 숏게임', 'var(--b)'],
+  ['putt', '🍩 퍼팅', 'var(--g)'],
+];
+const BLOWUP_TIPS = {
+  tee: '위험한 홀에선 드라이버 대신 페어웨이에 남길 수 있는 클럽으로 티샷해 보세요.',
+  xpen: '트러블에서 무리하게 그린을 노리기보다 안전한 곳으로 레이업하는 선택이 큰 점수를 막아요.',
+  iron: '그린까지 가는 길에서 타수가 샜어요 — 트러블 탈출·레이업 판단과 아이언 정확도를 점검하세요.',
+  short: '그린 주변에서 무너졌어요 — 칩을 핀 가까이 붙이는 어프로치 거리감 연습이 효과적이에요.',
+  putt: '온그린 후 3퍼트 이상이 원인이에요 — 첫 퍼트 거리감(롱퍼트) 연습을 우선하세요.',
+};
+// 라운드 r 의 i번 홀(0부터)이 블로업이면 원인별 타수 분해를, 아니면 null
+function blowupPartsOf(r, i) {
+  const s = (r.scores || [])[i]; if (!(s > 0)) return null;
+  const par = roundPars(r)[i] || 4, d = s - par; if (d < 3) return null;
+  const putt = (r.puttsArr || [])[i] || 0, gir = !!(r.girArr || [])[i], tpv = (r.tpArr || [])[i] || 0;
+  const xo = (r.xobArr || [])[i] || 0, xh = (r.xhzArr || [])[i] || 0;
+  const tee = tpv === 2 ? 2 : tpv === 1 ? 1 : 0, xpen = xo * 2 + xh;
+  const og = s - putt;                                             // 온그린까지 친 타수(벌타 포함)
+  const iron = og - (par - 2) - (gir ? 0 : 1) - tee - xpen;
+  const v = { tee, xpen, iron, short: gir ? 0 : putt - 1, putt: gir ? putt - 2 : 0 };   // 합 = d
+  // 주원인: 가장 많이 잃은 원인(같으면 BLOWUP_CATS 순서 — 벌타를 먼저)
+  const main = BLOWUP_CATS.reduce((m, [k]) => v[k] > v[m] ? k : m, BLOWUP_CATS[0][0]);
+  const teeMiss = (r.mulliArr || [])[i] ? '멀리건' : tpv === 2 ? 'OB' : tpv === 1 ? '해저드' : par === 3 ? '' : (r.firArr || [])[i] ? '페어웨이' : ((r.missArr || [])[i] === 'rough' ? '러프' : (r.missArr || [])[i] === 'bunker' ? '벙커' : '');
+  return { i, par, s, d, putt, gir, og, xo, xh, teeMiss, v, main };
+}
+// 원인 칩에 붙일 짧은 설명(무슨 일이 있었는지)
+function blowupNote(b, k) {
+  if (k === 'tee') return b.v.tee === 2 ? 'OB' : '해저드';
+  if (k === 'xpen') return [b.xo ? 'OB ' + b.xo : '', b.xh ? '해저드 ' + b.xh : ''].filter(Boolean).join('·');
+  if (k === 'iron') return `온그린까지 ${b.og}타`;
+  if (k === 'short') return b.putt ? `칩 후 ${b.putt}퍼트` : '칩인';
+  return `${b.putt}퍼트`;
+}
+// ── 라운드 상세: 블로업 홀을 홀 번호 순으로 — 몇 번 홀에서 무엇 때문에 몇 타를 잃었는지 ──
+function blowupHolesHTML(r) {
+  const list = []; for (let i = 0; i < 18; i++) { const b = blowupPartsOf(r, i); if (b) list.push(b); }
+  if (!list.length) return `<div class="cb" style="font-size:13px;color:var(--t2);line-height:1.6">🎉 이 라운드엔 블로업(트리플보기 이상)이 없어요. 큰 점수가 안 나오는 게 최고의 강점입니다.</div>`;
+  const lbl = {}, col = {}; BLOWUP_CATS.forEach(([k, l, c]) => { lbl[k] = l; col[k] = c; });
+  const lost = list.reduce((t, b) => t + b.d, 0);
+  const rows = list.map(b => {
+    const chips = BLOWUP_CATS.filter(([k]) => b.v[k] !== 0).map(([k]) => {
+      const x = b.v[k], neg = x < 0;
+      return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:.5px solid ${k === b.main && !neg ? col[k] : 'var(--bd)'};border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--t2);white-space:nowrap">${lbl[k]} <span style="color:var(--t3)">${blowupNote(b, k)}</span> <b style="color:${neg ? 'var(--g)' : col[k]}">${nfs(x)}</b></span>`;
+    }).join('');
+    return `<div onclick="holeDetail(${r.id},${b.i})" style="padding:10px 0;border-bottom:.5px solid var(--bd);cursor:pointer">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:30px;height:30px;border-radius:8px;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${b.s}</div>
+        <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--t)">${b.i + 1}번 홀 <span style="font-size:12px;color:var(--t2);font-weight:400">· 파${b.par} · <b style="color:var(--r)">${nfs(b.d)}타</b>${b.teeMiss && !b.v.tee ? ` · 티샷 ${b.teeMiss}` : ''}</span></div>
+          <div style="font-size:11.5px;color:var(--t3);margin-top:2px">주원인 <b style="color:${col[b.main]}">${lbl[b.main]}</b> ${nfs(b.v[b.main])}타</div></div>
+        <span style="color:var(--t3);font-size:16px">›</span></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;padding-left:40px">${chips}</div></div>`;
+  }).join('');
+  return `<div class="cb"><div class="cbt">💥 블로업 ${list.length}홀 — 파보다 ${lost}타 더 침 <span style="font-size:11px;color:var(--t3);font-weight:400">· 누르면 홀 상세</span></div>${rows}
+    ${blowupExplain()}</div>`;
+}
+function blowupExplain() {
+  return explainBox('블로업 원인은 어떻게 나누나요?', `<b>블로업</b> = 파보다 3타 이상 더 친 홀(트리플보기 이상). 예) 파4에서 7타 이상.<br>
+    그 홀에서 파보다 더 친 타수를 아래 원인에 <b>한 타씩 한 곳에만</b> 나눠요. 그래서 원인별 타수를 더하면 그 홀 오버파와 정확히 같아요.<br>
+    · <b>🚗 티샷 벌타</b> — 티샷 OB 2타 · 해저드 1타(멀리건은 벌타가 없어 0)<br>
+    · <b>⚠️ 티샷 외 벌타</b> — 세컨드 이후 OB 2타 · 해저드 1타(홀 입력의 "티샷 외 해저드·OB")<br>
+    · <b>🎯 온그린까지</b> — 그린에 올리기까지 레귤러온(파−2타)보다 더 친 타수에서 벌타를 빼고, 그린을 놓친 홀이면 칩 1타도 빼요(칩 + 1퍼트면 파라서 정상 경로로 봄)<br>
+    · <b>⛳ 숏게임</b> — 그린 놓친 홀에서 칩 뒤 퍼트 − 1(칩 후 2퍼트 = +1, 칩인 = −1)<br>
+    · <b>🍩 퍼팅</b> — 그린에 레귤러온한 홀에서 퍼트 − 2(3퍼트 = +1)<br>
+    예) 파4 8타 = 티샷 OB → 벌타 포함 5타 만에 칩으로 온그린 → 3퍼트 : 티샷 벌타 <b>+2</b> · 온그린까지 5 − 2(레귤러온) − 1(칩) − 2(벌타) = <b>+0</b> · 숏게임 칩 후 3퍼트 = <b>+2</b> → 합계 +4.<br>
+    −(초록)은 그 원인에서 오히려 만회한 타수예요. 벌타는 고정값이라 구간별 탭의 손실타수(본인 기록 기준 추정)와는 숫자가 다를 수 있어요.`);
+}
+// ── 통계: 모든 라운드의 블로업을 모아 "전체적으로 무엇 때문에 큰 점수가 나는지" 원인별 타수로 합산 ──
 function blowupCauseHTML(rounds) {
-  let big = 0, teeC = 0, puttC = 0, missC = 0;
+  const sum = {}, mainN = {}; BLOWUP_CATS.forEach(([k]) => { sum[k] = 0; mainN[k] = 0; });
+  const byPar = { 3: 0, 4: 0, 5: 0 }, parN = { 3: 0, 4: 0, 5: 0 };
+  let big = 0, lost = 0;
   rounds.forEach(r => {
-    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], pa = r.puttsArr || [], tp = r.tpArr || [];
+    const hp = roundPars(r);
     for (let i = 0; i < 18; i++) {
-      const s = sc[i]; if (!(s > 0)) continue;
-      const par = hp[i] || 4; if (s - par < 3) continue;     // 블로업(트리플보기 이상)만
-      big++;
-      const tee = (tp[i] || 0);                              // 티샷 사고(OB·해저드 벌타). 멀리건은 벌타가 안 들어가 제외
-      if (tee) teeC++;
-      if ((pa[i] || 0) >= 3) puttC++;                        // 3퍼팅 이상
-      if (!gi[i] && !tee) missC++;                           // 그린 미스(티샷 사고는 위에서 집계해 중복 제외)
+      if ((r.scores || [])[i] > 0 && parN[hp[i] || 4] !== undefined) parN[hp[i] || 4]++;
+      const b = blowupPartsOf(r, i); if (!b) continue;
+      big++; lost += b.d; mainN[b.main]++;
+      if (byPar[b.par] !== undefined) byPar[b.par]++;
+      BLOWUP_CATS.forEach(([k]) => { sum[k] += b.v[k]; });
     }
   });
   if (!big) return `<div class="cb" style="font-size:13px;color:var(--t2);line-height:1.6">🎉 블로업(트리플보기 이상)이 없어요. 큰 점수가 안 나오는 게 최고의 강점입니다.</div>`;
-  const rows = [
-    ['🚗 티샷 사고', teeC, 'var(--r)'],
-    ['🍩 3퍼팅↑', puttC, 'var(--a)'],
-    ['🎯 그린 미스', missC, 'var(--b)'],
-  ];
-  const mx = Math.max(...rows.map(x => x[1]), 1);
-  const body = rows.map(([l, c, co]) => `<div class="br"><div class="bl" style="width:74px;white-space:nowrap">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / mx * 100)}%;background:${co};min-width:${c ? 18 : 0}px"><span>${c}</span></div></div></div>`).join('');
-  const top = [...rows].sort((a, b) => b[1] - a[1])[0];
-  return `<div class="cb"><div class="cbt">💥 블로업(트리플보기↑) ${big}개의 원인</div>${body}
-    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">한 홀에 원인이 겹칠 수 있어 합계는 ${big}개와 다를 수 있어요. <b style="color:var(--t2)">가장 잦은 범인: ${top[0]}</b> — 여기만 줄여도 큰 점수가 확 줄어요.</div>
-    ${explainBox('블로업 원인은 어떻게 나누나요?', `<b>블로업</b> = 파보다 3타 이상 더 친 홀(트리플보기 이상). 예) 파4에서 7타 이상.<br>
-      블로업 홀마다 아래 조건을 각각 확인해 해당하는 원인에 1씩 더해요.<br>
-      · <b>🚗 티샷 사고</b> — 그 홀 티샷 결과를 <b>해저드</b> 또는 <b>OB</b>로 고른 경우(멀리건은 벌타가 없어 제외)<br>
-      · <b>🍩 3퍼팅↑</b> — 그 홀 퍼팅 수가 3 이상<br>
-      · <b>🎯 그린 미스</b> — 레귤러온(GIR)을 못 했고, 티샷 사고도 아닌 경우(아이언·어프로치에서 무너진 홀)<br>
-      예) 파4 8타 = 티샷 OB + 3퍼팅 → 티샷 사고 1, 3퍼팅↑ 1 에 모두 더해져요.`)}</div>`;
+  const n = rounds.length || 1;
+  const rows = BLOWUP_CATS.map(([k, l, c]) => ({ k, l, c, v: sum[k], m: mainN[k] })).sort((a, b) => b.v - a.v);
+  const mx = Math.max(...rows.map(x => x.v), 0.01);
+  const body = rows.map(x => `<div style="padding:7px 0;border-bottom:1px solid var(--bg3)">
+    <div style="display:flex;align-items:baseline;gap:8px;white-space:nowrap"><span style="font-size:13.5px;color:var(--t)">${x.l}</span>
+      <span style="flex:1;font-size:10.5px;color:var(--t3);overflow:hidden;text-overflow:ellipsis">주원인 ${x.m}홀</span>
+      <b style="font-size:15px;color:${x.v > 0 ? x.c : 'var(--t3)'}">${nfs(x.v)}타</b><span style="font-size:10px;color:var(--t3);min-width:30px;text-align:right">${lost > 0 && x.v > 0 ? Math.round(x.v / lost * 100) + '%' : ''}</span></div>
+    <div style="height:5px;border-radius:3px;background:var(--bg3);margin-top:5px"><div style="height:100%;border-radius:3px;width:${Math.round(Math.max(0, x.v) / mx * 100)}%;background:${x.c}"></div></div></div>`).join('');
+  const top = rows[0];
+  const parLine = [3, 4, 5].filter(p => parN[p]).map(p => `파${p} <b style="color:var(--t)">${byPar[p]}</b>/${parN[p]}홀 (${Math.round(byPar[p] / parN[p] * 100)}%)`).join(' · ');
+  return `<div class="cb"><div class="cbt">💥 블로업 ${big}홀 — 파보다 총 ${lost}타 더 침</div>
+    <div style="font-size:12px;color:var(--t2);line-height:1.55;margin-bottom:4px">라운드당 <b style="color:var(--t)">${nf(big / n)}홀</b>에서 <b style="color:var(--r)">${nf(lost / n)}타</b>를 잃어요. 그 타수가 어디서 나왔는지 원인별로 나누면:</div>
+    ${body}
+    <div style="font-size:11px;color:var(--t2);line-height:1.6;margin-top:8px">블로업 비율: ${parLine}</div>
+    <div style="font-size:12px;color:var(--t2);line-height:1.6;margin-top:8px;padding:10px 12px;background:var(--bg3);border-radius:10px"><b style="color:${top.c}">가장 큰 원인: ${top.l}</b> (${nfs(top.v)}타)<br>${BLOWUP_TIPS[top.k]}</div>
+    <div style="font-size:10px;color:var(--t3);line-height:1.55;margin-top:8px">원인별 타수를 더하면 ${lost}타와 같아요(한 타는 한 원인에만). 주원인 = 그 홀에서 가장 많이 잃은 원인. 홀별 내역은 라운드 상세에서 볼 수 있어요.</div>
+    ${blowupExplain()}</div>`;
 }
 
 // ── 파 종류별 × 구간 교차: 파3는 GIR, 파4·5는 FIR/GIR과 함께 파 대비를 본다 ──
