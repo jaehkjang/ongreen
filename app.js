@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.56.5';
+const APP_VERSION = 'v12.57.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1734,11 +1734,20 @@ function blowupHolesHTML(r) {
       const x = b.v[k], neg = x < 0;
       return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:.5px solid ${k === b.main && !neg ? col[k] : 'var(--bd)'};border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--t2);white-space:nowrap">${lbl[k]} <span style="color:var(--t3)">${blowupNote(b, k)}</span> <b style="color:${neg ? 'var(--g)' : col[k]}">${nfs(x)}</b></span>`;
     }).join('');
+    // 눈에 띄는 사고 표시: 티샷 패널티(OB·해저드) · 티샷 외 OB·해저드 · 3퍼트 이상 — 원인 분해와 별개로 "무슨 일이 있었는지"를 바로 보여준다
+    const flag = (t, c) => `<span style="display:inline-block;border:1px solid ${c};color:${c};border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap">${t}</span>`;
+    const flags = [
+      b.v.tee ? flag(`🚨 티샷 ${b.v.tee === 2 ? 'OB' : '해저드'}`, 'var(--r)') : '',
+      b.xo ? flag(`⚠️ 티샷 외 OB${b.xo > 1 ? ' ×' + b.xo : ''}`, 'var(--p)') : '',
+      b.xh ? flag(`⚠️ 티샷 외 해저드${b.xh > 1 ? ' ×' + b.xh : ''}`, 'var(--p)') : '',
+      b.putt >= 3 ? flag(`🍩 ${b.putt}퍼트`, 'var(--a)') : '',
+    ].filter(Boolean).join('');
     return `<div onclick="holeDetail(${r.id},${b.i})" style="padding:10px 0;border-bottom:.5px solid var(--bd);cursor:pointer">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:30px;height:30px;border-radius:8px;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${b.s}</div>
         <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--t)">${b.i + 1}번 홀 <span style="font-size:12px;color:var(--t2);font-weight:400">· 파${b.par} · <b style="color:var(--r)">${nfs(b.d)}타</b>${b.teeMiss && !b.v.tee ? ` · 티샷 ${b.teeMiss}` : ''}</span></div>
-          <div style="font-size:11.5px;color:var(--t3);margin-top:2px">주원인 <b style="color:${col[b.main]}">${lbl[b.main]}</b> ${nfs(b.v[b.main])}타</div></div>
+          ${flags ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${flags}</div>` : ''}
+          <div style="font-size:11.5px;color:var(--t3);margin-top:3px">주원인 <b style="color:${col[b.main]}">${lbl[b.main]}</b> ${nfs(b.v[b.main])}타</div></div>
         <span style="color:var(--t3);font-size:16px">›</span></div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;padding-left:40px">${chips}</div></div>`;
   }).join('');
