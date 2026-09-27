@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.53.1';
+const APP_VERSION = 'v12.54.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -887,7 +887,7 @@ function updFt() {
   const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
   Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
 }
-// ── 홀 상세: 라운드의 한 홀에 내가 기록한 값(점수·FIR·GIR·퍼팅·티샷 사고)을 보여준다 ──
+// ── 홀 상세: 라운드의 한 홀에 내가 기록한 값(점수·FIR·GIR·어프로치 붙인 거리·퍼팅·티샷 사고)을 보여준다 ──
 // 진입: 라운드 상세 모달의 "홀별 스코어" 격자, 그리고 읽기 전용 스코어카드의 홀 행.
 function holeDetail(id, i) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
@@ -908,13 +908,16 @@ function holeDetail(id, i) {
     : tpv ? '<b style="color:#ff8a80">해저드 (스코어에 벌타 포함됨)</b>'
     : (par !== 3 && !ff) ? '<span style="color:var(--t3)">러프/벙커 (사고 없음)</span>' : '<span style="color:var(--t3)">사고 없음</span>';
   const teeRow = row('⛳ 티샷 사고', teeTxt);
+  // 어프로치 붙인 거리 — 레귤러온 실패(GIR 놓침) 홀에만 입력하므로 그 홀에서만 보여준다(값이 남아 있으면 GIR 여부와 무관하게 표시).
+  const apv = (r.apArr || [])[i] || '', apOpt = AP_OPTS.find(([k]) => k === apv);
+  const apRow = (!gg || apOpt) ? row('🏌️ 어프로치 붙인 거리', apOpt ? `<b style="color:var(--a)">${apOpt[1]}</b>` : '<span style="color:var(--t3)">기록 없음</span>') : '';
   Q('hd-t').textContent = `${i + 1}번 홀 · 파${par}`;
   Q('hd-body').innerHTML = `
     <div style="text-align:center;margin-bottom:16px">
       <div class="hv ${sc ? cls(sc, par) : 'e'}" style="margin:0 auto 8px">${sc || '-'}</div>
       <div style="font-size:15px;font-weight:700;color:var(--t)">${name}${sc ? ` · 오버파 ${vsL(d)}` : ''}</div>
     </div>
-    <div class="hd-card">${firRow}${girRow}${puttRow}${teeRow}</div>`;
+    <div class="hd-card">${firRow}${girRow}${apRow}${puttRow}${teeRow}</div>`;
   om('m-hd');
 }
 // ── 스코어카드 원터치 공유 (저장 완료된 라운드만) ──
