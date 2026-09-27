@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.55.0';
+const APP_VERSION = 'v12.56.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -314,7 +314,7 @@ function buildRound(isDraft) {
     mulliArr: [...A.sc.mulli], tpArr: [...(A.sc.tp || Array(18).fill(0))],
     missArr: [...(A.sc.miss || Array(18).fill(''))],   // 러프/벙커 구분(v12.37+) — 페널티 계산엔 안 쓰고 미스 유형 집계에만 씀
     xhzArr: [...(A.sc.xhz || Array(18).fill(0))], xobArr: [...(A.sc.xob || Array(18).fill(0))],   // 티샷 외(어프로치 등) 해저드·OB 횟수(v12.42+)
-    apArr: [...(A.sc.ap || Array(18).fill(''))],   // 레귤러온 실패 홀의 어프로치 붙인 거리('ok'=컨시드·'5'=5m 이내·'5_10'=5~10m·'20'=10~20m·'far'=20m 이상, v12.55+ / '10'=10m 이내는 v12.51~53 저장분)
+    apArr: [...(A.sc.ap || Array(18).fill(''))],   // 레귤러온 실패 홀의 어프로치 붙인 거리('ok'=컨시드·'5'=5m 이내·'5_10'=5~10m·'20'=10~20m·'far'=20m 이상, v12.56+ / '10'=10m 이내는 v12.51~54 저장분)
     holePars: [...h]   // ★ 박제: 그날 홀별 파를 라운드에 함께 저장 → 나중에 골프장이 바뀌어도 안 흔들림
   };
 }
@@ -750,7 +750,7 @@ function xobAdj(i, d) {
 }
 // ── 어프로치 붙인 거리(레귤러온 실패 홀만 입력) — 같은 걸 다시 누르면 해제. 스코어 계산엔 관여 안 함 ──
 const AP_OPTS = [['ok', '컨시드'], ['5', '5m 이내'], ['5_10', '5~10m'], ['20', '10~20m'], ['far', '20m 이상']];
-// v12.51~53 에만 있던 선택지 — 그때 저장한 값('10' = 0~10m)은 5m 이내/5~10m 중 어디인지 알 수 없어 따로 보존해 보여준다(입력 칩엔 없음)
+// v12.51~54 에만 있던 선택지 — 그때 저장한 값('10' = 0~10m)은 5m 이내/5~10m 중 어디인지 알 수 없어 따로 보존해 보여준다(입력 칩엔 없음)
 const AP_LEGACY = [['10', '10m 이내(이전)']];
 const AP_ALL = AP_OPTS.concat(AP_LEGACY);
 function setAp(i, key) {
@@ -891,7 +891,7 @@ function updFt() {
   const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
   Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
 }
-// ── 홀 상세: 라운드의 한 홀에 내가 기록한 값(점수·FIR·GIR·퍼팅·티샷 사고)을 보여준다 ──
+// ── 홀 상세: 라운드의 한 홀에 내가 기록한 값(점수·FIR·GIR·어프로치 붙인 거리·퍼팅·티샷 사고)을 보여준다 ──
 // 진입: 라운드 상세 모달의 "홀별 스코어" 격자, 그리고 읽기 전용 스코어카드의 홀 행.
 function holeDetail(id, i) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
@@ -912,9 +912,9 @@ function holeDetail(id, i) {
     : tpv ? '<b style="color:#ff8a80">해저드 (스코어에 벌타 포함됨)</b>'
     : (par !== 3 && !ff) ? '<span style="color:var(--t3)">러프/벙커 (사고 없음)</span>' : '<span style="color:var(--t3)">사고 없음</span>';
   const teeRow = row('⛳ 티샷 사고', teeTxt);
-  // 어프로치 붙인 거리 — 레귤러온 실패 홀만 의미 있음(v12.51+ 입력분)
-  const apk = (r.apArr || [])[i] || '', apl = (AP_ALL.find(x => x[0] === apk) || [])[1];
-  const apRow = gg ? '' : row('🏌️ 어프로치 붙인 거리', apl ? `<b style="color:var(--t)">${apl}</b>` : '<span style="color:var(--t3)">기록 없음</span>');
+  // 어프로치 붙인 거리 — 레귤러온 실패(GIR 놓침) 홀에만 입력하므로 그 홀에서만 보여준다(값이 남아 있으면 GIR 여부와 무관하게 표시).
+  const apv = (r.apArr || [])[i] || '', apOpt = AP_ALL.find(([k]) => k === apv);   // AP_ALL: 5단계 + 예전 '10m 이내(이전)'
+  const apRow = (!gg || apOpt) ? row('🏌️ 어프로치 붙인 거리', apOpt ? `<b style="color:var(--a)">${apOpt[1]}</b>` : '<span style="color:var(--t3)">기록 없음</span>') : '';
   const xh = (r.xhzArr || [])[i] || 0, xo = (r.xobArr || [])[i] || 0;
   const xRow = (xh || xo) ? row('⚠️ 티샷 외 해저드·OB', `<b style="color:#ff8a80">${[xh ? `해저드 ${xh}회` : '', xo ? `OB ${xo}회` : ''].filter(Boolean).join(' · ')}</b>`) : '';
   Q('hd-t').textContent = `${i + 1}번 홀 · 파${par}`;
