@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.57.0';
+const APP_VERSION = 'v12.58.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -252,11 +252,6 @@ async function goAdmNotes() {
 // ════════════════════════════════════════
 function renderHome() {
   const el = Q('h-body'); let h = '';
-  // 🟢 분석 철학 배너 — 온그린이 통계를 보는 큰 그림으로 안내
-  h += `<div onclick="goPhil()" style="background:linear-gradient(135deg,#0d2e1a,#0a1f14);border:1px solid var(--g);border-radius:14px;padding:13px 14px;margin-bottom:14px;cursor:pointer;display:flex;align-items:center;gap:11px">
-    <span style="font-size:22px">🟢</span>
-    <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--g)">온그린은 이렇게 분석해요</div><div style="font-size:12px;color:var(--t2);margin-top:2px">숫자 너머 '다음 한 타' — 분석 철학 보기</div></div>
-    <span style="color:var(--g);flex-shrink:0">→</span></div>`;
   if (A.isAdm && A.notes.length) {
     h += `<div class="adm-bnr" onclick="goAdmNotes()" style="display:flex">
       <span style="font-size:22px">🔔</span><div style="flex:1">
@@ -798,7 +793,7 @@ function renderHoleWizard() {
   // (이미 티샷 외 해저드·OB 값이 들어 있는 홀은 숨겨서 값이 안 보이게 되는 일이 없도록 함께 보여줌)
   const regMiss = og > Math.max(1, par - 2);
   const apv = (A.sc.ap && A.sc.ap[i]) || '';
-  const apChip = ([k, l, m]) => `<button class="lb ${apv === k ? 'on' : ''}" style="min-width:0;padding:8px 2px;font-size:12.5px;white-space:nowrap;line-height:1.3" onclick="setAp(${i},'${k}')">${l}<span style="display:block;font-size:10px;opacity:.65;font-weight:400">${m}</span></button>`;
+  const apChip = ([k, l, m]) => `<button class="lb ${apv === k ? 'on' : ''}" style="min-width:0;padding:8px 2px;font-size:12.5px;white-space:nowrap;line-height:1.3" onclick="setAp(${i},'${k}')">${l}<span style="display:block;font-size:10px;opacity:.65;font-weight:400">${k === 'ok' ? m : '(' + m + ')'}</span></button>`;
   const apOld = AP_LEGACY.find(([k]) => k === apv);   // 옛 m 기준 값이면 안내만(새 버튼을 누르면 바뀜)
   const shortPanel = (regMiss || xhz || xob) ? `<div style="background:var(--bg2);border:1px solid var(--a);border-radius:14px;padding:12px 10px;margin-bottom:14px">
       ${regMiss ? `<div style="font-size:12px;color:var(--a);font-weight:700;margin-bottom:8px">🏌️ 레귤러온 실패 — 어프로치를 얼마나 붙였나요?</div>
@@ -1415,8 +1410,8 @@ function analyze(rounds) {
   const shortLossRound = f1(shortSum, n);
   // 근접률: 컨시드 + 5발자국 이내로 붙인 비율(분모 apN 은 발자국 기준으로 기록한 홀만 — 옛 m 기준 기록은 경계가 달라 제외)
   const apNearPct = apN ? pct(AP_NEAR.reduce((t, k) => t + apB[k].n, 0), apN) : null;
-  const apStats = AP_OPTS.map(([k, l]) => { const b = apB[k];
-    return { k, l, n: b.n, pct: pct(b.n, apN), savePct: b.n ? pct(b.save, b.n) : null, puttAvg: b.n ? f1(b.putt, b.n) : null, threePct: b.n ? pct(b.three, b.n) : null, lossRound: f1(b.loss, n) }; });
+  const apStats = AP_OPTS.map(([k, l, m]) => { const b = apB[k];
+    return { k, l: k === 'ok' ? l : `${l} (${m})`, n: b.n, pct: pct(b.n, apN), savePct: b.n ? pct(b.save, b.n) : null, puttAvg: b.n ? f1(b.putt, b.n) : null, threePct: b.n ? pct(b.three, b.n) : null, lossRound: f1(b.loss, n) }; });
   const xPenRound = f1(xHzCnt + xObCnt, n);                           // 라운드당 티샷 외 해저드·OB 횟수
   const xPenStrokesRound = f1(xHzCnt + xObCnt * 2, n);                // 라운드당 티샷 외 벌타 추정 타수(해저드 1·OB 2)
 
@@ -1529,7 +1524,7 @@ function shortGameHTML(a, stepLegend) {
   const cols = { ok: 'var(--g)', s5: 'var(--b)', s10: 'var(--a)', s20: 'var(--p)', sfar: 'var(--r)' };
   // 붙인 거리 분포 + 거리별 파세이브율·평균 퍼트 (거리 기록이 있을 때만)
   const apBox = a.apN ? `<div class="cb"><div class="cbt">어프로치 붙인 거리 (레귤러온 실패 ${a.apN}홀)</div>
-    ${a.apStats.map(x => `<div class="br"><div class="bl" style="white-space:nowrap;width:92px">${x.l}</div><div class="bt"><div class="bf" style="width:${x.pct}%;background:${cols[x.k]}"><span>${x.n}</span></div></div></div>`).join('')}
+    ${a.apStats.map(x => `<div class="br"><div class="bl" style="white-space:nowrap;width:118px;font-size:11.5px">${x.l}</div><div class="bt"><div class="bf" style="width:${x.pct}%;background:${cols[x.k]}"><span>${x.n}</span></div></div></div>`).join('')}
     <div style="margin-top:12px;display:grid;grid-template-columns:1.25fr repeat(4,1fr);gap:6px 4px;font-size:12.5px;color:var(--t);text-align:center;align-items:baseline">
       ${['붙인 거리', '파세이브', '평균 퍼트', '3퍼트↑', '손실/R'].map((h, k) => `<div style="font-size:10px;color:var(--t3);${k ? '' : 'text-align:left'}">${h}</div>`).join('')}
       ${a.apStats.filter(x => x.n).map(x => `<div style="text-align:left;color:var(--t2);white-space:nowrap">${x.l}</div><div>${x.savePct}%</div><div>${nf(x.puttAvg)}</div><div style="color:${x.threePct ? 'var(--r)' : 'var(--t3)'}">${x.threePct}%</div><div style="font-weight:700;color:${x.lossRound > 0 ? 'var(--r)' : 'var(--g)'}">${nfs(x.lossRound)}타</div>`).join('')}
@@ -1762,11 +1757,20 @@ function blowupHolesHTML(r) {
       const x = b.v[k], neg = x < 0;
       return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg3);border:.5px solid ${k === b.main && !neg ? col[k] : 'var(--bd)'};border-radius:8px;padding:3px 8px;font-size:11.5px;color:var(--t2);white-space:nowrap">${lbl[k]} <span style="color:var(--t3)">${blowupNote(b, k)}</span> <b style="color:${neg ? 'var(--g)' : col[k]}">${nfs(x)}</b></span>`;
     }).join('');
+    // 눈에 띄는 사고 표시: 티샷 패널티(OB·해저드) · 티샷 외 OB·해저드 · 3퍼트 이상 — 원인 분해와 별개로 "무슨 일이 있었는지"를 바로 보여준다
+    const flag = (t, c) => `<span style="display:inline-block;border:1px solid ${c};color:${c};border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap">${t}</span>`;
+    const flags = [
+      b.v.tee ? flag(`🚨 티샷 ${b.v.tee === 2 ? 'OB' : '해저드'}`, 'var(--r)') : '',
+      b.xo ? flag(`⚠️ 티샷 외 OB${b.xo > 1 ? ' ×' + b.xo : ''}`, 'var(--p)') : '',
+      b.xh ? flag(`⚠️ 티샷 외 해저드${b.xh > 1 ? ' ×' + b.xh : ''}`, 'var(--p)') : '',
+      b.putt >= 3 ? flag(`🍩 ${b.putt}퍼트`, 'var(--a)') : '',
+    ].filter(Boolean).join('');
     return `<div onclick="holeDetail(${r.id},${b.i})" style="padding:10px 0;border-bottom:.5px solid var(--bd);cursor:pointer">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:30px;height:30px;border-radius:8px;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${b.s}</div>
         <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--t)">${b.i + 1}번 홀 <span style="font-size:12px;color:var(--t2);font-weight:400">· 파${b.par} · <b style="color:var(--r)">${nfs(b.d)}타</b>${b.teeMiss && !b.v.tee ? ` · 티샷 ${b.teeMiss}` : ''}</span></div>
-          <div style="font-size:11.5px;color:var(--t3);margin-top:2px">주원인 <b style="color:${col[b.main]}">${lbl[b.main]}</b> ${nfs(b.v[b.main])}타</div></div>
+          ${flags ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${flags}</div>` : ''}
+          <div style="font-size:11.5px;color:var(--t3);margin-top:3px">주원인 <b style="color:${col[b.main]}">${lbl[b.main]}</b> ${nfs(b.v[b.main])}타</div></div>
         <span style="color:var(--t3);font-size:16px">›</span></div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;padding-left:40px">${chips}</div></div>`;
   }).join('');
