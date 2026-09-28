@@ -16,8 +16,9 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
 // ── app.js 에서 최상위 함수 하나를 이름으로 잘라온다 (중괄호 짝 맞춰서) ──
 function extractFn(name) {
-  const start = SRC.indexOf(`function ${name}(`);
+  let start = SRC.indexOf(`function ${name}(`);
   if (start < 0) throw new Error(`app.js 에 function ${name} 이(가) 없습니다`);
+  if (SRC.slice(start - 6, start) === 'async ') start -= 6;
   let i = SRC.indexOf('{', start), depth = 0;
   for (; i < SRC.length; i++) {
     if (SRC[i] === '{') depth++;
@@ -72,7 +73,7 @@ t('오프라인 수정이 다음 로드에서 옛 값으로 되돌아가지 않�
   const edited = R(1, 85);                       // 오프라인에서 90 → 85 로 고침
   markSaved(edited);
   const server = [R(1, 90)];                     // 서버엔 아직 옛 값(90)
-  const { rounds } = mergeRounds(server, [edited], pendGet());
+  const { rounds } = mergeRounds(server, pendGet());
   assert(rounds.length === 1, `라운드 수가 1이어야 하는데 ${rounds.length}`);
   assert(rounds[0].score === 85, `수정한 85 가 남아야 하는데 ${rounds[0].score} 로 되돌아감`);
 });
@@ -80,7 +81,7 @@ t('오프라인 수정이 다음 로드에서 옛 값으로 되돌아가지 않�
 t('오프라인 삭제한 라운드가 되살아나지 않는다', () => {
   markDeleted(1);
   const server = [R(1, 90), R(2, 88)];           // 서버엔 아직 지운 라운드가 남아있음
-  const { rounds } = mergeRounds(server, [R(2, 88)], pendGet());
+  const { rounds } = mergeRounds(server, pendGet());
   assert(rounds.length === 1, `1건만 남아야 하는데 ${rounds.length}건`);
   assert(sameId(rounds[0].id, 2), '지우지 않은 라운드만 남아야 함');
 });
@@ -88,14 +89,21 @@ t('오프라인 삭제한 라운드가 되살아나지 않는다', () => {
 t('오프라인 신규 라운드가 유실되지 않는다', () => {
   const fresh = R(99, 92);
   markSaved(fresh);
-  const { rounds } = mergeRounds([R(1, 90)], [fresh, R(1, 90)], pendGet());
+  const { rounds } = mergeRounds([R(1, 90)], pendGet());
   assert(rounds.some(r => sameId(r.id, 99)), '오프라인 신규 라운드가 사라짐');
   assert(rounds.some(r => sameId(r.id, 1)), '서버 라운드도 함께 있어야 함');
 });
 
+t('다른 기기에서 지운 라운드는 이 기기의 옛 목록에 있어도 되살아나지 않는다', () => {
+  // 폰에서 9/21 라운드(921)를 지워 서버엔 1번만 남음. PC 는 대기분 없이 새로 불러온다.
+  const { rounds, needSync } = mergeRounds([R(1, 90)], pendGet());
+  assert(rounds.length === 1 && sameId(rounds[0].id, 1), '서버에 없는 라운드가 되살아나면 안 됨');
+  assert(needSync === false, '지운 라운드를 서버에 다시 올리면 안 됨');
+});
+
 t('대기분이 없으면 서버 값을 그대로 따른다 (정상 동기화)', () => {
   const server = [R(1, 90), R(2, 88)];
-  const { rounds, needSync } = mergeRounds(server, [R(1, 90)], pendGet());
+  const { rounds, needSync } = mergeRounds(server, pendGet());
   assert(rounds.length === 2, `서버의 2건이 그대로 와야 하는데 ${rounds.length}`);
   assert(needSync === false, '대기분이 없으면 재동기화가 필요 없어야 함');
 });
@@ -104,7 +112,7 @@ t('서버가 id 를 문자열로 돌려줘도 중복 축적되지 않는다', ()
   const edited = R(1, 85);
   markSaved(edited);
   const server = [{ ...R(1, 90), id: '1' }];      // 문자열 id
-  const { rounds } = mergeRounds(server, [edited], pendGet());
+  const { rounds } = mergeRounds(server, pendGet());
   assert(rounds.length === 1, `중복 없이 1건이어야 하는데 ${rounds.length}건 (id 타입 불일치)`);
   assert(rounds[0].score === 85, '로컬 수정이 반영돼야 함');
 });
@@ -112,7 +120,7 @@ t('서버가 id 를 문자열로 돌려줘도 중복 축적되지 않는다', ()
 t('삭제 후 다시 저장하면 삭제가 취소된다', () => {
   markDeleted(1);
   markSaved(R(1, 77));                            // 같은 id 를 다시 저장
-  const { rounds } = mergeRounds([R(1, 90)], [], pendGet());
+  const { rounds } = mergeRounds([R(1, 90)], pendGet());
   assert(rounds.length === 1 && rounds[0].score === 77, '다시 저장한 값이 살아있어야 함');
 });
 
@@ -127,7 +135,7 @@ t('병합해도 입력값이 하나도 바뀌지 않는다', () => {
     tpArr: [0,0,1,0,0,0,0,0,0, 0,0,0,1,0,0,0,0,0],
   });
   markSaved(mine);
-  const { rounds } = mergeRounds([R(1, 90)], [mine], pendGet());
+  const { rounds } = mergeRounds([R(1, 90)], pendGet());
   const got = rounds[0];
   ['scores', 'puttsArr', 'girArr', 'firArr', 'mulliArr', 'tpArr', 'holePars'].forEach(k => {
     assert(eq(got[k], mine[k]), `${k} 가 바뀌었습니다`);
@@ -167,13 +175,13 @@ t('서버 반영이 확인되면 대기목록이 비워진다', () => {
 console.log('\n[방어] 이상한 입력에도 안 깨지는가');
 
 t('서버 응답에 빈 값·id 없는 항목이 섞여도 걸러낸다', () => {
-  const { rounds } = mergeRounds([null, { score: 5 }, R(1, 90)], [], pendGet());
+  const { rounds } = mergeRounds([null, { score: 5 }, R(1, 90)], pendGet());
   assert(rounds.length === 1 && sameId(rounds[0].id, 1), '쓰레기 항목이 걸러져야 함');
 });
 
 t('대기목록이 깨져 있어도 서버 값으로 정상 동작한다', () => {
   ctx.localStorage.setItem('og_pending', '{잘못된 JSON');
-  const { rounds } = mergeRounds([R(1, 90)], [], pendGet());
+  const { rounds } = mergeRounds([R(1, 90)], pendGet());
   assert(rounds.length === 1, '깨진 대기목록 때문에 기록이 사라지면 안 됨');
 });
 
@@ -183,9 +191,8 @@ t('서버 전송 전에 앱이 꺼져도 입력 중이던 라운드가 복원된
   // 자동저장(stashSC)은 대기목록에만 기록하고, 무거운 전체 캐시 쓰기는 미룬다.
   // 그 사이 앱이 꺼지면 캐시엔 없지만 대기목록엔 있다 → 다음 실행에서 되살아나야 한다.
   const playing = R(1000, 41, { isDraft: true, scores: [4,5,3,6,4,4,5,4,3, 0,0,0,0,0,0,0,0,0] });
-  markSaved(playing);                              // 자동저장이 한 일
-  const cachedRounds = [];                         // 캐시엔 아직 반영 안 됨(앱이 꺼진 시점)
-  const { rounds } = mergeRounds([], cachedRounds, pendGet());
+  markSaved(playing);                              // 자동저장이 한 일(캐시엔 아직 반영 안 됨)
+  const { rounds } = mergeRounds([], pendGet());
   assert(rounds.length === 1, '입력 중이던 라운드가 복원돼야 함');
   assert(eq(rounds[0].scores, playing.scores), '홀별 점수가 그대로 살아야 함');
 });
@@ -193,7 +200,7 @@ t('서버 전송 전에 앱이 꺼져도 입력 중이던 라운드가 복원된
 t('자동저장 뒤 정식 저장하면 임시저장 딱지가 떨어진다', () => {
   markSaved(R(1000, 41, { isDraft: true }));       // 치는 중(자동저장)
   markSaved(R(1000, 82, { isDraft: false }));      // 저장 버튼(정식 저장)
-  const { rounds } = mergeRounds([], [], pendGet());
+  const { rounds } = mergeRounds([], pendGet());
   assert(rounds.length === 1, '같은 라운드가 둘로 늘어나면 안 됨');
   assert(rounds[0].isDraft === false && rounds[0].score === 82, '정식 저장 상태로 남아야 함');
 });
@@ -215,6 +222,7 @@ t('뒤바뀐 라벨(스카이)이 실제 파 구성대로 레이크+오션으로
   assert(changed === true, '복구가 일어나야 함');
   assert(r.courseLbl === '레이크+오션', `레이크+오션 이어야 하는데 "${r.courseLbl}"`);
   assert(eq(r.layoutNames, ['레이크', '오션']), 'layoutNames 도 채워져야 함');
+  assert(pendGet().edits['1'] && pendGet().edits['1'].courseLbl === '레이크+오션', '교정분이 대기목록에 올라가야 서버에 반영됨');
 });
 
 t('복구해도 스코어·퍼팅·GIR·FIR·멀리건·TP·파는 그대로다', () => {
@@ -241,6 +249,7 @@ t('이미 올바른 라벨은 그대로 두고 불필요한 저장을 만들지 
   const r = R(1, 85, { courseId: 'c1', courseLbl: '레이크+오션', layoutNames: ['레이크', '오션'], holePars: [...LAKE, ...OCEAN] });
   ctx.A.rounds = [r]; ctx.A.official = [BERHIL];
   assert(healRoundLabels() === false, '바꿀 게 없으면 false 여야 함(불필요한 서버 저장 방지)');
+  assert(Object.keys(pendGet().edits).length === 0, '바꿀 게 없으면 대기목록도 비어 있어야 함');
 });
 
 t('공식 목록에 없는 골프장의 라운드는 건드리지 않는다', () => {
@@ -249,5 +258,86 @@ t('공식 목록에 없는 골프장의 라운드는 건드리지 않는다', ()
   assert(healRoundLabels() === false, '모르는 코스는 그대로 둬야 함');
 });
 
-console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
-process.exit(fail === 0 ? 0 : 1);
+// ── 두 기기(폰·PC) + 가짜 서버로 실제 저장 흐름(pushRounds)을 돌려본다 ──
+// 서버 saveRounds 는 전체 덮어쓰기라, 기기마다 들고 있는 목록이 달라도 서버가 꼬이지 않아야 한다.
+function makeServer(rounds) {
+  const clone = x => JSON.parse(JSON.stringify(x));
+  const srv = { rounds: clone(rounds), online: true };
+  srv.API = {
+    getRounds: async () => { if (!srv.online) throw new Error('offline'); return { ok: true, rounds: clone(srv.rounds) }; },
+    saveRounds: async rs => { if (!srv.online) throw new Error('offline'); srv.rounds = clone(rs); return { ok: true }; },
+  };
+  return srv;
+}
+function makeDevice(srv) {
+  const dev = { localStorage: makeStore(), console, JSON, Object, Array, String, Promise,
+    A: { rounds: [], official: [], loaded: false }, API: srv.API,
+    callAPI: async f => { try { return await f(); } catch (e) { return { ok: false, __net: true }; } },
+    curPg: () => 'home', renderHome: () => {} };
+  vm.createContext(dev);
+  vm.runInContext(`const PEND_KEY = 'og_pending';\nlet _pushChain = Promise.resolve();\n`
+    + [...NAMES, 'saveRoundsCache', 'pushRounds'].map(extractFn).join('\n'), dev);
+  // loadAll 의 라운드 부분과 같은 흐름: 서버 목록 + 이 기기 대기분 → 필요하면 곧바로 서버 반영
+  dev.open = async () => {
+    const rr = await dev.callAPI(() => srv.API.getRounds());
+    if (!rr.ok) return;
+    const m = dev.mergeRounds(rr.rounds, dev.pendGet());
+    dev.A.rounds = m.rounds; dev.A.loaded = true;
+    if (m.needSync) await dev.pushRounds();
+  };
+  dev.del = async id => { dev.A.rounds = dev.A.rounds.filter(r => !dev.sameId(r.id, id)); dev.markDeleted(id); return dev.pushRounds(); };
+  dev.save = async rd => { dev.markSaved(rd); return dev.pushRounds(); };
+  dev.ids = () => dev.A.rounds.map(r => r.id).sort((a, b) => a - b);
+  return dev;
+}
+const ids = rs => rs.map(r => r.id).sort((a, b) => a - b);
+
+const asyncTests = [
+  ['폰에서 지운 라운드가 PC 를 켰다 끄거나 폰을 다시 켜도 되살아나지 않는다', async () => {
+    const srv = makeServer([R(1, 90), R(921, 95)]);
+    const phone = makeDevice(srv), pc = makeDevice(srv);
+    await phone.open(); await pc.open();               // 둘 다 921 을 들고 있음(PC 캐시에도 있음)
+    await phone.del(921);
+    assert(eq(ids(srv.rounds), [1]), `폰 삭제 후 서버엔 1번만 있어야 하는데 [${ids(srv.rounds)}]`);
+    await pc.open();                                   // PC 새로고침 / 재로그인
+    assert(eq(pc.ids(), [1]), `PC 에도 지워져야 하는데 [${pc.ids()}]`);
+    assert(eq(ids(srv.rounds), [1]), `PC 가 지운 라운드를 서버에 다시 올리면 안 되는데 [${ids(srv.rounds)}]`);
+    await phone.open();                                // 폰 앱 껐다 켜기
+    assert(eq(phone.ids(), [1]), `폰에서 되살아나면 안 되는데 [${phone.ids()}]`);
+  }],
+  ['옛 목록을 들고 있던 PC 가 저장해도, 폰에서 지운 건 되살리지 않고 폰의 새 라운드는 지우지 않는다', async () => {
+    const srv = makeServer([R(1, 90), R(921, 95)]);
+    const phone = makeDevice(srv), pc = makeDevice(srv);
+    await phone.open(); await pc.open();
+    await phone.del(921);
+    await phone.save(R(500, 88));                      // 폰에서 새 라운드
+    await pc.save(R(1, 84));                           // PC 는 옛 목록(1, 921)인 채로 1번을 수정 저장
+    assert(eq(ids(srv.rounds), [1, 500]), `서버는 [1,500] 이어야 하는데 [${ids(srv.rounds)}]`);
+    assert(srv.rounds.find(r => r.id === 1).score === 84, 'PC 의 수정이 반영돼야 함');
+    assert(eq(pc.ids(), [1, 500]), `PC 화면도 서버와 같아야 하는데 [${pc.ids()}]`);
+  }],
+  ['오프라인 삭제는 서버를 건드리지 않고 기다렸다가, 연결되면 반영된다', async () => {
+    const srv = makeServer([R(1, 90), R(921, 95)]);
+    const phone = makeDevice(srv);
+    await phone.open();
+    srv.online = false;
+    const r = await phone.del(921);
+    assert(!r.ok, '오프라인이면 실패로 알려야 함');
+    assert(eq(ids(srv.rounds), [1, 921]), '서버는 그대로여야 함');
+    assert(phone.pendGet().dels.some(d => phone.sameId(d, 921)), '삭제 대기표가 남아야 함');
+    srv.online = true;
+    await phone.open();                                // 다시 연결되어 앱을 열면 자동 반영
+    assert(eq(ids(srv.rounds), [1]), `연결 후 서버에서도 지워져야 하는데 [${ids(srv.rounds)}]`);
+    assert(phone.pendGet().dels.length === 0, '반영 후 대기표는 비워져야 함');
+  }],
+];
+
+(async () => {
+  console.log('\n[두 기기] 폰·PC 가 같은 기록을 보는가');
+  for (const [name, fn] of asyncTests) {
+    try { await fn(); console.log(`  ✅ ${name}`); pass++; }
+    catch (e) { console.log(`  ❌ ${name}\n     → ${e.message}`); fail++; }
+  }
+  console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
+  process.exit(fail === 0 ? 0 : 1);
+})();

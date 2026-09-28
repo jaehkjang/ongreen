@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.58.0';
+const APP_VERSION = 'v12.58.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -160,7 +160,9 @@ async function changePin() {
 // ════════════════════════════════════════
 // 데이터 불러오기
 // ════════════════════════════════════════
+let _lastSync = 0;   // 마지막으로 서버에서 기록을 받아온 시각(앱 복귀 시 재동기화 간격 조절용)
 async function loadAll(silent) {
+  _lastSync = Date.now();
   if (!silent) load('데이터 불러오는 중...');  // 캐시로 이미 화면이 떠 있으면(silent) 로딩창 없이 조용히 갱신
   const [rr, cr] = await Promise.all([ callAPI(() => API.getRounds()), callAPI(() => API.getCourses()) ]);
 
@@ -181,7 +183,7 @@ async function loadAll(silent) {
   //    절대 빈 배열로 덮지 않는다. (서버 saveRounds_ 가 clearContents 라, 이후 빈 배열 저장 시 유실되므로)
   const roundsOk = rr && rr.ok && Array.isArray(rr.rounds);
   if (roundsOk) {
-    const m = mergeRounds(rr.rounds, A.rounds, pendGet());
+    const m = mergeRounds(rr.rounds, pendGet());
     A.rounds = m.rounds;
     A.loaded = true;
     if (m.needSync) pushRounds();   // 미동기화분 즉시 반영 (성공하면 pushRounds 가 대기목록을 정리)
@@ -342,27 +344,22 @@ function markDeleted(id) {                      // 삭제한 라운드를 대기
   const p = pendGet(); delete p.edits[id]; if (!p.dels.some(x => sameId(x, id))) p.dels.push(id); pendSet(p);
 }
 
-// ── 서버 목록 + 로컬 목록 + 미동기화 대기분 합치기 (순수 함수 — tests/data-safety.test.js 가 검증) ──
-// 예전엔 "서버에 없는 id만 보존"이라, 서버에 이미 있는 라운드의 오프라인 수정은 옛 값으로 되돌아가고
-// 오프라인 삭제는 되살아났다. 이제 대기분(edits/dels)을 서버 값 위에 다시 얹어 그 유실을 막는다.
-function mergeRounds(server, local, p) {
+// ── 서버 목록 + 미동기화 대기분 합치기 (순수 함수 — tests/data-safety.test.js 가 검증) ──
+// 서버가 원본이고, 이 기기의 대기분(edits/dels)만 그 위에 다시 얹는다.
+// 서버에도 대기목록에도 없는 라운드는 "다른 기기에서 지운 것"이라 되살리지 않는다.
+// (예전엔 옛 캐시에만 있는 라운드를 보존해 서버에 다시 올려서, 폰에서 지운 기록이 PC 캐시 때문에 되살아났다.)
+function mergeRounds(server, p) {
   const pend = { edits: (p && p.edits) || {}, dels: (p && p.dels) || [] };
   const srv = (server || []).filter(s => s && s.id != null);
-  // ① 로컬에서 지운 라운드는 서버 목록에서도 뺀다 (동기화 실패로 되살아나지 않게)
+  // ① 이 기기에서 지운 라운드는 서버 목록에서도 뺀다 (동기화 실패로 되살아나지 않게)
   const merged = srv.filter(s => !pend.dels.some(d => sameId(d, s.id)));
-  // ② 로컬 수정/신규분을 서버 값 위에 다시 얹는다 (오프라인 수정이 옛 값으로 안 되돌아가게)
+  // ② 이 기기의 수정/신규분을 서버 값 위에 다시 얹는다 (오프라인 수정이 옛 값으로 안 되돌아가게)
   Object.keys(pend.edits).forEach(k => {
     const er = pend.edits[k]; if (!er || er.id == null) return;
     const i = merged.findIndex(m => sameId(m.id, er.id));
     if (i >= 0) merged[i] = er; else merged.unshift(er);
   });
-  // ③ 서버에도 대기목록에도 없는 로컬 전용 라운드(옛 캐시 등)도 보존
-  const localOnly = (local || []).filter(lr => lr && lr.id != null
-    && !srv.some(s => sameId(s.id, lr.id))
-    && !pend.dels.some(d => sameId(d, lr.id))
-    && !Object.keys(pend.edits).some(k => sameId(k, lr.id)));
-  return { rounds: [...localOnly, ...merged],
-           needSync: !!(localOnly.length || Object.keys(pend.edits).length || pend.dels.length) };
+  return { rounds: merged, needSync: !!(Object.keys(pend.edits).length || pend.dels.length) };
 }
 
 // 서버 반영이 확인된 대기분만 지운다. (그 사이 새로 생긴 변경까지 지우면 그 변경이 유실되므로,
@@ -376,15 +373,28 @@ function pendResolve(snap) {
   pendSet(p);
 }
 
+function saveRoundsCache() {
+  try { const c = JSON.parse(localStorage.getItem('og_cache') || 'null') || {}; c.rounds = A.rounds; localStorage.setItem('og_cache', JSON.stringify(c)); } catch (e) {}
+}
 let _pushChain = Promise.resolve();   // 저장 요청 직렬화용
 async function pushRounds() {
-  try { const c = JSON.parse(localStorage.getItem('og_cache') || 'null') || {}; c.rounds = A.rounds; localStorage.setItem('og_cache', JSON.stringify(c)); } catch (e) {}
+  saveRoundsCache();
   if (!A.loaded) return { ok: false, __unsafe: true };   // 아직 서버 원본 미확보 → 덮어쓰기 금지(로컬엔 보존됨)
   // 저장 요청을 한 줄로 세운다. 서버 saveRounds_ 는 전체 덮어쓰기라, 동시에 두 요청이 날아가면
-  // 늦게 도착한 "옛 스냅샷"이 최신 저장을 되돌릴 수 있다. 각 요청은 자기 차례에 A.rounds 를 다시 읽는다.
-  const send = () => {
+  // 늦게 도착한 "옛 스냅샷"이 최신 저장을 되돌릴 수 있다.
+  // 또 이 기기가 들고 있던 목록을 그대로 올리면, 그새 다른 기기(폰↔PC)에서 지운 라운드는 되살아나고
+  // 새로 만든 라운드는 지워진다. 그래서 보내기 직전에 서버 최신 목록을 받아 이 기기의 대기분만 얹어 보낸다.
+  const send = async () => {
+    const rr = await callAPI(() => API.getRounds());
+    if (!(rr && rr.ok && Array.isArray(rr.rounds))) return (rr && rr.__net) ? rr : { ok: false };   // 서버 목록을 못 받으면 덮어쓰지 않음(대기분은 남아 다음에 재시도)
     const snap = pendGet();                              // 이번 요청이 실어 보내는 대기분
-    return callAPI(() => API.saveRounds(A.rounds)).then(r => { if (r && r.ok) pendResolve(snap); return r; });
+    const m = mergeRounds(rr.rounds, snap);
+    A.rounds = m.rounds; saveRoundsCache();
+    if (curPg() === 'home') renderHome();                // 다른 기기에서 바뀐 내용이 홈에 바로 보이게
+    if (!m.needSync) return { ok: true };                // 보낼 변경이 없으면 서버를 건드리지 않음
+    const r = await callAPI(() => API.saveRounds(m.rounds));
+    if (r && r.ok) pendResolve(snap);
+    return r;
   };
   const run = _pushChain.then(send, send);
   _pushChain = run.then(() => {}, () => {});   // 실패해도 다음 요청이 막히지 않게
@@ -481,6 +491,7 @@ function healRoundLabels() {
     const lbl = `${n0}+${n1}`;
     if (r.courseLbl !== lbl || !r.layoutNames || r.layoutNames[0] !== n0 || r.layoutNames[1] !== n1) {
       r.courseLbl = lbl; r.layoutNames = [n0, n1]; changed = true;   // 라벨/이름만 교정
+      markSaved(r);   // 저장은 "서버 최신 + 대기분"을 올리므로, 대기목록에 넣어야 교정이 서버에 반영된다
     }
   });
   return changed;
@@ -2581,7 +2592,7 @@ async function checkVersion() {
     try {
       const cache = JSON.parse(localStorage.getItem('og_cache') || 'null');  // 지난번 받아둔 데이터로 즉시 화면 표시
       if (cache && cache.rounds) {
-        A.rounds = cache.rounds;
+        A.rounds = mergeRounds(cache.rounds, pendGet()).rounds;   // 캐시 위에 아직 못 올린 변경도 얹어서 표시
         A.official = (cache.official && cache.official.length) ? cache.official : [...DEF];
         setUserLabels(); renderHome(); showPg('home'); goHome();
         shownFromCache = true;
@@ -2595,5 +2606,11 @@ async function checkVersion() {
 
 // 앱을 가리거나(홈 화면으로 나가기·화면 잠금) 닫을 때, 대기 중인 자동저장을 곧바로 서버로 보낸다.
 // (기기 저장은 입력 즉시 끝나 있으므로 여기서 실패해도 기록은 남고 다음 실행에 동기화된다)
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAutoSave(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAutoSave(); else syncOnReturn(); });
 window.addEventListener('pagehide', flushAutoSave);
+// 다른 기기(폰↔PC)에서 바꾼 기록이 바로 보이도록, 앱·탭·창으로 돌아올 때 서버에서 다시 받아온다(15초에 한 번까지).
+function syncOnReturn() {
+  if (!A.u || !API.token || Date.now() - _lastSync < 15000) return;
+  loadAll(true);
+}
+window.addEventListener('focus', syncOnReturn);
