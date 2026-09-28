@@ -39,10 +39,10 @@ function makeStore() {
 }
 
 // 검사 대상 함수들을 실제 소스에서 뽑아 샌드박스에 올린다
-const NAMES = ['sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendResolve', 'mergeRounds', 'healRoundLabels'];
+const NAMES = ['sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendDrop', 'seenGet', 'seenSet', 'pendResolve', 'mergeRounds', 'healRoundLabels'];
 const ctx = { localStorage: makeStore(), console, JSON, Object, Array, String, A: { rounds: [], official: [] } };
 vm.createContext(ctx);
-vm.runInContext(`const PEND_KEY = 'og_pending';\n` + NAMES.map(extractFn).join('\n'), ctx);
+vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\n` + NAMES.map(extractFn).join('\n'), ctx);
 const { pendGet, pendClear, markSaved, markDeleted, pendResolve, mergeRounds, sameId, healRoundLabels } = ctx;
 
 // ── 아주 작은 테스트 러너 ──
@@ -99,6 +99,20 @@ t('다른 기기에서 지운 라운드는 이 기기의 옛 목록에 있어도
   const { rounds, needSync } = mergeRounds([R(1, 90)], pendGet());
   assert(rounds.length === 1 && sameId(rounds[0].id, 1), '서버에 없는 라운드가 되살아나면 안 됨');
   assert(needSync === false, '지운 라운드를 서버에 다시 올리면 안 됨');
+});
+
+t('서버에서 본 적 있는 라운드의 옛 수정본은, 다른 기기에서 지워졌으면 되살리지 않는다', () => {
+  markSaved(R(921, 93));                         // 이 기기의 옛 수정 대기분
+  const { rounds, stale, needSync } = mergeRounds([R(1, 90)], pendGet(), [1, 921]);   // 921 은 전에 서버에 있었음
+  assert(rounds.length === 1 && sameId(rounds[0].id, 1), '다른 기기에서 지운 921 이 되살아나면 안 됨');
+  assert(stale.length === 1 && sameId(stale[0], 921), '버릴 대기표로 921 을 알려줘야 함');
+  assert(needSync === false, '버릴 대기분 때문에 서버에 올릴 필요는 없음');
+});
+
+t('서버에 한 번도 안 올라간 새 라운드는 그대로 살린다', () => {
+  markSaved(R(700, 89));
+  const { rounds, stale } = mergeRounds([R(1, 90)], pendGet(), [1]);
+  assert(rounds.some(r => sameId(r.id, 700)) && stale.length === 0, '새 라운드가 사라지면 안 됨');
 });
 
 t('대기분이 없으면 서버 값을 그대로 따른다 (정상 동기화)', () => {
@@ -271,19 +285,16 @@ function makeServer(rounds) {
 }
 function makeDevice(srv) {
   const dev = { localStorage: makeStore(), console, JSON, Object, Array, String, Promise,
-    A: { rounds: [], official: [], loaded: false }, API: srv.API,
+    A: { rounds: [], official: [], sc: { eid: null } }, API: srv.API,
     callAPI: async f => { try { return await f(); } catch (e) { return { ok: false, __net: true }; } },
     curPg: () => 'home', renderHome: () => {} };
   vm.createContext(dev);
-  vm.runInContext(`const PEND_KEY = 'og_pending';\nlet _pushChain = Promise.resolve();\n`
-    + [...NAMES, 'saveRoundsCache', 'pushRounds'].map(extractFn).join('\n'), dev);
-  // loadAll 의 라운드 부분과 같은 흐름: 서버 목록 + 이 기기 대기분 → 필요하면 곧바로 서버 반영
+  vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\nlet _syncChain = Promise.resolve();\n`
+    + [...NAMES, 'saveRoundsCache', 'applyServerRounds', 'queueSync', 'fetchRounds', 'pushRounds'].map(extractFn).join('\n'), dev);
+  // loadAll·실시간 동기화의 라운드 부분과 같은 흐름: 서버 목록 + 이 기기 대기분 → 필요하면 곧바로 서버 반영
   dev.open = async () => {
-    const rr = await dev.callAPI(() => srv.API.getRounds());
-    if (!rr.ok) return;
-    const m = dev.mergeRounds(rr.rounds, dev.pendGet());
-    dev.A.rounds = m.rounds; dev.A.loaded = true;
-    if (m.needSync) await dev.pushRounds();
+    const f = await dev.fetchRounds();
+    if (f.needSync) await dev.pushRounds();
   };
   dev.del = async id => { dev.A.rounds = dev.A.rounds.filter(r => !dev.sameId(r.id, id)); dev.markDeleted(id); return dev.pushRounds(); };
   dev.save = async rd => { dev.markSaved(rd); return dev.pushRounds(); };
@@ -329,6 +340,39 @@ const asyncTests = [
     await phone.open();                                // 다시 연결되어 앱을 열면 자동 반영
     assert(eq(ids(srv.rounds), [1]), `연결 후 서버에서도 지워져야 하는데 [${ids(srv.rounds)}]`);
     assert(phone.pendGet().dels.length === 0, '반영 후 대기표는 비워져야 함');
+  }],
+  ['PC 에 옛 수정 대기분이 남아 있어도, 폰에서 지운 라운드는 되살아나지 않는다', async () => {
+    const srv = makeServer([R(1, 90), R(921, 95)]);
+    const phone = makeDevice(srv), pc = makeDevice(srv);
+    await phone.open(); await pc.open();
+    srv.online = false;
+    await pc.save(R(921, 93));                         // PC 가 오프라인에서 921 을 고쳐 둠(서버엔 못 올라감)
+    srv.online = true;
+    await phone.del(921);                              // 그 사이 폰에서 921 삭제
+    await pc.open();                                   // PC 가 다시 연결됨
+    assert(eq(ids(srv.rounds), [1]), `서버에 921 이 되살아나면 안 되는데 [${ids(srv.rounds)}]`);
+    assert(eq(pc.ids(), [1]), `PC 화면에서도 사라져야 하는데 [${pc.ids()}]`);
+    assert(!pc.pendGet().edits['921'], 'PC 의 옛 수정 대기표는 버려져야 함');
+  }],
+  ['오프라인에서 새로 만든 라운드는 연결되면 서버에 올라간다(다른 기기 삭제로 오인하지 않음)', async () => {
+    const srv = makeServer([R(1, 90)]);
+    const pc = makeDevice(srv);
+    await pc.open();
+    srv.online = false;
+    await pc.save(R(700, 89));
+    srv.online = true;
+    await pc.open();
+    assert(eq(ids(srv.rounds), [1, 700]), `새 라운드가 서버에 있어야 하는데 [${ids(srv.rounds)}]`);
+  }],
+  ['목록 받기와 저장이 겹쳐도 방금 저장한 라운드가 화면에서 사라지지 않는다', async () => {
+    const srv = makeServer([R(1, 90)]);
+    const pc = makeDevice(srv);
+    await pc.open();
+    const saving = pc.save(R(800, 87));                // 저장 요청이 날아가는 중에
+    const fetching = pc.fetchRounds();                 // 실시간 동기화가 목록을 받음
+    await Promise.all([saving, fetching]);
+    assert(eq(pc.ids(), [1, 800]), `방금 저장한 800 이 보여야 하는데 [${pc.ids()}]`);
+    assert(eq(ids(srv.rounds), [1, 800]), '서버에도 있어야 함');
   }],
 ];
 

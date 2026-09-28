@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 실행: `index.html`을 브라우저로 열면 됩니다. 번들러나 dev 서버가 필요 없습니다. (`fetch` CORS 때문에 `file://`보다는 간단한 정적 서버 권장: 예 `python3 -m http.server`)
 - 백엔드: 별도 배포된 Google Apps Script 웹앱(`/exec` URL)과 통신합니다. 백엔드 소스는 이 폴더에 없고, `Apps_Script.gs`로 따로 관리되며 Apps Script 편집기에서 배포합니다.
 - 빌드/린트 명령 없음.
-- **테스트**: `node tests/data-safety.test.js` — 라운드 데이터 안전장치(서버·로컬 병합, 미동기화 대기목록, 코스 라벨 복구) 자동 테스트. 설치할 것 없는 순수 Node 스크립트이며, `app.js` 소스에서 해당 함수를 직접 뽑아 검사합니다. **`mergeRounds`·`pendGet`/`markSaved`/`markDeleted`/`pendResolve`·`pushRounds`·`healRoundLabels` 를 고칠 때는 반드시 이 테스트를 돌리세요.** (두 기기+가짜 서버로 "한 기기에서 지운 라운드가 다른 기기 때문에 되살아나지 않는지"도 검사합니다.)
+- **테스트**: `node tests/data-safety.test.js` — 라운드 데이터 안전장치(서버·로컬 병합, 미동기화 대기목록, 코스 라벨 복구) 자동 테스트. 설치할 것 없는 순수 Node 스크립트이며, `app.js` 소스에서 해당 함수를 직접 뽑아 검사합니다. **`mergeRounds`·`pendGet`/`markSaved`/`markDeleted`/`pendResolve`·`applyServerRounds`/`fetchRounds`/`pushRounds`·`healRoundLabels` 를 고칠 때는 반드시 이 테스트를 돌리세요.** (두 기기+가짜 서버로 "한 기기에서 지운 라운드가 다른 기기 때문에 되살아나지 않는지"도 검사합니다.)
   - `node tests/blowup.test.js` — 블로업 원인 분해(`blowupPartsOf`)의 원인별 타수 합 = 홀 오버파 검사. `blowupPartsOf` 를 고칠 때 돌리세요.
 
 ## 아키텍처 (방 비유)
@@ -32,7 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 상태 관리
 
 - 전역 객체 **`A`**(app.js 상단)가 앱 전체 상태를 메모리에 보관합니다: 사용자(`u`, `isAdm`), `rounds`, `official`(코스 목록), 그리고 현재 입력 중인 스코어카드 `A.sc`(홀별 `scores`/`putts`/`gir`/`fir` 등 18칸 배열).
-- `localStorage`는 **세션/인증(`og_s` 키)만** 백업합니다. 라운드 데이터는 서버가 원본입니다.
+- `localStorage`는 세션/인증(`og_s`), 화면 캐시(`og_cache`), 미동기화 대기목록(`og_pending`), 서버에서 본 라운드 id(`og_seen`)를 보관합니다. 라운드 데이터는 **서버가 원본**이고, 기기에는 대기분만 서버 목록 위에 얹습니다. 서버에도 대기목록에도 없는 라운드를 캐시에서 되살려 서버에 올리면 안 됩니다(다른 기기에서 지운 기록이 되살아나는 사고, v12.59.0).
 - 라운드 기록을 들고 있으면 통계는 **서버 호출 없이 클라이언트에서 즉시 계산**됩니다(`renderStat`).
 
 ### 화면 전환
