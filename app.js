@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.59.0';
+const APP_VERSION = 'v12.60.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -802,6 +802,9 @@ async function setHolePar(i, p) {
   const li = i < 9 ? 0 : 1, hi = i < 9 ? i : i - 9;
   const before = masterParsFor(c);
   c.layouts[li].holes[hi] = p;
+  if (c.layouts[0].name === c.layouts[1].name) {   // 같은 코스 2번 반복 — 같은 홀이라 다른 바퀴 파도 함께 바꾼다
+    const oi = i < 9 ? i + 9 : i - 9; c.layouts[1 - li].holes[hi] = p; recalcHole(oi);
+  }
   recalcHole(i); renderSC(); autoSaveSC();
   const res = await persistParsToOfficial(c, { [c.layouts[li].name]: c.layouts[li].holes.slice() });
   if (res.ok) {
@@ -1047,7 +1050,7 @@ function renderCourses() {
     <div class="cc">
       <div class="cc-info" onclick="selCourse('${c.id || c.name}')">
         <div class="cc-name">${c.name}</div>
-        <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0)}</div>
+        <div class="cc-sub">${c.addr || ''} · ${(c.layouts || []).map(l => l.name).join('/')} · 파${(c.layouts || []).flatMap(l => l.holes || []).reduce((a, b) => a + b, 0) * ((c.layouts || []).length === 1 ? 2 : 1)}${(c.layouts || []).length === 1 ? ' (9홀×2)' : ''}</div>
       </div>
       <button onclick="openEditCourse('${c.id || c.name}')" title="코스 수정" style="flex-shrink:0;background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:8px;color:var(--t);font-size:13px;font-weight:600;cursor:pointer;padding:6px 12px;white-space:nowrap">수정</button>
       <span class="cbg off">✅ 공식</span>
@@ -1064,7 +1067,7 @@ function renderCourses() {
 
 function selCourse(key) {
   const c = A.allCourses().find(x => x.id === key || x.name === key); if (!c) return;
-  A.sc.course = c; A.sc.li = [0, 1];
+  A.sc.course = c; A.sc.li = [0, c.layouts.length > 1 ? 1 : 0];
   A.sc.holeEdits = {};          // 코스 새로 고를 때 홀파 수정값 초기화 (레이아웃이름 → 9홀 파 배열)
   openHoleMdl(c);
 }
@@ -1072,10 +1075,10 @@ function selCourse(key) {
 // 코스 선택(조합) 모달을 열 때 홀파 수정값을 항상 초기화한다.
 // selCourse 말고 "새 골프장 등록 직후"(submitCourseForm)에서도 열리는데, 그 경로엔 초기화가 없어서
 // 직전 코스에서 만진 holeEdits 가 남아 있다가 이름이 같은 나인이 있으면 새 코스에 잘못 반영될 수 있었다.
-function openHoleMdl(c) { A.sc.holeEdits = {}; Q('m-hl-t').textContent = c.name; renderHolePkr(c, 0, 1); om('m-hl'); }
+function openHoleMdl(c) { A.sc.holeEdits = {}; Q('m-hl-t').textContent = c.name; renderHolePkr(c, 0, c.layouts.length > 1 ? 1 : 0); om('m-hl'); }
 function renderHolePkr(c, l0, l1) {
   A.sc.li = [l0, l1];
-  const combos = []; for (let a = 0; a < c.layouts.length; a++) for (let b = 0; b < c.layouts.length; b++) if (a !== b) combos.push([a, b]);
+  const combos = []; for (let a = 0; a < c.layouts.length; a++) for (let b = 0; b < c.layouts.length; b++) if (a !== b || c.layouts.length === 1) combos.push([a, b]);
   Q('hl-pkr').innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--t2);margin-bottom:8px">코스 조합</div><div style="display:flex;flex-wrap:wrap;gap:8px">${combos.map(([a, b]) => `<button class="lb ${a === l0 && b === l1 ? 'on' : ''}" onclick="renderHolePkr(A.sc.course,${a},${b})">${c.layouts[a].name}+${c.layouts[b].name}</button>`).join('')}</div>`;
   // 코스(레이아웃)별 수정값이 있으면 마스터 대신 그걸 표시 → 조합 바꿔도 수정 유지
   const ed = A.sc.holeEdits || {};
@@ -1097,6 +1100,7 @@ function adjHP(i, d) {
   if (!A.sc.holeEdits) A.sc.holeEdits = {};
   if (!A.sc.holeEdits[ly.name]) A.sc.holeEdits[ly.name] = ly.holes.slice();
   A.sc.holeEdits[ly.name][li] = v;
+  if (l0 === l1) { const o = Q('hp-' + (i < 9 ? i + 9 : i - 9)); if (o) o.textContent = v; }   // 같은 코스 2번 반복 — 같은 홀이니 다른 바퀴도 함께
 }
 function startScoringFromPicker() {
   // picker에서 조정한 홀별 파를 이번 라운드에 적용하고, 공식맵(모두 공유)에도 반영한다.
@@ -1141,7 +1145,8 @@ function openEditHoles() {
   Q('eh-grid').innerHTML = _ehTmp.map((p, i) => `<div style="text-align:center;background:var(--bg3);border-radius:10px;padding:8px 4px"><div style="font-size:10px;color:var(--t2);margin-bottom:4px">${nm[i]} ${(i % 9) + 1}H</div><div style="display:flex;align-items:center;justify-content:center;gap:4px"><button onclick="adjEH(${i},-1)" style="width:26px;height:26px;border-radius:50%;border:1.5px solid #6a6a6e;background:var(--bg3);color:#fff;cursor:pointer;font-size:14px">-</button><span id="eh-${i}" style="width:20px;text-align:center;font-size:16px;font-weight:700;color:var(--t)">${p}</span><button onclick="adjEH(${i},1)" style="width:26px;height:26px;border-radius:50%;border:1.5px solid #6a6a6e;background:var(--bg3);color:#fff;cursor:pointer;font-size:14px">+</button></div></div>`).join('');
   om('m-edh');
 }
-function adjEH(i, d) { const el = Q('eh-' + i); if (!el) return; let v = parseInt(el.textContent) + d; if (v < 3) v = 3; if (v > 5) v = 5; el.textContent = v; }
+function adjEH(i, d) { const el = Q('eh-' + i); if (!el) return; let v = parseInt(el.textContent) + d; if (v < 3) v = 3; if (v > 5) v = 5; el.textContent = v;
+  const c = A.sc.course; if (c && c.layouts[0].name === c.layouts[1].name) { const o = Q('eh-' + (i < 9 ? i + 9 : i - 9)); if (o) o.textContent = v; } }   // 같은 코스 2번 반복이면 다른 바퀴도 함께
 function masterParsFor(course) {                 // 마스터 공식 파 18개 (이름 매칭). 없으면 null
   const m = A.official.find(x => x.id === course.id || x.name === course.name); if (!m) return null;
   const f = (m.layouts.find(l => l.name === course.layouts[0].name) || {}).holes;
@@ -1230,7 +1235,7 @@ function addSec(name, ex) {
   if (ex && ex.length === 18) d.querySelector('.cs-hn').value = '18';
 }
 function delSec(uid) {
-  if (document.querySelectorAll('.css').length <= 2) { toast('최소 2개 코스 필요'); return; }
+  if (document.querySelectorAll('.css').length <= 1) { toast('최소 1개 코스 필요 (9홀 골프장은 코스 1개만 등록)'); return; }
   if (!confirm('이 코스를 삭제할까요?')) return;
   Q('cs-s-' + uid)?.remove();
 }
@@ -1257,7 +1262,7 @@ async function submitCourseForm() {
     const el = Q('cs-n'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
     return;
   }
-  const secs = document.querySelectorAll('.css'); if (secs.length < 2) { toast('⚠️ 코스(전반·후반)를 2개 이상 만들어주세요'); return; }
+  const secs = document.querySelectorAll('.css'); if (secs.length < 1) { toast('⚠️ 코스를 1개 이상 만들어주세요 (9홀 골프장은 1개)'); return; }
   const emptySec = [...secs].find(s => !s.querySelector('.cs-name').value.trim());
   if (emptySec) {
     toast('⚠️ 각 코스의 이름을 입력하세요 (예: 레이크)');
