@@ -39,7 +39,7 @@ function makeStore() {
 }
 
 // 검사 대상 함수들을 실제 소스에서 뽑아 샌드박스에 올린다
-const NAMES = ['sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendDrop', 'seenGet', 'seenSet', 'pendResolve', 'mergeRounds', 'healRoundLabels'];
+const NAMES = ['findCourse', 'sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendDrop', 'seenGet', 'seenSet', 'pendResolve', 'mergeRounds', 'healRoundLabels'];
 const ctx = { localStorage: makeStore(), console, JSON, Object, Array, String, A: { rounds: [], official: [] } };
 vm.createContext(ctx);
 vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\n` + NAMES.map(extractFn).join('\n'), ctx);
