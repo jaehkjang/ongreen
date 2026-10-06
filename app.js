@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.60.4';
+const APP_VERSION = 'v12.60.5';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -45,7 +45,7 @@ const NOTICES = [
 ];
 function nf(x) { return Number.isInteger(+x) ? String(+x) : (+x).toFixed(1); }
 function nfs(x) { const v = +x; return (v > 0 ? '+' : '') + nf(v); }   // 파 대비처럼 부호가 중요한 값 (+0.4 / -0.2)
-let _sid = 0, _delId = null, _editOldName = '';
+let _sid = 0, _delId = null, _editOldName = '', _editBase = null;   // _editBase: 수정 폼을 열 때 보던 코스(병합 기준)
 let _trendMetric = 0;   // 발전 추세 그래프에서 보고 있는 지표(TREND_METRICS 인덱스)
 
 // ── 작은 도우미 ──
@@ -487,9 +487,18 @@ async function saveRound() {
   }
 }
 
+// ── 골프장 찾기: 고유번호(id)로 먼저, 없거나 못 찾으면 이름으로 ──
+// 예전 `x.id === id || x.name === name` 은 찾는 쪽·목록 쪽 모두 id 가 없으면 undefined === undefined 가 참이 되어
+// "id 없는 첫 번째 골프장"과 엉뚱하게 짝지어졌다(그 골프장의 파가 바뀔 수 있음). id 는 값이 있을 때만 비교한다.
+function findCourse(list, id, name) {
+  const arr = list || [];
+  if (id) { const byId = arr.find(x => x && x.id && String(x.id) === String(id)); if (byId) return byId; }
+  return (name && arr.find(x => x && x.name === name)) || null;
+}
+
 function roundPars(r) {                          // 박제된 파 우선, 없으면 옛 라운드 호환용으로 마스터 참조
   if (r.holePars && r.holePars.length === 18) return r.holePars;
-  const c = A.allCourses().find(x => x.id === r.courseId || x.name === r.courseName);
+  const c = findCourse(A.allCourses(), r.courseId, r.courseName);
   if (!c) return Array(18).fill(4);
   // 이름으로 레이아웃을 찾고(마스터 순서가 바뀌어도 안전), 없으면 옛 방식(인덱스)로 폴백
   const nm = (r.layoutNames && r.layoutNames.length === 2) ? r.layoutNames : (r.courseLbl && r.courseLbl.includes('+') ? r.courseLbl.split('+') : null);
@@ -511,7 +520,7 @@ function healRoundLabels() {
   const eqNine = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === 9 && b.length === 9 && a.every((v, i) => v === b[i]);
   (A.rounds || []).forEach(r => {
     if (!r || !r.holePars || r.holePars.length !== 18) return;
-    const master = A.official.find(x => x.id === r.courseId || x.name === r.courseName);
+    const master = findCourse(A.official, r.courseId, r.courseName);
     if (!master || !(master.layouts || []).length) return;
     const uniq = nine => { const m = master.layouts.filter(l => eqNine(l.holes, nine)); return m.length === 1 ? m[0].name : null; };
     const n0 = uniq(r.holePars.slice(0, 9)), n1 = uniq(r.holePars.slice(9, 18));
@@ -607,7 +616,7 @@ function openDet(id) {
 function resumeDraft(id) { openSC(id, false); }
 function openSC(id, ro) {
   const r = A.rounds.find(x => x.id === id); if (!r) return;
-  const master = A.allCourses().find(x => x.id === r.courseId) || A.official[0];
+  const master = findCourse(A.allCourses(), r.courseId, r.courseName) || A.official[0];
   // 레이아웃 이름은 저장된 실제 이름(layoutNames) → courseLbl 분해 → (구버전) 마스터 인덱스 순으로 복원.
   // 예전엔 layoutIdx(클론 기준 [0,1])로 마스터를 역참조해, 마스터 나인 순서와 다르면 코스가 뒤바뀌었음.
   let n0, n1;
@@ -805,12 +814,13 @@ async function setHolePar(i, p) {
   const c = A.sc.course; if (!c || c.layouts[i < 9 ? 0 : 1].holes[i < 9 ? i : i - 9] === p) return;
   const li = i < 9 ? 0 : 1, hi = i < 9 ? i : i - 9;
   const before = masterParsFor(c);
+  const bases = { [c.layouts[li].name]: c.layouts[li].holes.slice() };   // 고치기 전 값 — 공식맵엔 이 홀만 반영
   c.layouts[li].holes[hi] = p;
   if (c.layouts[0].name === c.layouts[1].name) {   // 같은 코스 2번 반복 — 같은 홀이라 다른 바퀴 파도 함께 바꾼다
     const oi = i < 9 ? i + 9 : i - 9; c.layouts[1 - li].holes[hi] = p; recalcHole(oi);
   }
   recalcHole(i); renderSC(); autoSaveSC();
-  const res = await persistParsToOfficial(c, { [c.layouts[li].name]: c.layouts[li].holes.slice() });
+  const res = await persistParsToOfficial(c, { [c.layouts[li].name]: c.layouts[li].holes.slice() }, bases);
   if (res.ok) {
     toast('✅ 공식 코스 파가 모두에게 반영됐어요');
     if (!A.isAdm && before && before[i] !== p) {
@@ -1132,7 +1142,11 @@ function startScoringFromPicker() {
   cm('m-hl'); renderSC(); showPg('sc');
 
   // 공식맵(모두 공유) 반영은 백그라운드로 — 스코어카드 진입을 막지 않음. 마스터와 다를 때만 저장.
-  persistParsToOfficial(src, edits).then(res => {
+  // 기준값 = 골프장을 고를 때 보이던 원래 파(src 는 마스터 객체 그대로, 피커 수정은 holeEdits 에만 있음).
+  // 안 만진 나인은 기준과 같아 저장되지 않으므로, 이 기기 목록이 낡았어도 남의 수정을 되돌리지 않는다.
+  const bases = {};
+  (src.layouts || []).forEach(l => { if (!bases[l.name]) bases[l.name] = (l.holes || []).slice(0, 9); });
+  persistParsToOfficial(src, edits, bases).then(res => {
     if (res.ok) toast('✅ 공식 코스 파가 모두에게 반영됐어요');
     else if (res.ok === false) toast('⚠️ 공유 저장 실패 — 이 라운드엔 적용됨 (인터넷 확인)');
   });
@@ -1152,39 +1166,84 @@ function openEditHoles() {
 function adjEH(i, d) { const el = Q('eh-' + i); if (!el) return; let v = parseInt(el.textContent) + d; if (v < 3) v = 3; if (v > 5) v = 5; el.textContent = v;
   const c = A.sc.course; if (c && c.layouts[0].name === c.layouts[1].name) { const o = Q('eh-' + (i < 9 ? i + 9 : i - 9)); if (o) o.textContent = v; } }   // 같은 코스 2번 반복이면 다른 바퀴도 함께
 function masterParsFor(course) {                 // 마스터 공식 파 18개 (이름 매칭). 없으면 null
-  const m = A.official.find(x => x.id === course.id || x.name === course.name); if (!m) return null;
+  const m = findCourse(A.official, course.id, course.name); if (!m) return null;
   const f = (m.layouts.find(l => l.name === course.layouts[0].name) || {}).holes;
   const s = (m.layouts.find(l => l.name === course.layouts[1].name) || {}).holes;
   if (!f || !s) return null;
   return [...f, ...s];
 }
 
-// ── 홀파 수정 → 공식맵(마스터)에 병합 저장 → 모두 공유 ──
-// 핵심: A.sc.course 는 선택한 2개 레이아웃만 가진 "클론"이라 그대로 보내면
-//       나머지 나인이 삭제된다. 반드시 마스터 "전체 코스"를 찾아 해당 레이아웃의
-//       holes 만 이름 매칭으로 갈아끼운 뒤 저장한다. (best-effort: 실패해도 라운드는 진행)
-// edits: { 레이아웃이름: [9홀 파], ... }
-// 반환: { ok:true } 저장됨 / { ok:false } 서버실패 / { unchanged } 마스터와 동일 / { skipped } 공식맵에 없음
-async function persistParsToOfficial(course, edits) {
-  const mi = A.official.findIndex(x => x.id === course.id || x.name === course.name);
-  if (mi < 0) return { skipped: true };                       // 공식맵에 없는 코스 → 건너뜀
-  const master = A.official[mi];
-  const newLayouts = master.layouts.map(l => ({ ...l, holes: (l.holes || []).slice() }));
-  let changed = false;
-  Object.keys(edits || {}).forEach(name => {
-    const np = edits[name]; if (!np || np.length !== 9) return;
-    const ly = newLayouts.find(l => l.name === name); if (!ly) return;   // 이름으로 해당 나인만 갱신
-    if (ly.holes.length !== 9 || ly.holes.some((p, i) => p !== np[i])) { ly.holes = np.slice(); changed = true; }
-  });
-  if (!changed) return { unchanged: true };                   // 마스터와 같으면 저장 안 함(불필요한 덮어쓰기 방지)
-  const updated = { ...master, layouts: newLayouts };
-  const r = await callAPI(() => API.saveCourse(updated, true, master.name));   // 전체 코스를 수정 저장
-  if (!r.ok) return { ok: false, err: r };
-  A.official[mi] = updated;                                   // 로컬 공식맵 즉시 갱신
-  try {                                                       // 콜드 스타트용 캐시도 갱신
+// ── 공식맵(마스터) 저장 공통 도우미 ──
+// 앱은 켤 때만 코스 목록을 받으므로, 켜 둔 사이 다른 사람이 고친 내용이 이 기기엔 없다.
+// 그 낡은 목록으로 "코스 전체"를 저장하면 남의 수정을 덮어쓴다. 그래서 저장 직전엔 항상 최신 목록을 다시 받고,
+// 그 위에 "이번에 사용자가 실제로 바꾼 부분"만 얹어서 저장한다.
+function saveOfficialCache() {                   // 콜드 스타트용 캐시의 코스 목록만 갱신
+  try {
     const cache = JSON.parse(localStorage.getItem('og_cache') || 'null') || {};
     cache.official = A.official; localStorage.setItem('og_cache', JSON.stringify(cache));
   } catch (e) {}
+}
+async function refreshOfficial() {               // 서버 최신 코스 목록으로 교체. 성공 true / 실패 false(기존 목록 유지)
+  const r = await callAPI(() => API.getCourses());
+  if (!r || !Array.isArray(r.courses) || !r.courses.length) return false;   // 실패·빈 응답으로 목록을 비우지 않음
+  A.official = r.courses.map(c => ({ ...c, status: 'official' }));
+  saveOfficialCache();
+  if (curPg() === 'course') renderCourses();     // 보고 있는 골프장 목록도 최신으로
+  if (A.isAdm && _admOffLoaded) renderAdmOfficial();
+  return true;
+}
+// 이번 동작에서 바뀐 홀만 추린다. edits/bases: { 레이아웃이름: [9홀 파] } (bases = 사용자가 고치기 전에 보던 값)
+// 반환: { 레이아웃이름: { np: [9홀 파], idx: [바뀐 홀 번호...] } }  — 기준값이 없으면 9홀 전체를 바뀐 것으로 본다.
+function parDiffs(edits, bases) {
+  const out = {};
+  Object.keys(edits || {}).forEach(name => {
+    const np = edits[name]; if (!Array.isArray(np) || np.length !== 9) return;
+    const b = bases && bases[name];
+    const idx = (Array.isArray(b) && b.length >= 9) ? np.map((p, i) => i).filter(i => np[i] !== b[i]) : np.map((p, i) => i);
+    if (idx.length) out[name] = { np: np.slice(), idx };
+  });
+  return out;
+}
+// 최신 마스터에 바뀐 홀만 얹는다(다른 홀·다른 나인은 최신 값 그대로). 반환 { layouts, changed }
+function applyParDiffs(master, diffs) {
+  const layouts = (master.layouts || []).map(l => ({ ...l, holes: (l.holes || []).slice() }));
+  let changed = false;
+  Object.keys(diffs || {}).forEach(name => {
+    const ly = layouts.find(l => l.name === name); if (!ly) return;   // 그사이 없어진 나인은 건너뜀
+    const { np, idx } = diffs[name];
+    if (ly.holes.length < 9) { ly.holes = np.slice(); changed = true; return; }   // 홀 정보가 깨진 나인은 통째로
+    idx.forEach(i => { if (ly.holes[i] !== np[i]) { ly.holes[i] = np[i]; changed = true; } });
+  });
+  return { layouts, changed };
+}
+
+// ── 홀파 수정 → 공식맵(마스터)에 병합 저장 → 모두 공유 ──
+// 핵심: A.sc.course 는 선택한 2개 레이아웃만 가진 "클론"이라 그대로 보내면
+//       나머지 나인이 삭제된다. 반드시 마스터 "전체 코스"를 찾아 해당 홀만 갈아끼운 뒤 저장한다.
+//       또 저장 직전에 서버 최신 목록을 다시 받아, 사용자가 이번에 바꾼 홀만 얹는다(남의 수정 보존).
+//       (best-effort: 실패해도 라운드는 진행)
+// edits: { 레이아웃이름: [9홀 파] }  bases: { 레이아웃이름: [고치기 전 9홀 파] }
+// 반환: { ok:true } 저장됨 / { ok:false } 서버실패 / { unchanged } 바뀐 것 없음 / { skipped } 공식맵에 없음
+let _parSaveQ = Promise.resolve();               // 연달아 고쳐도 한 번에 하나씩 저장(앞 저장을 뒤 저장이 덮지 않게)
+function persistParsToOfficial(course, edits, bases) {
+  const job = _parSaveQ.then(() => persistParsNow(course, edits, bases));
+  _parSaveQ = job.catch(() => {});
+  return job.catch(() => ({ ok: false }));
+}
+async function persistParsNow(course, edits, bases) {
+  const diffs = parDiffs(edits, bases);
+  if (!Object.keys(diffs).length) return { unchanged: true };   // 사용자가 바꾼 홀이 없음 → 저장 안 함
+  if (!(await refreshOfficial())) return { ok: false };          // 최신 목록을 못 받으면 낡은 값으로 덮지 않고 저장 포기
+  const master = findCourse(A.official, course.id, course.name);
+  if (!master) return { skipped: true };                         // 공식맵에 없는(또는 그사이 삭제된) 코스 → 건너뜀
+  const { layouts, changed } = applyParDiffs(master, diffs);
+  if (!changed) return { unchanged: true };                      // 이미 같은 값 → 불필요한 덮어쓰기 방지
+  const updated = { ...master, layouts };
+  const r = await callAPI(() => API.saveCourse(updated, true, master.name));   // 전체 코스를 수정 저장
+  if (!r || !r.ok) return { ok: false, err: r };
+  const mi = A.official.indexOf(master);
+  if (mi >= 0) A.official[mi] = updated;                         // 로컬 공식맵 즉시 갱신
+  saveOfficialCache();
   return { ok: true };
 }
 
@@ -1192,6 +1251,8 @@ async function applyEditHoles() {
   const newPars = Array.from({ length: 18 }, (_, i) => parseInt(Q('eh-' + i).textContent));
   const c = A.sc.course;
   const before = masterParsFor(c);          // 변경 전 공식 파 (감사 로그 diff 기준 — 저장 전에 떠둔다)
+  // 고치기 전 이 라운드의 파 — 공식맵엔 이것과 달라진 홀만 반영한다(같은 나인 2바퀴면 이름이 같아 한 칸으로 합쳐짐)
+  const bases = { [c.layouts[0].name]: c.layouts[0].holes.slice(), [c.layouts[1].name]: c.layouts[1].holes.slice() };
   // ① 이 라운드 클론에 즉시 반영 (입력 화면은 곧바로 갱신)
   c.layouts[0].holes = newPars.slice(0, 9);
   c.layouts[1].holes = newPars.slice(9, 18);
@@ -1199,7 +1260,7 @@ async function applyEditHoles() {
 
   // ② 공식맵(모두 공유)에도 반영 — best-effort. 실패해도 이 라운드 입력은 계속 가능.
   const edits = { [c.layouts[0].name]: newPars.slice(0, 9), [c.layouts[1].name]: newPars.slice(9, 18) };
-  const res = await persistParsToOfficial(c, edits);
+  const res = await persistParsToOfficial(c, edits, bases);
   if (res.ok) toast('✅ 공식 코스 파가 모두에게 반영됐어요');
   else if (res.ok === false) toast('⚠️ 이 라운드엔 적용됐지만 공유 저장 실패 (인터넷 확인)');
   else toast('✅ 이 라운드의 홀 파가 수정됐어요');               // unchanged / skipped
@@ -1245,17 +1306,46 @@ function delSec(uid) {
 }
 
 function openAddCourse() {
-  _sid = 0; _editOldName = ''; Q('cs-secs').innerHTML = ''; Q('cs-n').value = ''; Q('cs-a').value = '';
+  _sid = 0; _editOldName = ''; _editBase = null; Q('cs-secs').innerHTML = ''; Q('cs-n').value = ''; Q('cs-a').value = '';
   Q('cs-eid').value = '';
   Q('m-cs-t').textContent = '새 골프장 등록'; Q('m-cs-btn').textContent = '등록 후 스코어카드 시작';
   addSec('전반'); addSec('후반'); om('m-cs');
 }
 function openEditCourse(key) {
   const c = A.allCourses().find(x => x.id === key || x.name === key); if (!c) { toast('코스 없음'); return; }
+  _editBase = JSON.parse(JSON.stringify({ id: c.id, name: c.name, addr: c.addr || '', layouts: c.layouts || [] }));   // 저장 때 "무엇을 바꿨는지" 비교용
   _sid = 0; _editOldName = c.name; Q('cs-secs').innerHTML = ''; Q('cs-n').value = c.name || ''; Q('cs-a').value = c.addr || '';
   Q('cs-eid').value = c.id || c.name;
   Q('m-cs-t').textContent = '골프장 수정'; Q('m-cs-btn').textContent = '✅ 수정 저장';
   (c.layouts || []).forEach(l => addSec(l.name, l.holes)); om('m-cs');
+}
+
+// ── 수정 폼 병합: 서버 최신본(fresh) 위에, 폼을 열 때(base)와 비교해 "사용자가 바꾼 것"만 얹는다 ──
+// · 이름·주소: 바꿨으면 폼 값, 안 바꿨으면 최신 값
+// · 나인(이름으로 짝지음): 홀마다 바꿨으면 폼 값, 안 바꿨으면 최신 값. 새로 만들었거나 홀 수를 바꾼 나인은 폼 그대로
+// · 폼에서 지운 나인은 지움. 안 만졌는데 그사이 다른 사람이 지운 나인은 되살리지 않음
+// · 그사이 다른 사람이 새로 추가한 나인은 지우지 않고 뒤에 붙임
+function mergeCourseForm(base, fresh, form) {
+  if (!base || !fresh) return form;
+  const same = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
+  const bl = n => (base.layouts || []).find(l => l.name === n);
+  const fl = n => (fresh.layouts || []).find(l => l.name === n);
+  let layouts = form.layouts.map(l => {
+    const b = bl(l.name), f = fl(l.name);
+    if (b && !f) return same(l.holes, b.holes) ? null : l;     // 남이 지운 나인: 안 만졌으면 그대로 지운 채로, 고쳤으면 내 값 유지
+    if (!b || !f || b.holes.length !== l.holes.length || f.holes.length !== l.holes.length) return l;
+    return { ...l, holes: l.holes.map((p, i) => (p === b.holes[i] ? f.holes[i] : p)) };
+  }).filter(Boolean);
+  (fresh.layouts || []).forEach(f => {
+    if (!bl(f.name) && !layouts.some(l => l.name === f.name)) layouts.push({ ...f, holes: (f.holes || []).slice() });
+  });
+  if (!layouts.length) layouts = form.layouts;                  // 안전장치: 나인이 하나도 안 남으면 폼 그대로
+  return {
+    ...form,
+    name: form.name === base.name ? fresh.name : form.name,
+    addr: form.addr === (base.addr || '') ? (fresh.addr || '') : form.addr,
+    layouts,
+  };
 }
 
 async function submitCourseForm() {
@@ -1273,14 +1363,6 @@ async function submitCourseForm() {
     const el = emptySec.querySelector('.cs-name'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
     return;
   }
-  // 골프장 이름 중복 금지 — 코스를 이름으로 찾는 곳(파 저장·삭제)이 있어서, 이름이 겹치면
-  // 엉뚱한 코스의 파가 덮어써지거나 삭제될 수 있다. (수정 중 자기 자신은 제외)
-  const dupCourse = A.official.find(x => x.name === name && !(eid && (x.id === eid || x.name === _editOldName)));
-  if (dupCourse) {
-    toast('⚠️ 같은 이름의 골프장이 이미 있어요');
-    const el = Q('cs-n'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
-    return;
-  }
   const layouts = [];
   secs.forEach(s => { const uid = s.id.replace('cs-s-', ''); const n = s.querySelector('.cs-name').value.trim() || '코스'; const hn = s.querySelector('.cs-hn').value || '9'; layouts.push({ name: n, holes: gp(uid, hn) }); });
   // 한 골프장 안에서 코스(나인) 이름 중복 금지 — 파 저장이 이름으로 나인을 찾으므로,
@@ -1288,22 +1370,48 @@ async function submitCourseForm() {
   const dupLy = layouts.map(l => l.name).find((n, i, arr) => arr.indexOf(n) !== i);
   if (dupLy) { toast(`⚠️ 코스 이름이 겹쳐요: "${dupLy}" — 서로 다르게 지어주세요`); return; }
 
-  const c = { id: eid || ('c' + Date.now()), name, addr: Q('cs-a').value.trim(), layouts, status: 'official' };
-  const btn = Q('m-cs-btn'); btn.disabled = true; btn.textContent = '저장 중...';
-  const r = await callAPI(() => API.saveCourse(c, isEdit, _editOldName));
-  btn.disabled = false; btn.textContent = isEdit ? '✅ 수정 저장' : '등록 후 스코어카드 시작';
+  const btn = Q('m-cs-btn'); const btnLabel = isEdit ? '✅ 수정 저장' : '등록 후 스코어카드 시작';
+  if (btn.disabled) return;                         // 저장 중 두 번 눌림 방지
+  btn.disabled = true; btn.textContent = '저장 중...';
+  const done = () => { btn.disabled = false; btn.textContent = btnLabel; };
+
+  // 저장 직전에 서버 최신 목록을 다시 받는다 — 앱을 켜 둔 사이 다른 사람이 고친 내용을 덮어쓰지 않기 위해.
+  // 못 받으면 낡은 목록으로 저장하지 않고 멈춘다(폼 내용은 그대로 남아 있어 다시 누르면 됨).
+  if (!(await refreshOfficial())) { done(); toast('❌ 최신 골프장 정보를 못 받았어요 — 인터넷 확인 후 다시 저장해주세요'); return; }
+
+  let fresh = null;                                 // 수정 중인 골프장의 서버 최신본
+  if (isEdit) {
+    fresh = findCourse(A.official, _editBase && _editBase.id, (_editBase && _editBase.name) || _editOldName);
+    if (!fresh) { done(); toast('⚠️ 그사이 이 골프장이 삭제됐어요 — 새로 등록해주세요'); return; }
+  }
+  // 골프장 이름 중복 금지(최신 목록 기준) — 코스를 이름으로 찾는 곳(파 저장·삭제)이 있어서, 이름이 겹치면
+  // 엉뚱한 코스의 파가 덮어써지거나 삭제될 수 있다. (수정 중 자기 자신은 제외)
+  const dupCourse = A.official.find(x => x.name === name && x !== fresh);
+  if (dupCourse) {
+    done(); toast('⚠️ 같은 이름의 골프장이 이미 있어요');
+    const el = Q('cs-n'); if (el) { el.focus(); el.style.borderColor = 'var(--r)'; el.addEventListener('input', () => el.style.borderColor = '', { once: true }); }
+    return;
+  }
+
+  const form = { id: (fresh && fresh.id) || eid || ('c' + Date.now()), name, addr: Q('cs-a').value.trim(), layouts, status: 'official' };
+  // 수정이면: 최신본 위에 "이번에 폼에서 실제로 바꾼 것"만 얹는다(안 만진 홀·나인은 남이 고친 최신 값 유지)
+  const c = isEdit ? mergeCourseForm(_editBase, fresh, form) : form;
+  const oldName = isEdit ? fresh.name : '';         // 서버가 찾을 이름 = 지금 서버에 있는 이름(그사이 개명됐어도 정확)
+  const r = await callAPI(() => API.saveCourse(c, isEdit, oldName));
+  done();
 
   if (!r.ok) { const e = explainError(r); toast('❌ ' + e.msg); return; }
 
   // 로컬 목록 갱신
   if (isEdit) {
-    // id 우선 매칭 — 이름으로만 찾으면(예전 `x.name === name` 조건) 개명 시 동명의 "다른 코스"를 덮어쓸 수 있었다.
-    const i = A.official.findIndex(x => (c.id && x.id === c.id) || x.name === _editOldName);
+    const i = A.official.indexOf(fresh);            // 방금 받은 최신본 자리를 정확히 교체(동명·id 없는 코스 혼동 없음)
     if (i >= 0) A.official[i] = { ...c }; else A.official.unshift({ ...c });
-    toast('✅ 수정됐어요: ' + name); cm('m-cs'); renderCourses();
+    saveOfficialCache();
+    toast('✅ 수정됐어요: ' + c.name); cm('m-cs'); renderCourses();
     if (A.isAdm && _admOffLoaded) renderAdmOfficial();   // 마지막으로 보던 목록(검색어·펼침 상태) 유지
   } else {
     A.official.unshift({ ...c });
+    saveOfficialCache();
     renderCourses();   // 목록을 다시 그려야 함 — 안 그리면 등록된 골프장이 목록에 안 보이는데 이름 중복 검사엔 걸린다
     if (A.isAdm && _admOffLoaded) renderAdmOfficial();
     cm('m-cs'); toast('✅ 등록됐어요: ' + name);
