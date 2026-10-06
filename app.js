@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.60.3';
+const APP_VERSION = 'v12.60.4';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -654,11 +654,15 @@ function enableEdit() {
 function askDel(id) { _delId = id; om('m-del'); }
 async function confirmDel() {
   cm('m-del'); if (!_delId) return;
-  A.rounds = A.rounds.filter(r => !sameId(r.id, _delId));
-  markDeleted(_delId);                             // 동기화 실패해도 다음 로드에서 안 되살아나게 기록
-  const r = await pushRounds();
+  const id = _delId; _delId = null;
+  clearTimeout(_asTimer); _asTimer = null;         // 대기 중인 자동저장이 삭제 뒤에 라운드를 되살리지 않게 취소
+  A.rounds = A.rounds.filter(r => !sameId(r.id, id));
+  markDeleted(id);                                 // 동기화 실패해도 다음 로드에서 안 되살아나게 기록
+  saveRoundsCache();
+  A.sc.course = null; A.sc.eid = null; A.sc.ro = false;
+  goHome();                                        // 서버 응답을 기다리지 않고 바로 홈으로(삭제가 즉시 보이게)
+  const r = await pushRounds();                    // 서버 반영은 뒤에서 진행
   toast(r.ok ? '삭제됐어요' : (r.__unsafe ? '기기에서 삭제됨 · 연결 후 동기화' : '⚠️ 삭제됐지만 동기화 실패'));
-  _delId = null; A.sc.eid = null; A.sc.ro = false; goHome();
 }
 
 function scBack() {
