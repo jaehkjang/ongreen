@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.60.5';
+const APP_VERSION = 'v12.60.6';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1045,11 +1045,13 @@ function initCourseSwipe() {
     wrap = null;
   });
 }
+// 골프장 검색 — 영문 대소문자 구별 없이 이름·주소에서 찾는다(예: 'skyhill' → 'SkyHill')
+function courseMatch(c, q) { const k = String(q).toLowerCase(); return String(c.name || '').toLowerCase().includes(k) || String(c.addr || '').toLowerCase().includes(k); }
 function renderCourses() {
   initCourseSwipe(); _ccOpen = null;          // 슬라이드-삭제 핸들러 준비 + 열린 카드 상태 초기화
   const q = (Q('cs-q')?.value || '').trim();
   const all = A.allCourses();
-  const list = q ? all.filter(c => c.name.includes(q) || (c.addr || '').includes(q)) : all;
+  const list = q ? all.filter(c => courseMatch(c, q)) : all;
   Q('cs-lbl').textContent = q ? '검색 결과' : '골프장 목록';
   if (!list.length) { Q('cs-list').innerHTML = `<div class="empty" style="padding:30px 0"><div>🔍</div><small>없음</small></div>`; return; }
   // 최근 이용 골프장 순서(라운드 기록 최신순) → 그 외 가나다순
@@ -2340,7 +2342,7 @@ function renderAdmOffList() {
     listEl.innerHTML = `<div style="color:var(--t3);font-size:12px;padding:8px 2px">위 "골프장 목록 불러오기"를 누르면 목록이 나와요</div>`; return;
   }
   let list;
-  if (q) list = all.filter(c => c.name.includes(q) || (c.addr || '').includes(q));
+  if (q) list = all.filter(c => courseMatch(c, q));
   else if (_admOffOpen) list = all;
   else { listEl.innerHTML = `<div style="color:var(--t3);font-size:12px;padding:8px 2px">검색하거나 "전체 ${all.length}"를 눌러 펼치세요</div>`; return; }
   // 결과 총 개수 표시 — 검색 시 "검색 결과 N개", 전체 펼침 시 "전체 N개"
