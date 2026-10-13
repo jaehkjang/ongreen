@@ -8,7 +8,7 @@ const API = {
   // ▼▼▼ 배포 후 받은 웹앱 URL을 여기에 붙여넣으세요 ▼▼▼
   URL: 'https://script.google.com/macros/s/AKfycbwmJhJ3nLOGgIVzXnoOe1YcnXfAq-gHQ44xyouczhr20l1P_k2uDOTRDqZRJWOjzjoXiw/exec',
 
-  VERSION: 'v12-2026.06.21',   // ← Apps_Script.gs 의 VERSION 과 반드시 동일
+  VERSION: 'v13-2026.10.13',   // ← backend/Apps_Script.gs 의 VERSION 과 반드시 동일
 
   // 로그인 후 받은 손목밴드(토큰)를 보관 — 비밀번호는 저장하지 않음
   u: '', token: '',
@@ -51,7 +51,8 @@ const API = {
 
   // ── 인증 필요 ──
   getRounds()       { return this._get('getRounds'); },
-  saveRounds(rounds){ return this._post({ action: 'saveRounds', rounds }); },
+  // dels: 이 기기에서 사용자가 직접 지운 라운드 id. 서버(v13+)는 보낸 목록에 없다고 지우지 않고, dels 로 콕 집은 것만 '삭제 표시'한다.
+  saveRounds(rounds, dels){ return this._post({ action: 'saveRounds', rounds, dels: dels || [] }); },
   saveCourse(course, isEdit, oldName) { return this._post({ action: 'saveCourse', course, isEdit: !!isEdit, oldName: oldName || '' }); },
   reportParChange(course, detail) { return this._post({ action: 'reportPar', course, detail }); },
   updatePin(pin)    { return this._post({ action: 'updatePin', pin }); },

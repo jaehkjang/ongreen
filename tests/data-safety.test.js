@@ -39,11 +39,11 @@ function makeStore() {
 }
 
 // 검사 대상 함수들을 실제 소스에서 뽑아 샌드박스에 올린다
-const NAMES = ['findCourse', 'sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendDrop', 'seenGet', 'seenSet', 'pendResolve', 'mergeRounds', 'healRoundLabels'];
+const NAMES = ['findCourse', 'sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendDrop', 'seenGet', 'seenSet', 'pendResolve', 'mergeRounds', 'lostRounds', 'healRoundLabels'];
 const ctx = { localStorage: makeStore(), console, JSON, Object, Array, String, A: { rounds: [], official: [] } };
 vm.createContext(ctx);
 vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\n` + NAMES.map(extractFn).join('\n'), ctx);
-const { pendGet, pendClear, markSaved, markDeleted, pendResolve, mergeRounds, sameId, healRoundLabels } = ctx;
+const { pendGet, pendClear, markSaved, markDeleted, pendResolve, mergeRounds, lostRounds, sameId, healRoundLabels } = ctx;
 
 // ── 아주 작은 테스트 러너 ──
 let pass = 0, fail = 0;
@@ -219,6 +219,31 @@ t('자동저장 뒤 정식 저장하면 임시저장 딱지가 떨어진다', ()
   assert(rounds[0].isDraft === false && rounds[0].score === 82, '정식 저장 상태로 남아야 함');
 });
 
+console.log('\n[유실 방지] 서버가 기록을 잃어버린 것처럼 보이면 이 기기가 지키는가 (10/13 사고)');
+
+t('옛 서버가 목록을 텅 빈 채로 주면, 이 기기에 있던 라운드를 지킨다', () => {
+  const local = [R(1, 90), R(2, 88), R(3, 95)];
+  const got = lostRounds([], [1, 2, 3], pendGet(), undefined, local);
+  assert(eq(got.map(r => r.id), [1, 2, 3]), `3건 모두 지켜야 하는데 [${got.map(r => r.id)}]`);
+});
+
+t('옛 서버에서 한 건만 빠진 건 다른 기기 삭제로 본다(되살리지 않음)', () => {
+  const got = lostRounds([R(1, 90), R(2, 88)], [1, 2, 921], pendGet(), undefined, [R(1, 90), R(2, 88), R(921, 95)]);
+  assert(got.length === 0, '한 건 삭제는 지키지 않음(다른 기기에서 지운 것)');
+});
+
+t('새 서버(삭제 표시 알려줌)는 삭제 표시된 건 놓아주고, 설명 없이 사라진 건 한 건이라도 지킨다', () => {
+  const local = [R(1, 90), R(2, 88), R(3, 95)];
+  assert(lostRounds([R(1, 90), R(3, 95)], [1, 2, 3], pendGet(), [2], local).length === 0, '서버가 지운 2번은 놓아줌');
+  const got = lostRounds([R(1, 90), R(3, 95)], [1, 2, 3], pendGet(), [], local);
+  assert(eq(got.map(r => r.id), [2]), '설명 없이 사라진 2번은 지킴');
+});
+
+t('이 기기에서 지운 라운드는 지키지 않는다', () => {
+  markDeleted(2);
+  assert(lostRounds([], [1, 2], pendGet(), undefined, [R(1, 90)]).every(r => r.id !== 2), '내가 지운 건 그대로 지워져야 함');
+});
+
 console.log('\n[라벨복구] 뒤바뀐 코스 조합이 스코어를 건드리지 않고 고쳐지는가');
 
 // 베르힐영종: 나인마다 파 구성이 다름 (레이크/오션/스카이)
@@ -274,12 +299,29 @@ t('공식 목록에 없는 골프장의 라운드는 건드리지 않는다', ()
 
 // ── 두 기기(폰·PC) + 가짜 서버로 실제 저장 흐름(pushRounds)을 돌려본다 ──
 // 서버 saveRounds 는 전체 덮어쓰기라, 기기마다 들고 있는 목록이 달라도 서버가 꼬이지 않아야 한다.
-function makeServer(rounds) {
+let makeServer = function (rounds) {
   const clone = x => JSON.parse(JSON.stringify(x));
-  const srv = { rounds: clone(rounds), online: true };
+  const srv = { rounds: clone(rounds), online: true, blankOnce: false };
   srv.API = {
-    getRounds: async () => { if (!srv.online) throw new Error('offline'); return { ok: true, rounds: clone(srv.rounds) }; },
+    getRounds: async () => {
+      if (!srv.online) throw new Error('offline');
+      if (srv.blankOnce) { srv.blankOnce = false; return { ok: true, rounds: [] }; }   // 옛 서버: 다른 사람 저장 도중(시트 비운 순간) 조회
+      return { ok: true, rounds: clone(srv.rounds) };
+    },
     saveRounds: async rs => { if (!srv.online) throw new Error('offline'); srv.rounds = clone(rs); return { ok: true }; },
+  };
+  return srv;
+}
+// 새 서버(backend/Apps_Script.gs v13)를 가짜 시트 위에서 그대로 돌린다. srv.rounds 는 매번 서버에서 다시 읽은 값.
+function makeRealServer(rounds) {
+  const { makeBackend } = require('./gas-mock');
+  const b = makeBackend(); b.api.login('테스터');
+  const srv = { online: true, backend: b };
+  if (rounds.length) b.api.post('테스터', { action: 'saveRounds', rounds });
+  Object.defineProperty(srv, 'rounds', { get: () => b.api.get('테스터', 'getRounds').rounds });
+  srv.API = {
+    getRounds: async () => { if (!srv.online) throw new Error('offline'); return b.api.get('테스터', 'getRounds'); },
+    saveRounds: async (rs, dels) => { if (!srv.online) throw new Error('offline'); b.tick(); return b.api.post('테스터', { action: 'saveRounds', rounds: rs, dels }); },
   };
   return srv;
 }
@@ -291,6 +333,7 @@ function makeDevice(srv) {
   vm.createContext(dev);
   vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\nlet _syncChain = Promise.resolve();\n`
     + [...NAMES, 'saveRoundsCache', 'applyServerRounds', 'queueSync', 'fetchRounds', 'pushRounds'].map(extractFn).join('\n'), dev);
+  dev.A.sc = { eid: null };
   // loadAll·실시간 동기화의 라운드 부분과 같은 흐름: 서버 목록 + 이 기기 대기분 → 필요하면 곧바로 서버 반영
   dev.open = async () => {
     const f = await dev.fetchRounds();
@@ -302,6 +345,19 @@ function makeDevice(srv) {
   return dev;
 }
 const ids = rs => rs.map(r => r.id).sort((a, b) => a - b);
+
+// 10/13 사고 재현(옛 서버) — 저장 직전 조회가 "0개"를 받아도 지난 기록을 덮지 않아야 한다
+const accidentTests = [
+  ['옛 서버가 저장 도중 잠깐 0개를 돌려줘도, 오늘 라운드 저장이 지난 기록을 덮지 않는다', async () => {
+    const srv = makeServer([R(1, 90), R(2, 88), R(3, 95)]);
+    const phone = makeDevice(srv);
+    await phone.open();
+    srv.blankOnce = true;                              // 동반자 저장과 겹친 순간
+    await phone.save(R(4, 98));                        // 오늘 라운드 저장
+    assert(eq(ids(srv.rounds), [1, 2, 3, 4]), `지난 기록이 지켜져야 하는데 서버 [${ids(srv.rounds)}]`);
+    assert(eq(phone.ids(), [1, 2, 3, 4]), `화면에도 남아야 하는데 [${phone.ids()}]`);
+  }],
+];
 
 const asyncTests = [
   ['폰에서 지운 라운드가 PC 를 켰다 끄거나 폰을 다시 켜도 되살아나지 않는다', async () => {
@@ -377,11 +433,20 @@ const asyncTests = [
 ];
 
 (async () => {
-  console.log('\n[두 기기] 폰·PC 가 같은 기록을 보는가');
-  for (const [name, fn] of asyncTests) {
-    try { await fn(); console.log(`  ✅ ${name}`); pass++; }
-    catch (e) { console.log(`  ❌ ${name}\n     → ${e.message}`); fail++; }
-  }
+  const run = async (list, tag) => {
+    for (const [name, fn] of list) {
+      try { await fn(); console.log(`  ✅ ${tag}${name}`); pass++; }
+      catch (e) { console.log(`  ❌ ${tag}${name}\n     → ${e.message}`); fail++; }
+    }
+  };
+  console.log('\n[두 기기] 폰·PC 가 같은 기록을 보는가 — 옛 서버(전체 덮어쓰기)');
+  await run(asyncTests, '');
+  await run(accidentTests, '');
+  console.log('\n[두 기기] 같은 흐름을 새 서버(backend/Apps_Script.gs v13)로');
+  const realMakeServer = makeServer;
+  makeServer = makeRealServer;
+  await run(asyncTests, '[v13] ');
+  makeServer = realMakeServer;
   console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
   process.exit(fail === 0 ? 0 : 1);
 })();

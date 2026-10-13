@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.61.0';
+const APP_VERSION = 'v12.62.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -312,7 +312,8 @@ function buildRound(isDraft) {
     missArr: [...(A.sc.miss || Array(18).fill(''))],   // 러프/벙커 구분(v12.37+) — 페널티 계산엔 안 쓰고 미스 유형 집계에만 씀
     xhzArr: [...(A.sc.xhz || Array(18).fill(0))], xobArr: [...(A.sc.xob || Array(18).fill(0))],   // 티샷 외(어프로치 등) 해저드·OB 횟수(v12.42+)
     apArr: [...(A.sc.ap || Array(18).fill(''))],   // 레귤러온 실패 홀의 어프로치 붙인 거리(AP_OPTS 키, v12.56+ 발자국 기준 · v12.51~55 는 AP_LEGACY 의 m 기준 키)
-    holePars: [...h]   // ★ 박제: 그날 홀별 파를 라운드에 함께 저장 → 나중에 골프장이 바뀌어도 안 흔들림
+    holePars: [...h],   // ★ 박제: 그날 홀별 파를 라운드에 함께 저장 → 나중에 골프장이 바뀌어도 안 흔들림
+    updatedAt: Date.now()   // 마지막으로 고친 시각 — 서버(v13+)는 더 오래된 수정본이 새 수정본을 덮지 못하게 이 값을 비교한다
   };
 }
 
@@ -356,10 +357,11 @@ function seenSet(rounds) { try { localStorage.setItem(SEEN_KEY, JSON.stringify((
 //  · seen(이 기기가 서버에서 본 적 있는 id)에 있는데 지금 서버에 없는 라운드의 수정 대기분도
 //    "다른 기기에서 지운 것"이라 되살리지 않고 stale 로 돌려준다(호출한 쪽이 대기목록에서 버림).
 //    서버에 한 번도 안 올라간 신규 라운드는 seen 에 없으므로 그대로 살린다.
-function mergeRounds(server, p, seen) {
+//  · srvDel(서버 v13+ 가 알려주는 "삭제 표시된 id")에 있는 라운드의 수정 대기분도 같은 이유로 stale.
+function mergeRounds(server, p, seen, srvDel) {
   const pend = { edits: (p && p.edits) || {}, dels: (p && p.dels) || [] };
   const srv = (server || []).filter(s => s && s.id != null);
-  const known = seen || [];
+  const known = (seen || []).concat(srvDel || []);
   // ① 이 기기에서 지운 라운드는 서버 목록에서도 뺀다 (동기화 실패로 되살아나지 않게)
   const merged = srv.filter(s => !pend.dels.some(d => sameId(d, s.id)));
   // ② 이 기기의 수정/신규분을 서버 값 위에 다시 얹는다 (오프라인 수정이 옛 값으로 안 되돌아가게)
@@ -391,14 +393,34 @@ function saveRoundsCache() {
 }
 // 서버에서 받은 목록을 이 기기 대기분과 합쳐 A.rounds 로 삼는다. 지금 이 기기에서 입력 중인 라운드는
 // 다른 기기의 삭제보다 우선한다(치는 도중에 기록이 사라지지 않게).
-function applyServerRounds(server) {
-  const seen = seenGet().filter(id => !sameId(id, A.sc.eid));
-  const m = mergeRounds(server, pendGet(), seen);
+function applyServerRounds(server, srvDel) {
+  const notMine = id => !sameId(id, A.sc.eid);
+  const del = Array.isArray(srvDel) ? srvDel.filter(notMine) : null;
+  const seen0 = seenGet().filter(notMine);
+  // 서버 목록에서 라운드가 "설명 없이" 사라졌으면 다른 기기 삭제로 믿지 않고, 이 기기에 있던 값을 지켜 서버에 다시 올린다.
+  const rescue = lostRounds(server, seen0, pendGet(), del, A.rounds);
+  rescue.forEach(r => markSaved(r));               // 대기목록에 올려 두면 앱이 꺼져도 남고, 다음 저장 때 서버로 다시 올라간다
+  const seen = seen0.filter(id => !rescue.some(r => sameId(r.id, id)));
+  const m = mergeRounds(server, pendGet(), seen, del);
   pendDrop(m.stale);
   seenSet(server);
   const changed = JSON.stringify(A.rounds) !== JSON.stringify(m.rounds);
   A.rounds = m.rounds; saveRoundsCache();
-  return { needSync: m.needSync, changed };
+  return { needSync: m.needSync, changed, rescued: rescue.length };
+}
+// ── 서버가 기록을 잃어버린 것처럼 보일 때 이 기기의 값을 지킨다 (순수 함수 — tests/data-safety.test.js 가 검증) ──
+// 2026-10-13 사고: 옛 서버가 저장 도중 잠깐 "기록 0개"를 돌려줬고, 앱이 그걸 믿고 오늘 라운드만 올려 모든 기록이 덮였다.
+// "이 기기가 서버에서 본 적 있는(seen) 라운드"가 지금 서버 목록에 없는데, 이 기기에서 지운 것도(p.dels) 아니고
+// 서버가 삭제 표시한 것도(srvDel) 아니면 → 잃어버린 것으로 보고 local(이 기기 목록)에 있던 값을 돌려준다.
+//  · 서버 v13+ 는 삭제를 항상 srvDel 로 알려주므로, 설명 없이 사라진 건 한 건이라도 지킨다.
+//  · 옛 서버(srvDel 없음)는 다른 기기 삭제도 "목록에서 빠짐"으로만 보이므로, 목록이 텅 비었거나 2건 이상 한꺼번에 사라졌을 때만 지킨다.
+function lostRounds(server, seen, p, srvDel, local) {
+  const srv = (server || []).filter(s => s && s.id != null);
+  const dels = (p && p.dels) || [], sd = srvDel || [];
+  const missing = (seen || []).filter(id => !srv.some(s => sameId(s.id, id)) && !dels.some(d => sameId(d, id)) && !sd.some(d => sameId(d, id)));
+  if (!missing.length) return [];
+  if (!Array.isArray(srvDel) && !(srv.length === 0 || missing.length >= 2)) return [];
+  return (local || []).filter(r => r && r.id != null && missing.some(id => sameId(id, r.id)));
 }
 // 서버 통신(목록 받기·저장)을 한 줄로 세운다. 서버 saveRounds_ 는 전체 덮어쓰기라 요청이 겹치면
 // 늦게 도착한 옛 목록이 최신 저장을 되돌리거나, 방금 저장한 라운드가 화면에서 잠깐 사라질 수 있다.
@@ -408,22 +430,23 @@ function fetchRounds() {
   return queueSync(async () => {
     const rr = await callAPI(() => API.getRounds());
     if (!(rr && rr.ok && Array.isArray(rr.rounds))) return { rr };
-    return Object.assign({ rr }, applyServerRounds(rr.rounds));
+    return Object.assign({ rr }, applyServerRounds(rr.rounds, rr.deleted));
   });
 }
 // 저장: 이 기기가 들고 있던 목록을 그대로 올리면, 그새 다른 기기(폰↔PC)에서 지운 라운드는 되살아나고
 // 새로 만든 라운드는 지워진다. 그래서 보내기 직전에 서버 최신 목록을 받아 이 기기의 대기분만 얹어 보낸다.
 // 서버 목록을 못 받으면 덮어쓰지 않는다(대기분은 기기에 남아 다음에 자동 재시도).
+// 서버 v13+ 는 보낸 목록을 "고치거나 붙이기"만 하고, 삭제는 dels 로 콕 집은 것만 표시한다(목록 전체는 옛 서버 호환용).
 async function pushRounds() {
   saveRoundsCache();
   return queueSync(async () => {
     const rr = await callAPI(() => API.getRounds());
     if (!(rr && rr.ok && Array.isArray(rr.rounds))) return { ok: false, __unsafe: true };
-    const a = applyServerRounds(rr.rounds);
+    const a = applyServerRounds(rr.rounds, rr.deleted);
     if (a.changed && curPg() === 'home') renderHome();   // 다른 기기에서 바뀐 내용이 홈에 바로 보이게
     if (!a.needSync) return { ok: true };               // 보낼 변경이 없으면 서버를 건드리지 않음
     const snap = pendGet(), sent = A.rounds.slice();   // 이번 요청이 실어 보내는 대기분·목록
-    const r = await callAPI(() => API.saveRounds(sent));
+    const r = await callAPI(() => API.saveRounds(sent, snap.dels));
     if (r && r.ok) { pendResolve(snap); seenSet(sent); }
     return r;
   });
@@ -2531,13 +2554,13 @@ function updateNewsHTML() {
   const li = (t) => `<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0"><span style="flex-shrink:0;color:var(--g)">•</span><span style="font-size:13px;color:var(--t2);line-height:1.55">${t}</span></div>`;
   return `
   <div style="font-size:12px;color:var(--t3);margin-bottom:6px">버전 ${APP_VERSION}</div>
-  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">⚡ <b style="color:var(--t)">이번엔</b> 폰과 PC가 늘 같은 기록을 보도록 동기화를 고쳤어요.</div>
+  <div style="background:var(--bg3);border-left:3px solid var(--g);border-radius:8px;padding:10px 12px;margin:6px 0;font-size:13px;color:var(--t2);line-height:1.6">🛡️ <b style="color:var(--t)">이번엔</b> 어떤 경우에도 라운드 기록이 지워지지 않도록 저장 방식을 바꿨어요.</div>
 
   ${S('📣 이번 업데이트')}
-  ${li('🔄 <b>지운 기록이 되살아나던 문제 수정</b> — 폰에서 지운 라운드가 PC를 열면 다시 생기던 문제를 고쳤어요. 한 기기에서 지우면 모든 기기에서 지워져요.')}
-  ${li('⚡ <b>실시간 동기화</b> — 앱을 켜 두면 20초마다, 앱·창으로 돌아오면 바로 다른 기기의 변경이 반영돼요.')}
-  ${li('🆕 <b>자동 업데이트</b> — 새 버전이 나오면 켜 둔 앱도 알아서 새 버전으로 바뀌어요(스코어 입력 중엔 기다렸다가).')}
-  ${li('📅 새 라운드의 기본 날짜가 오전 9시 전엔 어제로 잡히던 문제를 고쳤어요.')}
+  ${li('🛡️ <b>기록이 사라지던 문제 수정</b> — 여러 명이 같은 시간에 저장하면 서로의 기록을 덮어써 지난 기록이 사라질 수 있었어요. 이제 저장은 한 번에 하나씩 처리되고, 서버는 기록을 고치거나 추가만 해요. 보낸 목록에 없다고 지우지 않아요.')}
+  ${li('🗑️ <b>삭제도 안전하게</b> — 직접 지운 라운드도 서버에서는 "삭제 표시"만 하고 내용은 보관해요. 매일 데이터 파일 전체를 백업하고, 모든 변경 기록도 따로 쌓아 둬요.')}
+  ${li('🔒 <b>이 기기가 지켜요</b> — 서버 목록에서 기록이 이유 없이 사라진 것처럼 보이면, 앱이 이 기기에 있던 기록을 서버에 다시 올려 지켜요.')}
+  ${li('👥 같은 골프장에서 여러 명이 동시에 스코어를 입력해도 서로 영향을 주지 않아요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
