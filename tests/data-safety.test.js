@@ -39,11 +39,11 @@ function makeStore() {
 }
 
 // 검사 대상 함수들을 실제 소스에서 뽑아 샌드박스에 올린다
-const NAMES = ['findCourse', 'sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendDrop', 'seenGet', 'seenSet', 'pendResolve', 'mergeRounds', 'lostRounds', 'healRoundLabels'];
+const NAMES = ['findCourse', 'sameId', 'pendGet', 'pendSet', 'pendClear', 'markSaved', 'markDeleted', 'pendDrop', 'seenGet', 'seenSet', 'pendResolve', 'mergeRounds', 'lostRounds', 'pendPark', 'pendSwitchUser', 'healRoundLabels'];
 const ctx = { localStorage: makeStore(), console, JSON, Object, Array, String, A: { rounds: [], official: [] } };
 vm.createContext(ctx);
-vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\n` + NAMES.map(extractFn).join('\n'), ctx);
-const { pendGet, pendClear, markSaved, markDeleted, pendResolve, mergeRounds, lostRounds, sameId, healRoundLabels } = ctx;
+vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\nconst PARK_PREFIX = 'og_park_', PEND_OWNER = 'og_pend_owner';\n` + NAMES.map(extractFn).join('\n'), ctx);
+const { pendGet, pendClear, markSaved, markDeleted, pendResolve, mergeRounds, lostRounds, pendPark, pendSwitchUser, sameId, healRoundLabels } = ctx;
 
 // ── 아주 작은 테스트 러너 ──
 let pass = 0, fail = 0;
@@ -244,6 +244,36 @@ t('이 기기에서 지운 라운드는 지키지 않는다', () => {
   assert(lostRounds([], [1, 2], pendGet(), undefined, [R(1, 90)]).every(r => r.id !== 2), '내가 지운 건 그대로 지워져야 함');
 });
 
+console.log('\n[로그아웃·토큰 만료] 못 올린 기록이 지워지지 않고 보관되는가');
+
+t('로그아웃(또는 관리자 PIN 초기화로 튕김)해도 못 올린 기록은 보관됐다가 같은 이름으로 로그인하면 돌아온다', () => {
+  pendSwitchUser('장재혁');
+  markSaved(R(1, 85)); markDeleted(2);
+  pendPark('장재혁');
+  assert(Object.keys(pendGet().edits).length === 0, '로그아웃 뒤엔 대기목록이 비어 보여야 함(다른 사람과 안 섞이게)');
+  pendSwitchUser('장재혁');
+  const p = pendGet();
+  assert(p.edits['1'] && p.edits['1'].score === 85 && p.dels.some(d => sameId(d, 2)), '같은 이름으로 들어오면 되찾아야 함');
+});
+
+t('다른 사람이 같은 폰으로 로그인해도 앞사람 기록이 섞이지 않고, 앞사람이 돌아오면 되찾는다', () => {
+  pendSwitchUser('장재혁'); markSaved(R(1, 85));
+  pendPark('장재혁');
+  pendSwitchUser('박유림');
+  assert(Object.keys(pendGet().edits).length === 0, '박유림에게 장재혁 기록이 보이면 안 됨');
+  markSaved(R(9, 99));
+  pendSwitchUser('장재혁');                       // (로그아웃 없이 바로 바뀐 경우도) 박유림 것은 박유림 앞으로 보관
+  assert(pendGet().edits['1'] && !pendGet().edits['9'], '장재혁은 자기 것만');
+  pendSwitchUser('박유림');
+  assert(pendGet().edits['9'] && !pendGet().edits['1'], '박유림도 자기 것만 되찾음');
+});
+
+t('주인을 모를 때는 아무것도 지우지 않는다', () => {
+  markSaved(R(1, 85));
+  pendPark('');
+  assert(pendGet().edits['1'], '이름 없이 호출돼도 대기목록이 남아야 함');
+});
+
 console.log('\n[라벨복구] 뒤바뀐 코스 조합이 스코어를 건드리지 않고 고쳐지는가');
 
 // 베르힐영종: 나인마다 파 구성이 다름 (레이크/오션/스카이)
@@ -331,7 +361,7 @@ function makeDevice(srv) {
     callAPI: async f => { try { return await f(); } catch (e) { return { ok: false, __net: true }; } },
     curPg: () => 'home', renderHome: () => {} };
   vm.createContext(dev);
-  vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\nlet _syncChain = Promise.resolve();\n`
+  vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\nconst PARK_PREFIX = 'og_park_', PEND_OWNER = 'og_pend_owner';\nlet _syncChain = Promise.resolve();\n`
     + [...NAMES, 'saveRoundsCache', 'applyServerRounds', 'queueSync', 'fetchRounds', 'pushRounds'].map(extractFn).join('\n'), dev);
   dev.A.sc = { eid: null };
   // loadAll·실시간 동기화의 라운드 부분과 같은 흐름: 서버 목록 + 이 기기 대기분 → 필요하면 곧바로 서버 반영
@@ -346,6 +376,37 @@ function makeDevice(srv) {
 }
 const ids = rs => rs.map(r => r.id).sort((a, b) => a - b);
 
+// ── 진짜 새 서버 1대 + 사람마다 폰 1대 (관리자·사용자 섞임). 토큰·PIN 까지 실제처럼 ──
+function makeWorld() {
+  const { makeBackend } = require('./gas-mock');
+  const b = makeBackend();
+  const world = { b, online: {}, devs: {} };
+  world.device = (user) => {
+    const st = { user, pin: '1234', token: '', loggedIn: false };
+    const API = {
+      getRounds: async () => { if (!world.online[user]) throw new Error('offline'); return b.raw.get(user, st.token, 'getRounds'); },
+      saveRounds: async (rs, dels) => { if (!world.online[user]) throw new Error('offline'); b.tick(); return b.raw.post(user, st.token, { action: 'saveRounds', rounds: rs, dels }); },
+    };
+    const dev = makeDevice({ API });
+    dev.st = st; world.online[user] = true;
+    dev.login = async () => {                       // doLogin 과 같은 순서: 토큰 받기 → 보관분 되찾기 → loadAll
+      const r = b.raw.login(user, st.pin); if (!r.ok || r.wrongPin) throw new Error('로그인 실패 ' + JSON.stringify(r));
+      st.token = r.token; st.loggedIn = true; dev.pendSwitchUser(user); dev.A.rounds = [];
+      await dev.sync();
+    };
+    dev.logoutSilent = () => { dev.pendPark(user); st.loggedIn = false; st.token = ''; dev.A.rounds = []; dev.localStorage.removeItem('og_cache'); };
+    dev.sync = async () => {                        // loadAll·syncRounds 와 같은 흐름(인증실패면 logoutSilent)
+      if (!st.loggedIn) return;
+      const f = await dev.fetchRounds();
+      if (f.rr && f.rr.err === '인증실패') { dev.logoutSilent(); return; }
+      if (f.needSync) await dev.pushRounds();
+    };
+    world.devs[user] = dev;
+    return dev;
+  };
+  return world;
+}
+
 // 10/13 사고 재현(옛 서버) — 저장 직전 조회가 "0개"를 받아도 지난 기록을 덮지 않아야 한다
 const accidentTests = [
   ['옛 서버가 저장 도중 잠깐 0개를 돌려줘도, 오늘 라운드 저장이 지난 기록을 덮지 않는다', async () => {
@@ -356,6 +417,81 @@ const accidentTests = [
     await phone.save(R(4, 98));                        // 오늘 라운드 저장
     assert(eq(ids(srv.rounds), [1, 2, 3, 4]), `지난 기록이 지켜져야 하는데 서버 [${ids(srv.rounds)}]`);
     assert(eq(phone.ids(), [1, 2, 3, 4]), `화면에도 남아야 하는데 [${phone.ids()}]`);
+  }],
+];
+
+const worldTests = [
+  ['관리자가 PIN 을 초기화한 순간 사용자 폰에 못 올린 라운드가 있어도, 새 PIN 으로 들어오면 서버에 올라간다', async () => {
+    const w = makeWorld();
+    const phone = w.device('장재혁'); await phone.login();
+    w.b.api.login('관리자1');
+    w.online['장재혁'] = false;
+    await phone.save(R(500, 88, { updatedAt: w.b.g.Date.now() }));   // 산속이라 인터넷 끊김
+    w.b.api.post('관리자1', { action: 'resetUserPin', target: '장재혁', pin: '9999' });
+    w.online['장재혁'] = true;
+    await phone.sync();                                              // 인증실패 → 튕김
+    assert(!phone.st.loggedIn, '토큰이 풀렸으니 로그아웃돼야 함');
+    phone.st.pin = '9999'; await phone.login();
+    assert(eq(ids(w.b.raw.get('장재혁', phone.st.token, 'getRounds').rounds), [500]), '보관했던 라운드가 서버에 올라가야 함');
+  }],
+  ['한 폰을 두 사람이 번갈아 써도 서로의 미동기화 기록이 안 섞이고 안 사라진다', async () => {
+    const w = makeWorld();
+    const ph = w.device('장재혁'); await ph.login();
+    w.online['장재혁'] = false;
+    await ph.save(R(1, 90, { updatedAt: w.b.g.Date.now() }));
+    ph.logoutSilent();                                               // 로그아웃
+    const other = w.device('박유림'); other.localStorage = ph.localStorage;   // 같은 폰(같은 저장소)
+    await other.login();
+    assert(eq(ids(w.b.api.get('박유림', 'getRounds').rounds), []), '박유림 서버에 장재혁 라운드가 올라가면 안 됨');
+    other.logoutSilent();
+    w.online['장재혁'] = true; await ph.login();
+    assert(eq(ids(w.b.api.get('장재혁', 'getRounds').rounds), [1]), '장재혁이 돌아오면 자기 라운드가 올라가야 함');
+  }],
+  ['무작위 2,000번: 관리자 2명·사용자 2명이 저장·삭제·오프라인·서버 바쁨·PIN 초기화·로그아웃을 섞어도 의도한 기록이 정확히 남는다', async () => {
+    let seed = 4242; const rnd = n => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+    const w = makeWorld();
+    const users = ['관리자1', '관리자2', '장재혁', '박유림'];
+    const model = {}; users.forEach(u => { model[u] = {}; });
+    for (const u of users) await w.device(u).login();
+    let nextId = 1;
+    for (let step = 0; step < 2000; step++) {
+      const u = users[rnd(users.length)], dev = w.devs[u], op = rnd(12);
+      w.b.tick(1000);
+      if (!dev.st.loggedIn) { if (rnd(3) === 0) { w.online[u] = true; await dev.login(); } continue; }
+      if (op === 0) w.online[u] = !w.online[u];                                  // 인터넷 끊김/연결
+      else if (op <= 4) {                                                       // 새 라운드·수정
+        const live = dev.A.rounds.filter(r => r && r.id != null);
+        const id = (op === 1 || !live.length) ? nextId++ : live[rnd(live.length)].id;
+        const rd = R(id, 70 + rnd(40), { updatedAt: w.b.g.Date.now() });
+        dev.A.rounds = dev.A.rounds.filter(r => !dev.sameId(r.id, id)); dev.A.rounds.unshift(rd);
+        if (rnd(6) === 0) w.b.setLockHeld(true);                                 // 다른 사람 저장 중이라 서버가 바쁨
+        await dev.save(rd); w.b.setLockHeld(false);
+        model[u][id] = rd;
+      } else if (op === 5) {                                                    // 삭제
+        const live = dev.A.rounds; if (!live.length) continue;
+        const id = live[rnd(live.length)].id;
+        if (rnd(6) === 0) w.b.setLockHeld(true);
+        await dev.del(id); w.b.setLockHeld(false);
+        delete model[u][id];
+      } else if (op === 6 && u.indexOf('관리자') === 0) {                         // 관리자가 누군가의 PIN 초기화
+        const target = users[rnd(users.length)], pin = String(1000 + rnd(9000));
+        const tok = w.devs[u].st.token;
+        const r = w.b.raw.post(u, tok, { action: 'resetUserPin', target, pin });
+        if (r.ok) w.devs[target].st.pin = pin;                                   // 관리자가 새 PIN 을 알려줌
+      } else if (op === 7) dev.logoutSilent();                                  // 로그아웃
+      else await dev.sync();                                                    // 앱 켜기·20초 동기화
+    }
+    w.b.setLockHeld(false);
+    for (let k = 0; k < 3; k++) for (const u of users) {                         // 모두 인터넷 연결 → 로그인 → 동기화
+      w.online[u] = true; const d = w.devs[u];
+      if (!d.st.loggedIn) await d.login(); else await d.sync();
+    }
+    for (const u of users) {
+      const got = w.b.raw.get(u, w.devs[u].st.token, 'getRounds').rounds;
+      const want = Object.keys(model[u]).map(Number).sort((a, c) => a - c);
+      assert(eq(ids(got), want), `${u}: 서버 [${ids(got)}] ≠ 기대 [${want}]`);
+      got.forEach(g0 => assert(g0.score === model[u][g0.id].score, `${u} 라운드 ${g0.id}: 점수 ${g0.score} ≠ 기대 ${model[u][g0.id].score}`));
+    }
   }],
 ];
 
@@ -447,6 +583,8 @@ const asyncTests = [
   makeServer = makeRealServer;
   await run(asyncTests, '[v13] ');
   makeServer = realMakeServer;
+  console.log('\n[여러 사람] 관리자·사용자 + 진짜 새 서버(PIN·토큰 포함)');
+  await run(worldTests, '');
   console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
   process.exit(fail === 0 ? 0 : 1);
 })();

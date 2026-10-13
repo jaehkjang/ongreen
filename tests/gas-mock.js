@@ -67,7 +67,7 @@ function makeSpreadsheet(id) {
 function makeBackend() {
   const files = {};
   const main = makeSpreadsheet('MAIN'); files.MAIN = main;
-  const props = { SSID: 'MAIN', AUTH_SECRET: 'test-secret', ADMINS: '관리자' };
+  const props = { SSID: 'MAIN', AUTH_SECRET: 'test-secret', ADMINS: '관리자,관리자1,관리자2' };
   let lockHeld = false, clock = 1_800_000_000_000;
   const g = {
     console, JSON, Object, Array, String, Number, Math, Date: class extends Date {
@@ -96,13 +96,18 @@ function makeBackend() {
   vm.runInContext(GAS_SRC, g);
   // 앱이 하는 요청 그대로 흉내 (doGet/doPost 경유 → 인증·잠금까지 같이 검사)
   const token = u => g.makeToken_(u, g.hashPin_('1234'));
+  const raw = {
+    login: (u, pin) => g.doPost({ postData: { contents: JSON.stringify({ action: 'login', username: u, pin }) } }).body,
+    get: (u, tok, action) => g.doGet({ parameter: { action, u, token: tok } }).body,
+    post: (u, tok, d) => g.doPost({ postData: { contents: JSON.stringify(Object.assign({ u, token: tok }, d)) } }).body,
+  };
   const api = {
     login: u => g.doPost({ postData: { contents: JSON.stringify({ action: 'login', username: u, pin: '1234' }) } }).body,
     get: (u, action) => g.doGet({ parameter: { action, u, token: token(u) } }).body,
     post: (u, d) => g.doPost({ postData: { contents: JSON.stringify(Object.assign({ u, token: token(u) }, d)) } }).body,
   };
   return {
-    g, main, props, api,
+    g, main, props, api, raw,
     tick: ms => { clock += ms || 1000; },
     setLockHeld: v => { lockHeld = v; },
     roundsSheet: () => main.getSheetByName('라운드'),
