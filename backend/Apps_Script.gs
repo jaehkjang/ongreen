@@ -36,8 +36,9 @@ const SHEETS = {
   notes:   ['시간', '사용자', '동작', '골프장', '확인'],
   log:     ['시각', '사용자', 'id', '동작', '상세'],
   delCourses: ['삭제시각', '삭제자', 'JSON'],
+  delUsers: ['삭제시각', '이름', 'PIN해시', '가입일'],
 };
-const SHEET_KEY = { '사용자': 'users', '라운드': 'rounds', '공식코스': 'courses', '알림': 'notes', '라운드_기록': 'log', '삭제된_골프장': 'delCourses' };
+const SHEET_KEY = { '사용자': 'users', '라운드': 'rounds', '공식코스': 'courses', '알림': 'notes', '라운드_기록': 'log', '삭제된_골프장': 'delCourses', '삭제된_회원': 'delUsers' };
 const RW = SHEETS.rounds.length;   // 라운드 한 줄의 칸 수(16) — 15번째(index 14)=상세 JSON, 16번째(index 15)=삭제시각(ms)
 const C_JSON = 14, C_DEL = 15;
 
@@ -423,7 +424,11 @@ function resetUserPin_(target, pin) {
 // 회원 삭제: 계정 줄만 없앤다. 라운드 기록은 지우지 않고 '삭제시각'만 표시(같은 이름으로 다시 와도 되살릴 수 있게).
 function deleteUser_(target) {
   const row = findUserRow_(target);
-  if (row !== -1) SH_USERS().deleteRow(row);
+  if (row !== -1) {
+    const old = SH_USERS().getRange(row, 1, 1, 3).getValues()[0];
+    sheet_('삭제된_회원').appendRow([new Date().toLocaleString('ko-KR')].concat(old));   // 지우기 전에 보관
+    SH_USERS().deleteRow(row);
+  }
   const sh = SH_ROUNDS();
   const rows = readRoundRows_(sh);
   const now = Date.now(), stamp = new Date().toLocaleString('ko-KR'), logs = [];
@@ -454,17 +459,12 @@ function setup() {
   Logger.log('setup 완료. 관리자=' + admins_().join(',') + ' · 매일 백업 예약됨 · 첫 백업 생성됨');
 }
 
-// 데이터 파일 전체를 Drive 의 '온그린_백업' 폴더에 사본으로 남긴다. 최근 60개만 두고 그 이전 것은 휴지통으로(30일간 복원 가능).
+// 데이터 파일 전체를 Drive 의 '온그린_백업' 폴더에 사본으로 남긴다. 백업은 절대 지우지 않는다(하루 1개 ≈ 100KB, 1년 ≈ 40MB).
 function backupNow() {
   const it = DriveApp.getFoldersByName('온그린_백업');
   const folder = it.hasNext() ? it.next() : DriveApp.createFolder('온그린_백업');
   const name = '온그린 백업 ' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
   DriveApp.getFileById(ss_().getId()).makeCopy(name, folder);
-  const files = [];
-  const fi = folder.getFiles();
-  while (fi.hasNext()) { const f = fi.next(); if (f.getName().indexOf('온그린 백업 ') === 0) files.push(f); }
-  files.sort((a, b) => b.getDateCreated() - a.getDateCreated());
-  files.slice(60).forEach(f => f.setTrashed(true));
   Logger.log('백업 완료: ' + name);
 }
 

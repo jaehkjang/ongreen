@@ -112,6 +112,8 @@ t('회원 삭제도 라운드 기록은 지우지 않고 표시만 한다', () =
   b.api.post('관리자', { action: 'deleteUser', target: '오지훈' });
   const rows = b.roundsSheet().getRange(2, 1, b.roundsSheet().getLastRow() - 1, 16).getValues();
   assert(rows.some(r => r[0] === '오지훈' && r[15]), '오지훈 줄이 삭제 표시로 남아 있어야 함');
+  const arch = b.main.getSheetByName('삭제된_회원');
+  assert(arch && arch.getRange(2, 2).getValue() === '오지훈', '삭제한 회원 계정 줄도 따로 보관돼야 함');
 });
 
 console.log('\n[덮어쓰기 방지] 옛 기기의 옛 값이 새 값을 덮지 않는가');
