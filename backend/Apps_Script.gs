@@ -1,5 +1,5 @@
 // ============================================================
-// 온그린 백엔드 (Apps Script) — v13-2026.10.13
+// 온그린 백엔드 (Apps Script) — v14-2026.10.13
 // ------------------------------------------------------------
 // [방 나누기]
 //   ① 설정/공용  ② 라우팅  ③ 인증  ④ 라운드(절대 안 지움)
@@ -15,6 +15,8 @@
 //   · 모든 쓰기는 한 번에 하나씩(LockService). 여러 명이 같은 골프장에서 동시에 저장해도 안 꼬인다.
 //   · 더 오래된 수정본(updatedAt 이 작은 것)은 더 새 수정본을 덮지 않는다(켜 둔 옛 기기 대비).
 //   · 바뀐 내용은 '라운드_기록' 시트에 계속 쌓는다(지우지 않는 일지). 매일 새벽 파일 통째 백업.
+//   · [v14] 골프장 수정은 앱이 "어떤 값을 보고 고쳤는지(base)"를 함께 보내고, 서버가 잠금 안에서
+//     지금 저장된 값 위에 "바뀐 부분만" 얹는다 → 관리자·사용자 여러 명이 동시에 같은 골프장을 고쳐도 서로 안 지움.
 //
 // [최초 1회 / 업데이트 시 할 일]
 //   1) 이 파일 전체를 Apps Script 편집기 Code.gs 에 붙여넣고 저장
@@ -25,7 +27,7 @@
 // ============================================================
 
 // ── ① 설정/공용 ─────────────────────────────────────────────
-const VERSION = 'v13-2026.10.13';   // ← 프론트(api.js)와 반드시 동일하게 유지
+const VERSION = 'v14-2026.10.13';   // ← 프론트(api.js)와 반드시 동일하게 유지
 
 const SHEETS = {
   users:   ['이름', 'PIN해시', '가입일'],
@@ -120,7 +122,7 @@ function doPost(e) {
       // 인증 필요
       if (!verify_(u, token)) return err_('인증실패');
       if (d.action === 'saveRounds')  return saveRounds_(u, d.rounds || [], d.dels || []);
-      if (d.action === 'saveCourse')  return saveCourse_(u, d.course, !!d.isEdit, d.oldName || '');
+      if (d.action === 'saveCourse')  return saveCourse_(u, d.course, !!d.isEdit, d.oldName || '', d.base || null);
       if (d.action === 'reportPar')   { addNote_(u, '홀파수정', d.detail || d.course); return ok_({}); }   // 마스터는 안 건드림, 알림만
       if (d.action === 'updatePin')   return updatePin_(u, d.pin);
 
@@ -276,10 +278,13 @@ function saveRounds_(u, rounds, dels) {
   return ok_({ synced: (rounds || []).length });
 }
 
+// 일지 쓰기가 실패해도(시트 용량 등) 본 저장은 이미 끝났으므로 저장을 실패로 만들지 않는다.
 function appendLog_(logs) {
   if (!logs.length) return;
-  const sh = SH_LOG();
-  sh.getRange(sh.getLastRow() + 1, 1, logs.length, SHEETS.log.length).setValues(logs);
+  try {
+    const sh = SH_LOG();
+    sh.getRange(sh.getLastRow() + 1, 1, logs.length, SHEETS.log.length).setValues(logs);
+  } catch (e) { console.error('라운드_기록 쓰기 실패: ' + e); }
 }
 
 // ── ⑤ 골프장 (승인 없음 · 이름 중복 금지 · 삭제는 관리자만) ──
@@ -300,10 +305,43 @@ function findCourseRow_(name) {
   return -1;
 }
 
-function saveCourse_(u, course, isEdit, oldName) {
+// 3자 병합: base(앱이 보고 고친 값) → inc(앱이 보낸 값)에서 "바뀐 것만" cur(지금 서버 값) 위에 얹는다.
+//  · 이름·주소 등: 앱이 바꾼 칸만 반영, 안 바꾼 칸은 서버 최신 값 유지
+//  · 나인(레이아웃): 이름으로 짝지어 홀마다 비교. 남이 추가한 나인은 유지, 내가 지운 나인만 뺀다.
+//    남이 지운 나인은 내가 고친 게 아니면 되살리지 않는다.
+function mergeCourse3_(base, cur, inc) {
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const out = Object.assign({}, cur);
+  Object.keys(inc).forEach(k => { if (k !== 'layouts' && !same(inc[k], base[k])) out[k] = inc[k]; });
+  const byName = ls => { const m = {}; (ls || []).forEach(l => { if (l && l.name != null && !m[l.name]) m[l.name] = l; }); return m; };
+  const bL = byName(base.layouts), iL = byName(inc.layouts);
+  const holes = (b, c, i) => {
+    if (!Array.isArray(i)) return c;
+    if (!Array.isArray(c) || !Array.isArray(b) || c.length !== i.length || b.length !== i.length) return i.slice();
+    return c.map((cv, k) => (i[k] !== b[k] ? i[k] : cv));
+  };
+  const res = [], seen = {};
+  (cur.layouts || []).forEach(cl => {
+    if (!cl) return;
+    const il = iL[cl.name], bl = bL[cl.name];
+    seen[cl.name] = true;
+    if (!il) { if (!bl) res.push(cl); return; }      // 남이 추가한 나인은 유지 / 내가 지운 나인은 뺌
+    res.push(Object.assign({}, cl, il, { holes: holes(bl && bl.holes, cl.holes, il.holes) }));
+  });
+  (inc.layouts || []).forEach(il => {
+    if (!il || seen[il.name]) return;
+    const bl = bL[il.name];
+    if (bl && same(bl, il)) return;                    // 남이 지운 나인 — 내가 안 만졌으면 되살리지 않음
+    res.push(il); seen[il.name] = true;
+  });
+  out.layouts = res;
+  return out;
+}
+
+function saveCourse_(u, course, isEdit, oldName, base) {
   if (!course || !course.name) return err_('코스정보없음');
   const sh = SH_COURSES();
-  const c = Object.assign({}, course, { status: 'official' });
+  let c = Object.assign({}, course, { status: 'official' });
   const today = new Date().toLocaleDateString('ko-KR');
 
   if (isEdit) {
@@ -314,6 +352,14 @@ function saveCourse_(u, course, isEdit, oldName) {
       return err_('이미 등록된 골프장이에요');
     let row = findCourseRow_(targetName);
     if (row === -1) row = findCourseRow_(course.name);
+    if (row !== -1 && base && typeof base === 'object') {
+      // 앱이 보고 고친 값(base)과 지금 서버 값이 다르면(그사이 누가 고침) → 바뀐 부분만 얹는다
+      let cur = null; try { cur = JSON.parse(sh.getRange(row, 1).getValue()); } catch (e) {}
+      if (cur && typeof cur === 'object') {
+        c = Object.assign(mergeCourse3_(base, cur, c), { status: 'official' });
+        if (c.name !== course.name && findCourseRow_(c.name) !== -1 && findCourseRow_(c.name) !== row) return err_('이미 등록된 골프장이에요');
+      }
+    }
     if (row !== -1) sh.getRange(row, 1).setValue(JSON.stringify(c));
     else            sh.appendRow([JSON.stringify(c), u, today]);
   } else {
@@ -481,7 +527,18 @@ function recover1_collect() {
   if (shC.getLastRow() > 1) shC.getRange(2, 1, shC.getLastRow() - 1, 5).getValues().forEach(r => { col[r[0] + '\u0001' + r[1]] = r; });
   const revs = listRevisions_();
   const token = ScriptApp.getOAuthToken();
-  let processed = 0;
+  let processed = 0, retry = 0;
+  // 예전 버전이 429 로 "처리 완료" 표시된 기록은 다시 읽도록 지운다(작업용 파일만 수정)
+  if (shP.getLastRow() > 1) {
+    const pv = shP.getRange(2, 1, shP.getLastRow() - 1, 4).getValues();
+    const keep = pv.filter(r => !/^HTTP (429|5\d\d)$/.test(String(r[3])));
+    if (keep.length !== pv.length) {
+      shP.getRange(2, 1, pv.length, 4).clearContent();
+      if (keep.length) shP.getRange(2, 1, keep.length, 4).setValues(keep);
+      Object.keys(done).forEach(k => delete done[k]);
+      keep.forEach(r => { done[String(r[0])] = true; });
+    }
+  }
   for (const rev of revs) {
     if (done[String(rev.id)]) continue;
     if (Date.now() - t0 > 4 * 60 * 1000) break;        // 6분 실행 제한 전에 멈추고 다음 실행에서 이어서
@@ -501,13 +558,21 @@ function recover1_collect() {
         count = collectRows_(col, rows, rev.modifiedTime);
       }
     }
+    if (/^HTTP (429|5\d\d)$/.test(result)) {          // 구글이 "잠깐 쉬어"(429)·일시 오류 → 처리 완료로 표시하지 않고 다음 실행에서 다시
+      retry++;
+      Utilities.sleep(5000);
+      if (retry >= 5) break;                           // 계속 막히면 이번 실행은 멈춤(조금 뒤 다시 실행)
+      continue;
+    }
     shP.appendRow([String(rev.id), rev.modifiedTime, count, result]);
     processed++;
+    Utilities.sleep(1200);                             // 요청 간격 — 429 예방
   }
   const all = Object.keys(col).map(k => col[k]);
   if (shC.getLastRow() > 1) shC.getRange(2, 1, shC.getLastRow() - 1, 5).clearContent();   // 작업용 파일만 갱신(원본 데이터 아님)
   if (all.length) shC.getRange(2, 1, all.length, 5).setValues(all);
   const remain = revs.filter(r => !done[String(r.id)]).length - processed;
+  if (retry >= 5) Logger.log('⏳ 구글이 요청을 잠시 막았어요(429). 1~2분 뒤 recover1_collect 를 다시 실행하세요.');
   Logger.log('이번에 읽은 버전 ' + processed + '개 · 남은 버전 ' + remain + '개 / 전체 ' + revs.length + '개 · 모인 라운드 ' + all.length + '개');
   Logger.log(remain > 0 ? '▶ 아직 남았어요. recover1_collect 를 한 번 더 실행하세요.' : '✅ 완료! 이제 recover2_preview → recover3_apply 순서로 실행하세요.');
 }

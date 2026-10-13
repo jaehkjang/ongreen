@@ -235,5 +235,148 @@ t('지금 시트에서 삭제 표시된 라운드나 없는 계정의 라운드�
   assert(plan.skippedUser['탈퇴자'] === 1, '없는 계정은 건너뛴 개수로 알려줘야 함');
 });
 
+console.log('\n[골프장] 관리자·사용자가 동시에 같은 골프장을 고쳐도 서로의 수정이 안 사라지는가');
+
+const COURSE = () => ({ id: 'c1', name: '테스트CC', addr: '서울', layouts: [
+  { name: 'A', holes: [4,4,4,4,4,4,4,4,4] }, { name: 'B', holes: [4,4,4,4,4,4,4,4,4] } ] });
+function courseSetup() {
+  const b = setup(); ['관리자1', '관리자2'].forEach(u => b.api.login(u));
+  b.api.post('관리자1', { action: 'saveCourse', course: COURSE(), isEdit: false });
+  return b;
+}
+const getCourse = b => b.api.get('관리자1', 'getCourses').courses.find(c => c.id === 'c1');
+const edit = (c, f) => { const x = JSON.parse(JSON.stringify(c)); f(x); return x; };
+
+t('같은 값을 보고 관리자1은 A-1번, 관리자2는 A-5번을 고치면 둘 다 남는다', () => {
+  const b = courseSetup();
+  const base = getCourse(b);                                          // 둘이 같은 순간 받은 값
+  b.api.post('관리자1', { action: 'saveCourse', course: edit(base, c => { c.layouts[0].holes[0] = 5; }), isEdit: true, oldName: base.name, base });
+  b.api.post('관리자2', { action: 'saveCourse', course: edit(base, c => { c.layouts[0].holes[4] = 3; }), isEdit: true, oldName: base.name, base });
+  const got = getCourse(b).layouts[0].holes;
+  assert(got[0] === 5 && got[4] === 3, `두 수정이 모두 남아야 하는데 [${got}]`);
+});
+
+t('사용자가 나인을 추가하는 사이 관리자가 주소를 고쳐도 둘 다 남는다', () => {
+  const b = courseSetup();
+  const base = getCourse(b);
+  b.api.post('장재혁', { action: 'saveCourse', course: edit(base, c => { c.layouts.push({ name: 'C', holes: [3,3,3,3,3,3,3,3,3] }); }), isEdit: true, oldName: base.name, base });
+  b.api.post('관리자1', { action: 'saveCourse', course: edit(base, c => { c.addr = '경기'; }), isEdit: true, oldName: base.name, base });
+  const got = getCourse(b);
+  assert(got.addr === '경기', '관리자의 주소 수정');
+  assert(got.layouts.map(l => l.name).join() === 'A,B,C', `사용자가 추가한 C 나인이 남아야 하는데 [${got.layouts.map(l => l.name)}]`);
+});
+
+t('내가 지운 나인만 빠지고, 남이 지운 나인은 내가 안 고쳤으면 되살아나지 않는다', () => {
+  const b = courseSetup();
+  const base = getCourse(b);
+  b.api.post('관리자1', { action: 'saveCourse', course: edit(base, c => { c.layouts = c.layouts.filter(l => l.name !== 'B'); }), isEdit: true, oldName: base.name, base });
+  b.api.post('관리자2', { action: 'saveCourse', course: edit(base, c => { c.layouts[0].holes[8] = 5; }), isEdit: true, oldName: base.name, base });
+  const got = getCourse(b);
+  assert(got.layouts.map(l => l.name).join() === 'A', `B 는 지워진 채여야 하는데 [${got.layouts.map(l => l.name)}]`);
+  assert(got.layouts[0].holes[8] === 5, '관리자2 의 A-9번 수정은 남아야 함');
+});
+
+t('base 를 안 보내는 옛 앱은 예전처럼 통째 저장(호환)', () => {
+  const b = courseSetup();
+  b.api.post('관리자1', { action: 'saveCourse', course: edit(getCourse(b), c => { c.layouts[1].holes[0] = 5; }), isEdit: true, oldName: '테스트CC' });
+  assert(getCourse(b).layouts[1].holes[0] === 5, '옛 방식 저장도 반영');
+});
+
+console.log('\n[관리자 작업] PIN 초기화·회원삭제·일지 실패가 기록을 지우지 않는가');
+
+t('관리자가 PIN 을 초기화하거나 사용자가 PIN 을 바꿔도 라운드는 그대로', () => {
+  const b = setup();
+  b.api.post('장재혁', { action: 'saveRounds', rounds: [R(1, 90), R(2, 88)] });
+  b.api.post('관리자', { action: 'resetUserPin', target: '장재혁', pin: '1234' });
+  b.api.post('장재혁', { action: 'updatePin', pin: '1234' });
+  assert(eq(ids(b.api.get('장재혁', 'getRounds').rounds), [1, 2]), 'PIN 작업 후에도 라운드가 남아야 함');
+});
+
+t('라운드_기록(일지) 쓰기가 실패해도 라운드 저장은 성공한다', () => {
+  const b = setup();
+  b.api.post('장재혁', { action: 'saveRounds', rounds: [R(1, 90)] });
+  const log = b.logSheet(); log.getRange = () => { throw new Error('시트 용량 초과'); };
+  const r = b.api.post('장재혁', { action: 'saveRounds', rounds: [R(1, 80)] });
+  assert(r.ok === true, '일지 실패로 저장이 실패하면 안 됨');
+  assert(b.api.get('장재혁', 'getRounds').rounds[0].score === 80, '값은 저장돼야 함');
+});
+
+console.log('\n[무작위 스트레스] 관리자 2명 + 사용자 3명이 뒤섞여 5,000번 작업해도 아무것도 안 사라지는가');
+
+t('라운드: 저장·부분저장·빈 목록·삭제·옛 값 재전송·PIN 변경·잠금 실패가 섞여도 기대값과 정확히 일치', () => {
+  let seed = 20261013; const rnd = n => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  const b = setup(); ['관리자1', '관리자2', '김선호'].forEach(u => b.api.login(u));
+  const users = ['관리자1', '관리자2', '장재혁', '박유림', '김선호'];
+  const model = {}; users.forEach(u => { model[u] = {}; });       // 기대값: id → 마지막으로 저장된 라운드
+  const dead = {}; users.forEach(u => { dead[u] = {}; });         // 직접 지운 id
+  const history = {}; users.forEach(u => { history[u] = []; });   // 그 사람이 예전에 보낸 옛 값들
+  let nextId = 1, busy = 0;
+  for (let step = 0; step < 5000; step++) {
+    const u = users[rnd(users.length)], op = rnd(10);
+    b.tick(1000);
+    const now = b.g.Date.now();
+    if (rnd(25) === 0) { b.setLockHeld(true); busy++; }           // 가끔 다른 요청이 잠금을 쥐고 있음 → 실패해야 하고 아무것도 안 바뀌어야
+    const locked = (() => { const l = b.g.LockService.getScriptLock(); const ok = l.tryLock(); if (ok) l.releaseLock(); return !ok; })();
+    let r;
+    if (op <= 3) {                                                // 새 라운드 또는 수정 (일부만 보냄)
+      const live = Object.keys(model[u]);
+      const id = (op === 0 || !live.length) ? nextId++ : Number(live[rnd(live.length)]);
+      const rd = R(id, 70 + rnd(40), { updatedAt: now });
+      r = b.api.post(u, { action: 'saveRounds', rounds: [rd] });
+      if (!locked) { if (!dead[u][id] || now > 0) { model[u][id] = rd; delete dead[u][id]; } history[u].push(rd); }
+    } else if (op === 4) {                                        // 빈 목록 저장(사고 상황)
+      r = b.api.post(u, { action: 'saveRounds', rounds: [] });
+    } else if (op === 5) {                                        // 직접 삭제
+      const live = Object.keys(model[u]); if (!live.length) { b.setLockHeld(false); continue; }
+      const id = Number(live[rnd(live.length)]);
+      r = b.api.post(u, { action: 'saveRounds', rounds: [], dels: [id] });
+      if (!locked) { delete model[u][id]; dead[u][id] = now; }
+    } else if (op === 6) {                                        // 켜 둔 옛 기기가 옛 값들을 다시 보냄
+      const old = history[u].slice(0, Math.max(1, history[u].length - rnd(5)));
+      r = b.api.post(u, { action: 'saveRounds', rounds: old.map(x => Object.assign({}, x, { updatedAt: x.updatedAt })) });
+    } else if (op === 7) {                                        // 다른 사람 라운드 id 로 삭제 시도
+      const other = users[rnd(users.length)]; const live = Object.keys(model[other]);
+      if (live.length && other !== u) r = b.api.post(u, { action: 'saveRounds', rounds: [], dels: [Number(live[0])] });
+    } else if (op === 8 && u.indexOf('관리자') === 0) {            // 관리자가 아무나 PIN 초기화(같은 PIN 으로 — 토큰 유지)
+      r = b.api.post(u, { action: 'resetUserPin', target: users[rnd(users.length)], pin: '1234' });
+    } else {                                                      // 목록 조회(읽기는 잠금 없이 항상 됨)
+      r = b.api.get(u, 'getRounds'); r = null;
+    }
+    if (locked && r && r.ok !== false) throw new Error(`step ${step}: 잠금 중인데 쓰기가 성공으로 처리됨`);
+    b.setLockHeld(false);
+    for (const x of users) {
+      const got = b.api.get(x, 'getRounds').rounds;
+      const want = Object.keys(model[x]).map(Number).sort((a, c) => a - c);
+      if (!eq(ids(got), want)) throw new Error(`step ${step}(${u}, op${op}) 뒤 ${x} 의 라운드가 [${ids(got)}] — 기대 [${want}]`);
+      got.forEach(g0 => { if (g0.score !== model[x][g0.id].score) throw new Error(`step ${step}: ${x} 라운드 ${g0.id} 점수 ${g0.score} ≠ 기대 ${model[x][g0.id].score}`); });
+    }
+  }
+  assert(busy > 50, '잠금 실패 상황도 충분히 섞였어야 함');
+  assert(!b.roundsSheet().clearCount, '라운드 시트는 한 번도 비워지지 않아야 함');
+});
+
+t('골프장: 관리자·사용자 4명이 옛 값(base)을 들고 1,000번 번갈아 고쳐도 각자 바꾼 홀이 정확히 남는다', () => {
+  let seed = 777; const rnd = n => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  const b = courseSetup(); b.api.login('김선호');
+  const who = ['관리자1', '관리자2', '장재혁', '김선호'];
+  const snaps = [getCourse(b)];                                    // 사람들이 예전에 받아 둔 값들
+  const model = JSON.parse(JSON.stringify(getCourse(b)));
+  for (let step = 0; step < 1000; step++) {
+    const u = who[rnd(who.length)];
+    const base = snaps[Math.max(0, snaps.length - 1 - rnd(4))];   // 최대 3번 전의 낡은 값
+    const inc = JSON.parse(JSON.stringify(base));
+    const li = rnd(2), hi = rnd(9), v = 3 + rnd(3);
+    inc.layouts[li].holes[hi] = v;
+    const changed = base.layouts[li].holes[hi] !== v;
+    const r = b.api.post(u, { action: 'saveCourse', course: inc, isEdit: true, oldName: base.name, base });
+    assert(r.ok, `step ${step}: 저장 실패 ${JSON.stringify(r)}`);
+    if (changed) model.layouts[li].holes[hi] = v;                 // 바꾼 홀만 반영, 나머지는 서버 최신 유지
+    const got = getCourse(b);
+    if (!eq(got.layouts.map(l => l.holes), model.layouts.map(l => l.holes)))
+      throw new Error(`step ${step}(${u}): ${JSON.stringify(got.layouts.map(l => l.holes))} ≠ 기대 ${JSON.stringify(model.layouts.map(l => l.holes))}`);
+    snaps.push(got);
+  }
+});
+
 console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
 process.exit(fail === 0 ? 0 : 1);

@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.62.0';
+const APP_VERSION = 'v12.63.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -130,6 +130,7 @@ async function doLogin() {
   A.u = n; A.isAdm = !!r.isAdmin;
   API.setAuth(n, r.token);
   localStorage.setItem('og_s', JSON.stringify({ u: n, token: r.token, isAdm: A.isAdm }));
+  pendSwitchUser(n);                               // 이 이름으로 보관해 둔 미동기화 기록을 되찾고, 다른 사람 것은 따로 보관
   if (r.isNew) toast('환영합니다! 가입됐어요 🎉');
   await loadAll();
 }
@@ -137,8 +138,9 @@ async function doLogin() {
 function logout() {
   // 아직 서버에 못 올린 변경이 있으면 분명히 알려주고 확인받는다 (로그아웃하면 로컬 캐시와 함께 사라짐)
   const p = pendGet(); const n = Object.keys(p.edits).length + p.dels.length;
-  if (!confirm(n ? `⚠️ 아직 서버에 못 올린 변경이 ${n}건 있어요.\n로그아웃하면 이 변경은 사라집니다. 계속할까요?` : '로그아웃 하시겠어요?')) return;
-  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); pendClear();
+  if (!confirm(n ? `아직 서버에 못 올린 변경이 ${n}건 있어요.\n이 기기에 보관해 두었다가, 같은 이름으로 다시 로그인하면 자동으로 올라가요.\n로그아웃할까요?` : '로그아웃 하시겠어요?')) return;
+  pendPark(A.u);                                   // 지우지 않고 이 이름 앞으로 보관
+  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache');
   API.setAuth('', '');
   Object.assign(A, { u: '', isAdm: false, rounds: [], official: [...DEF], notes: [] });
   Q('li-n').value = ''; Q('li-p').value = ''; showPg('login');
@@ -217,7 +219,10 @@ function setUserLabels() {
   Q('adm-panel').style.display = A.isAdm ? 'block' : 'none';
 }
 function logoutSilent() {
-  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); pendClear(); API.setAuth('', '');   // 다른 계정 로그인 시 이전 사용자의 미동기화분이 섞이지 않게
+  // 관리자가 PIN 을 초기화했거나 다른 기기에서 PIN 을 바꿔 토큰이 풀린 경우 — 아직 못 올린 기록은 지우지 않고
+  // 이 이름 앞으로 보관한다. 같은 이름으로 다시 로그인하면 되찾아 서버에 올린다(다른 사람 기록과는 안 섞임).
+  pendPark(A.u);
+  localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); API.setAuth('', '');
   Object.assign(A, { u: '', isAdm: false, rounds: [], official: [...DEF], notes: [] });
   showPg('login'); toast('다시 로그인해주세요');
 }
@@ -346,6 +351,35 @@ function pendDrop(ids) {                        // 다른 기기에서 지워진
   const p = pendGet();
   Object.keys(p.edits).forEach(k => { if (ids.some(id => sameId(id, k))) delete p.edits[k]; });
   pendSet(p);
+}
+// ── 로그아웃·토큰 만료 때 미동기화 기록 보관 (절대 지우지 않음 — tests/data-safety.test.js 가 검증) ──
+// og_park_<이름> 에 그 사람의 대기분(edits/dels)을 모아 두고, 같은 이름으로 로그인하면 대기목록으로 되돌린다.
+const PARK_PREFIX = 'og_park_', PEND_OWNER = 'og_pend_owner';
+function pendPark(user) {
+  if (!user) return;                               // 주인을 모르면 아무것도 지우지 않고 그대로 둔다
+  const p = pendGet();
+  if (Object.keys(p.edits).length || p.dels.length) {
+    let old = null; try { old = JSON.parse(localStorage.getItem(PARK_PREFIX + user) || 'null'); } catch (e) {}
+    const park = { edits: Object.assign({}, (old && old.edits) || {}, p.edits), dels: ((old && old.dels) || []).slice() };
+    p.dels.forEach(d => { if (!park.dels.some(x => sameId(x, d))) park.dels.push(d); });
+    Object.keys(p.edits).forEach(k => { park.dels = park.dels.filter(d => !sameId(d, k)); });
+    try { localStorage.setItem(PARK_PREFIX + user, JSON.stringify(park)); } catch (e) { return; }   // 보관 실패하면 대기목록을 그대로 둔다
+  }
+  pendClear();
+  try { localStorage.removeItem(PEND_OWNER); } catch (e) {}
+}
+function pendSwitchUser(user) {
+  let owner = null; try { owner = localStorage.getItem(PEND_OWNER); } catch (e) {}
+  if (owner && owner !== user) pendPark(owner);   // 예전 사람의 대기분이 남아 있으면 그 사람 앞으로 보관
+  let park = null; try { park = JSON.parse(localStorage.getItem(PARK_PREFIX + user) || 'null'); } catch (e) {}
+  if (park && typeof park === 'object') {
+    const p = pendGet();
+    Object.keys(park.edits || {}).forEach(k => { if (!p.edits[k]) p.edits[k] = park.edits[k]; });
+    (park.dels || []).forEach(d => { if (!p.dels.some(x => sameId(x, d)) && !p.edits[d]) p.dels.push(d); });
+    pendSet(p);
+    try { localStorage.removeItem(PARK_PREFIX + user); } catch (e) {}
+  }
+  try { localStorage.setItem(PEND_OWNER, user); } catch (e) {}
 }
 function seenGet() { try { const s = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); return Array.isArray(s) ? s : []; } catch (e) { return []; } }
 function seenSet(rounds) { try { localStorage.setItem(SEEN_KEY, JSON.stringify((rounds || []).filter(r => r && r.id != null).map(r => r.id))); } catch (e) {} }
@@ -1264,7 +1298,7 @@ async function persistParsNow(course, edits, bases) {
   const { layouts, changed } = applyParDiffs(master, diffs);
   if (!changed) return { unchanged: true };                      // 이미 같은 값 → 불필요한 덮어쓰기 방지
   const updated = { ...master, layouts };
-  const r = await callAPI(() => API.saveCourse(updated, true, master.name));   // 전체 코스를 수정 저장
+  const r = await callAPI(() => API.saveCourse(updated, true, master.name, master));   // 전체 코스 + 기준값(서버 v14+ 가 그사이 남의 수정을 지키며 병합)
   if (!r || !r.ok) return { ok: false, err: r };
   const mi = A.official.indexOf(master);
   if (mi >= 0) A.official[mi] = updated;                         // 로컬 공식맵 즉시 갱신
@@ -1422,7 +1456,7 @@ async function submitCourseForm() {
   // 수정이면: 최신본 위에 "이번에 폼에서 실제로 바꾼 것"만 얹는다(안 만진 홀·나인은 남이 고친 최신 값 유지)
   const c = isEdit ? mergeCourseForm(_editBase, fresh, form) : form;
   const oldName = isEdit ? fresh.name : '';         // 서버가 찾을 이름 = 지금 서버에 있는 이름(그사이 개명됐어도 정확)
-  const r = await callAPI(() => API.saveCourse(c, isEdit, oldName));
+  const r = await callAPI(() => API.saveCourse(c, isEdit, oldName, isEdit ? fresh : null));   // 기준값 = 방금 받은 최신본
   done();
 
   if (!r.ok) { const e = explainError(r); toast('❌ ' + e.msg); return; }
@@ -2561,6 +2595,8 @@ function updateNewsHTML() {
   ${li('🗑️ <b>삭제도 안전하게</b> — 직접 지운 라운드도 서버에서는 "삭제 표시"만 하고 내용은 보관해요. 매일 데이터 파일 전체를 백업하고, 모든 변경 기록도 따로 쌓아 둬요.')}
   ${li('🔒 <b>이 기기가 지켜요</b> — 서버 목록에서 기록이 이유 없이 사라진 것처럼 보이면, 앱이 이 기기에 있던 기록을 서버에 다시 올려 지켜요.')}
   ${li('👥 같은 골프장에서 여러 명이 동시에 스코어를 입력해도 서로 영향을 주지 않아요.')}
+  ${li('🗺️ <b>골프장 홀맵 동시 수정</b> — 관리자·사용자 여러 명이 같은 골프장을 동시에 고쳐도, 각자 바꾼 홀만 반영돼 서로의 수정이 지워지지 않아요.')}
+  ${li('🔑 <b>로그아웃·PIN 초기화에도 안전</b> — 인터넷이 끊겨 아직 못 올린 기록이 있을 때 로그아웃되거나 관리자가 PIN 을 초기화해도 기록이 지워지지 않아요. 같은 이름으로 다시 로그인하면 자동으로 올라가요.')}
 
   <div style="margin-top:14px;padding-top:10px;border-top:.5px solid var(--bd);font-size:11px;color:var(--t3)">📌 ${APP_VERSION} · 업데이트될 때마다 이 글이 자동으로 바뀝니다.</div>`;
 }
@@ -2763,6 +2799,7 @@ async function checkVersion() {
   const s = JSON.parse(localStorage.getItem('og_s') || '{}');
   if (s.u && s.token) {
     A.u = s.u; A.isAdm = s.isAdm || false; API.setAuth(s.u, s.token);
+    pendSwitchUser(s.u);                           // (예전 버전에서 넘어온 기기) 대기목록 주인을 표시
     let shownFromCache = false;
     try {
       const cache = JSON.parse(localStorage.getItem('og_cache') || 'null');  // 지난번 받아둔 데이터로 즉시 화면 표시
