@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.63.0';
+const APP_VERSION = 'v12.64.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -309,7 +309,7 @@ function buildRound(isDraft) {
     score: tot, vs: tot - par, par,
     putts: A.sc.putts.reduce((a, b) => a + b, 0),
     gir: Math.round(A.sc.gir.filter(Boolean).length / 18 * 100),
-    fir: Math.round(A.sc.fir.filter(Boolean).length / 18 * 100),
+    fir: Math.round(A.sc.fir.filter((f, i) => f && !A.sc.mulli[i]).length / 18 * 100),   // 멀리건 홀은 첫 샷(페널티) 기준 → FIR 아님(firArr 엔 멀리건 후 샷 결과가 남음)
     mulligan: A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0),
     tpCount: (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0),
     scores: [...A.sc.scores], puttsArr: [...A.sc.putts], girArr: [...A.sc.gir], firArr: [...A.sc.fir],
@@ -764,7 +764,7 @@ function renderScReadOnly() {
     const par = h[i], sc = A.sc.scores[i], gg = A.sc.gir[i], ff = A.sc.fir[i], pp = A.sc.putts[i], mm = A.sc.mulli[i] || 0, tpv = (A.sc.tp && A.sc.tp[i]) || 0;
     const c = sc ? cls(sc, par) : 'e'; const d = sc ? String(sc) : 'P';
     const teeLbl = mm ? '멀리건' : tpv === 2 ? 'OB' : tpv ? '해저드' : '티샷', teeCls = mm ? 'om' : tpv ? 'otp' : '';
-    const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : `<span class="htg ${ff ? 'of' : ''}">FIR</span>`;
+    const firCell = par === 3 ? '<span class="htg" style="opacity:.3;cursor:default">·</span>' : `<span class="htg ${ff && !mm ? 'of' : ''}">FIR</span>`;
     html += `<div class="hr" onclick="holeDetail(${A.sc.eid},${i})" style="cursor:pointer"><div class="hl"><div class="hn">${(i % 9) + 1}</div><div class="hp">P${par}</div></div><div class="hrr"><div class="hc"><div class="hv ${c}">${d}</div></div><div class="ht">${firCell}<span class="htg ${gg ? 'og' : ''}">GIR</span><span class="htg ${pp > 0 ? 'op' : ''}">${pp}P</span><span class="htg ${teeCls}">${teeLbl}</span></div></div></div>`;
   }
   const box = Q('sc-body'); const keepTop = box ? box.scrollTop : 0;
@@ -784,11 +784,13 @@ function renderScReadOnly() {
 // 티샷 선택 상태는 fir/mulli/tp 만으로는 되짚을 수 없다 — "러프"(fir:false,mulli:0,tp:0)와
 // "아직 아무것도 안 고름"이 데이터상 완전히 같은 값이라, 러프를 골라도 칩이 켜진 티가 안 나던 버그가 있었다.
 // 그래서 실제 선택 상태는 A.sc.teeSel 에 문자열로 직접 저장하고, fir/mulli/tp 는 그 결과로만 채운다(저장·통계 호환용).
+// v12.64: 멀리건은 결과 칩과 따로 켜고 끄는 토글이다(A.sc.mulli). 멀리건 = 첫 샷이 OB·해저드였다는 뜻이고,
+//   teeSel·fir/tp/miss 에는 "멀리건 받고 다시 친 샷"의 결과가 들어간다. FIR·티샷 안정성은 첫 샷 기준이라
+//   멀리건 홀은 페어웨이에 들어가도 FIR 이 아니고(통계에서 mulli 로 거름), 다시 친 샷은 멀리건 살림 지표로 따로 센다.
 function teeState(i) { return (A.sc.teeSel && A.sc.teeSel[i]) || null; }
 function deriveTeeSel() {                          // 저장된 라운드를 다시 열 때 fir/mulli/tp(+miss)로부터 복원
   const h = getH();
   return Array.from({ length: 18 }, (_, i) => {
-    if (A.sc.mulli[i]) return 'mull';
     const t = (A.sc.tp && A.sc.tp[i]) || 0;
     if (t === 2) return 'ob';
     if (t === 1) return 'hazard';
@@ -800,6 +802,7 @@ function deriveTeeSel() {                          // 저장된 라운드를 다
 }
 function setTee(i, key) {
   if (A.sc.ro) return;
+  if (key === 'mull') { A.sc.mulli[i] = A.sc.mulli[i] ? 0 : 1; renderSC(); autoSaveSC(); return; }   // 멀리건은 결과 칩과 별개로 켜고 끔
   if (key === 'fw' && getH()[i] === 3) return;   // 파3엔 페어웨이 개념 없음(직접 그린을 노림) — 러프는 파3도 놓친 결과라 허용
   if (key === 'green' && getH()[i] !== 3) return;                     // 온그린 칩은 파3 전용(파4·5는 온그린까지 숫자로 입력)
   if (!A.sc.teeSel) A.sc.teeSel = Array(18).fill(null);
@@ -807,7 +810,6 @@ function setTee(i, key) {
   const next = A.sc.teeSel[i] === key ? null : key;                   // 같은 걸 다시 누르면 선택 해제
   A.sc.teeSel[i] = next;
   A.sc.fir[i] = next === 'fw';
-  A.sc.mulli[i] = next === 'mull' ? 1 : 0;
   A.sc.tp[i] = next === 'ob' ? 2 : next === 'hazard' ? 1 : 0;
   A.sc.miss[i] = (next === 'rough' || next === 'bunker') ? next : '';   // 러프/벙커 구분 저장(페널티 계산엔 안 씀)
   renderSC(); autoSaveSC();
@@ -933,7 +935,9 @@ function renderHoleWizard() {
       <div style="font-size:10px;color:var(--t3);line-height:1.5">💡 붙인 거리·티샷 외 해저드/OB는 스코어에 영향이 없어요(이미 "온그린까지 타수"에 포함) — 숏게임 원인 분석용 기록입니다. 티샷 외 해저드/OB는 첫 샷이 아닌 샷에서 났을 때만 더하세요.</div>
     </div>` : '';
   const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
-  const chips = (par === 3 ? [chip('green', '온그린'), chip('rough', '러프'), chip('bunker', '벙커')] : [chip('fw', '페어웨이'), chip('rough', '러프'), chip('bunker', '벙커')]).concat([chip('hazard', '해저드'), chip('ob', 'OB'), chip('mull', '멀리건')]);
+  const chips = (par === 3 ? [chip('green', '온그린'), chip('rough', '러프'), chip('bunker', '벙커')] : [chip('fw', '페어웨이'), chip('rough', '러프'), chip('bunker', '벙커')]).concat([chip('hazard', '해저드'), chip('ob', 'OB')]);
+  const mullOn = !!A.sc.mulli[i];   // 멀리건은 결과 칩과 함께 켤 수 있는 별도 토글
+  const mullChip = `<button class="lb ${mullOn ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'mull')">🔄 멀리건${mullOn ? ' 받음' : ''}</button>`;
   const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
   const holeCell = idx => { const on = idx === i, done = A.sc.scores[idx] > 0;
     return `<button onclick="hJump(${idx})" style="flex:1;height:38px;min-width:0;border:none;border-radius:9px;cursor:pointer;font-size:13px;
@@ -950,6 +954,8 @@ function renderHoleWizard() {
       </div>
       <div class="seg" style="margin-bottom:14px">${parTab(3)}${parTab(4)}${parTab(5)}</div>
       <div style="font-size:12px;color:var(--t2);margin-bottom:6px">⛳ 티샷 결과</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${mullChip}</div>
+      ${mullOn ? `<div style="font-size:11px;color:#ffcc80;margin-bottom:6px;line-height:1.5">첫 티샷은 페널티(OB·해저드)로 기록돼요. 아래에서 <b>멀리건 받고 다시 친 샷</b>의 결과를 골라 주세요.</div>` : ''}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${chips.join('')}</div>
       <div style="display:flex;gap:10px;margin-bottom:14px">
         <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:14px 8px">
@@ -1016,10 +1022,11 @@ function holeDetail(id, i) {
   const row = (k, v) => `<div class="hd-row"><span style="color:var(--t2)">${k}</span><span>${v}</span></div>`;
   const firRow = par === 3
     ? row('🚗 티샷 (FIR)', '<span style="color:var(--t3)">파3 · 해당 없음</span>')
-    : row('🚗 티샷 (FIR)', ff ? '<b style="color:#ffd060">페어웨이 ⭕</b>' : '<span style="color:var(--t2)">놓침 ❌</span>');
+    : row('🚗 티샷 (FIR)', ff && !mm ? '<b style="color:#ffd060">페어웨이 ⭕</b>' : `<span style="color:var(--t2)">놓침 ❌${mm ? ' (첫 샷 멀리건)' : ''}</span>`);
   const girRow = row('🎯 그린 (GIR)', gg ? '<b style="color:#7dd4ff">온그린 ⭕</b>' : '<span style="color:var(--t2)">놓침 ❌</span>');
   const puttRow = row('🍩 퍼팅 수', `<b>${pp}</b>퍼팅${pp >= 3 ? ' <span style="color:var(--a)">(3퍼팅↑)</span>' : ''}`);
-  const teeTxt = mm ? '<b style="color:#ffcc80">멀리건 (다시 침 · 벌타 없음)</b>'
+  const reTxt = tpv === 2 ? 'OB' : tpv ? '해저드' : ff ? '페어웨이' : (r.missArr || [])[i] === 'rough' ? '러프' : (r.missArr || [])[i] === 'bunker' ? '벙커' : (par === 3 && gg) ? '온그린' : '';
+  const teeTxt = mm ? `<b style="color:#ffcc80">멀리건${reTxt ? ` → ${reTxt}` : ''}</b> <span style="color:var(--t3)">(첫 샷 페널티 · 다시 친 결과)</span>`
     : tpv === 2 ? '<b style="color:#ff8a80">OB (스코어에 벌타 포함됨)</b>'
     : tpv ? '<b style="color:#ff8a80">해저드 (스코어에 벌타 포함됨)</b>'
     : (par !== 3 && !ff) ? '<span style="color:var(--t3)">러프/벙커 (사고 없음)</span>' : '<span style="color:var(--t3)">사고 없음</span>';
@@ -1516,15 +1523,16 @@ function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
   const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, one: 0, three: 0, loss: 0 }; });   // 어프로치 거리 구간별 집계(loss: 숏게임 손실 합). 옛 m 기준 키(AP_LEGACY)는 통계에서 제외
+  const mulR = { fw: 0, safe: 0, pen: 0, unk: 0 };   // 멀리건 받고 다시 친 샷의 결과: 페어웨이(파3 온그린) / 러프·벙커 / 또 페널티 / 미선택
   const holes = [];   // 홀별 타수 분해용 기록 — 드라이버 1회당 손실이 전체 집계 뒤에 정해지므로 루프 뒤에서 한 번 더 훑는다
   const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, ex: 0 }; });   // 드라이버: 티샷 결과별 홀 수·온그린까지 초과 타수 합
   let played = 0,
-      obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0, fwCount = 0,  // 1) 티샷 안정성(전체, 파3~5)
+      obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0, fwCount = 0,  // 1) 티샷 안정성(전체, 파3~5 · 첫 샷 기준)
       roughCount = 0, bunkerCount = 0,                                // 러프/벙커 구분(v12.37+ 저장분만)
       par45 = 0, fwHit = 0,                                           // 2) 드라이버(파4·5) — 결과별 집계는 아래 dc
       girHit = 0, girHoles = 0,                                       // 3) 아이언(GIR) — 손실 타수는 루프 뒤 타수 분해에서 계산
       xPenHoles = 0,                                                   // 티샷 외 벌타가 한 번이라도 있었던 홀 수(표본 안내용)
-      missGreen = 0, scrSave = 0,                                      // 4) 숏게임(스크램블)
+      missGreen = 0, scrSave = 0,                                      // 4) 숏게임(업앤다운 — 마지막 온그린 샷 기준)
       apN = 0, xHzCnt = 0, xObCnt = 0,                                 //    어프로치 붙인 거리 기록 홀 수(v12.51+) · 티샷 외 해저드/OB 횟수 합
       puttSum = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, girPuttSum = 0, girPuttN = 0;  // 5) 퍼팅(1/2/3/4+ 분포)
   rounds.forEach(r => {
@@ -1537,10 +1545,15 @@ function analyze(rounds) {
       played++;
       const par = hh[i] || 4, mull = mu[i] || 0, tpv = tpa[i] || 0, putt = pa[i] || 0, missT = mi[i] || '', d = s - par, og = s - putt;
 
-      // ── 1) 티샷 안정성: 페널티(OB·해저드) / 멀리건 / 안전 미스(러프·벙커) 분류 (파3~5 모두) ──
-      if (tpv === 2) obCount++;
+      // ── 1) 티샷 안정성(첫 샷 기준): 페널티(OB·해저드·멀리건) / 안전 미스(러프·벙커) 분류 (파3~5 모두) ──
+      //    멀리건 = 첫 샷이 OB·해저드였다는 뜻 → 페널티로 세고, 다시 친 샷의 결과는 멀리건 살림 지표(mulR)로 따로 센다
+      if (mull) {
+        mullCount++;
+        const re = tpv ? 'pen' : (par === 3 ? gi[i] : fi[i]) ? 'fw' : (missT === 'rough' || missT === 'bunker') ? 'safe' : null;
+        if (re) mulR[re]++; else mulR.unk++;
+      }
+      else if (tpv === 2) obCount++;
       else if (tpv === 1) hzCount++;
-      else if (mull) mullCount++;
       else {
         const success = par === 3 ? gi[i] : fi[i];        // 파3=온그린(GIR), 파4·5=페어웨이
         if (success) fwCount++;
@@ -1565,8 +1578,9 @@ function analyze(rounds) {
       if (holePenalty > 0) xPenHoles++;
       holes.push({ ex: og - (par - 2), putt, gir: !!gi[i], cat, ap: gi[i] ? '' : ap[i], pen: holePenalty });   // ex: 레귤러온(파−2) 대비 온그린까지 초과 타수
 
-      // ── 4) 숏게임(스크램블링): 그린 놓친 홀 중 파 이하로 막은 비율 ──
-      if (!gi[i]) { missGreen++; if (s <= par) scrSave++; }
+      // ── 4) 숏게임(업앤다운): 그린 놓친 홀 중 "마지막 온그린 샷 + 1퍼트 이하"로 마무리한 비율 ──
+      //    그린에 올리기 전에 친 타수(미스샷·레이업 등)는 아이언 몫이라 보지 않는다 → 파4 4온 1퍼트도 숏게임은 성공
+      if (!gi[i]) { missGreen++; if (putt <= 1) scrSave++; }
       //    어프로치 붙인 거리별: 레귤러온 실패 홀 중 거리를 기록한 홀만. 거리별 1퍼트율(칩인 포함)·평균 퍼트를 함께 모은다.
       if (!gi[i] && apB[ap[i]]) { const b = apB[ap[i]]; apN++; b.n++; b.putt += putt; if (putt <= 1) b.one++; if (putt >= 3) b.three++; }
       xHzCnt += xh[i] || 0; xObCnt += xo[i] || 0;
@@ -1580,7 +1594,10 @@ function analyze(rounds) {
   const f1 = (a, b) => b ? a / b : 0, pct = (a, b) => b ? Math.round(a / b * 100) : 0;
 
   // 1) 티샷 안정성
-  const teePenaltyPct = pct(obCount + hzCount, played);
+  const teePenaltyPct = pct(obCount + hzCount + mullCount, played);   // 멀리건도 첫 샷 페널티로 셈
+  const mulKnown = mulR.fw + mulR.safe + mulR.pen;
+  const mulSavePct = mulKnown ? pct(mulR.fw + mulR.safe, mulKnown) : null;   // 멀리건 살림률: 다시 친 샷이 페널티 없이 살아난 비율
+  const mulFwPct = mulKnown ? pct(mulR.fw, mulKnown) : null;
   const safeMissPct = pct(safeMissCount, played);
   const missKnownCount = roughCount + bunkerCount;
 
@@ -1641,7 +1658,7 @@ function analyze(rounds) {
   const vsRound = f1(vsSum, n);                            // 네 구간 합계와 같아야 하는 라운드 평균 오버파
 
   return { n, played,
-    obCount, hzCount, mullCount, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
+    obCount, hzCount, mullCount, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
     par45, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
     girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles,
     missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound, xPenStrokesRound, xHzCnt, xObCnt,
@@ -1687,6 +1704,7 @@ function teeStabilityHTML(a) {
     { v: a.bunkerCount, c: 'var(--p)', l: '벙커' },
     { v: a.hzCount, c: 'var(--b)', l: '해저드' },
     { v: a.obCount, c: 'var(--r)', l: 'OB' },
+    { v: a.mullCount, c: '#ffcc80', l: '멀리건(첫 샷 페널티)' },
   ];
   const pieTotal = segs.reduce((s, x) => s + x.v, 0);
   const legend = segs.map(s => `<div style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t2);margin:4px 0">
@@ -1699,6 +1717,10 @@ function teeStabilityHTML(a) {
     ${statCard(a.hzCount, '', '해저드')}
     ${statCard(a.mullCount, '', '멀리건')}</div>
   ${pie}
+  ${a.mullCount ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;margin-top:8px"><div class="cbt" style="margin-bottom:6px">🔄 멀리건 받고 다시 친 샷 (${a.mullCount}회)</div>
+    ${a.mulSavePct == null ? '' : `<div style="display:flex;gap:16px;margin-bottom:6px"><div>멀리건 살림률 <b style="font-size:16px;color:${a.mulSavePct >= 70 ? 'var(--g)' : a.mulSavePct >= 40 ? 'var(--a)' : 'var(--r)'}">${a.mulSavePct}%</b></div><div>페어웨이(온그린) <b style="font-size:16px;color:var(--t)">${a.mulFwPct}%</b></div></div>`}
+    페어웨이(온그린) <b style="color:var(--t)">${a.mulR.fw}</b> · 러프·벙커 <b style="color:var(--t)">${a.mulR.safe}</b> · 또 페널티 <b style="color:var(--r)">${a.mulR.pen}</b>${a.mulR.unk ? ` · 결과 미선택 ${a.mulR.unk}` : ''}
+    <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">멀리건 = 첫 티샷이 OB·해저드였다는 뜻이라 위 페널티율·FIR은 첫 샷 기준으로 세요. 살림률 = 다시 친 샷이 페널티 없이 살아난 비율(결과를 고른 ${a.mulKnown}회 기준).</div></div>` : ''}
   <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
 }
 function driverHTML(a) {
@@ -1751,14 +1773,14 @@ function shortGameHTML(a, stepLegend) {
     <div style="font-size:10px;color:var(--t3);margin-top:6px;line-height:1.5">💡 근접률이 낮으면 어프로치 거리감(웨지) 연습을, 가깝게 붙였는데도 1퍼트가 낮으면 짧은 퍼트 연습을 우선하세요.</div></div>`
     : `<div style="font-size:10px;color:var(--t3);margin:-6px 2px 8px;line-height:1.5">💡 스코어 입력 때 레귤러온을 놓친 홀에서 "숏게임(100m 이내)을 얼마나 붙였나요?"를 고르면 근접률·거리별 1퍼트율이 여기 나와요.</div>`;
   return `<div class="lbl">⛳ 숏게임 능력 (Short Game)</div><div class="sgd">
-    ${statCard(a.scrPct == null ? '-' : a.scrPct, a.scrPct == null ? '' : '%', '스크램블링')}
+    ${statCard(a.scrPct == null ? '-' : a.scrPct, a.scrPct == null ? '' : '%', '업앤다운')}
     ${statCard(nfs(a.shortLossRound) + '타', '', '숏게임 손실')}
     ${statCard(a.apNearPct == null ? '-' : a.apNearPct, a.apNearPct == null ? '' : '%', '근접률(🦶🏻5↓)')}</div>
   ${explainBox('숏게임 지표는 어떻게 계산하나요?', `<b>기준</b> — 그린을 놓친 홀에서는 <b>업앤다운(칩 1타 + 1퍼트 = 파)</b>을 정상으로 봐요.<br>
     <b>계산</b> — 그린 놓친 홀마다 <b>퍼트 수 − 1</b>을 구해 다 더하고, 라운드 수로 나눠요. 칩을 멀리 붙여 늘어난 퍼트가 그대로 숏게임 손실이 돼요.<br>
     예) 그린 미스 → 칩 온 → 2퍼트 = <b>1타 손실</b> · 칩 온 → 1퍼트 = <b>0타</b>(기준) · 칩인 = <b>−1타(이득)</b>.<br>
     그린에 올라가기까지 칩을 여러 번 친 타수는 아이언 쪽에 잡혀서, 네 구간이 서로 겹치지 않아요. 붙인 거리를 기록한 홀은 아래에서 거리별 손실도 보여줘요.<br>
-    <b>스크램블링</b> — 그린 놓친 홀 중 파 이하로 막은 비율.<br>
+    <b>업앤다운</b> — 그린 놓친 홀 중 <b>마지막 온그린 샷 뒤 1퍼트 이하</b>로 마무리한 비율(칩인 포함). 그린에 올리기 전 미스샷·레이업 타수는 아이언 몫이라 안 봐요. 예) 파4 4온 1퍼트 = 성공 · 4온 2퍼트 = 실패.<br>
     <b>근접률(🦶🏻5↓)</b> — 붙인 거리를 기록한 레귤러온 실패 홀 중 컨시드·🦶🏻5(약 4m) 이내로 붙인 비율. 🦶🏻는 발자국 수이고 한 걸음 약 0.8m로 계산해요. v12.55 이전의 m 기준(10m 이내 등) 기록은 구간 경계가 달라 근접률·붙인 거리 통계에서 빠져요.`)}
   ${apBox}`;
 }
@@ -2044,13 +2066,13 @@ function blowupCauseHTML(rounds) {
 function parCrossHTML(rounds) {
   const T = { 3: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 }, 4: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 }, 5: { n: 0, vs: 0, gir: 0, fir: 0, firN: 0, putt: 0, puttN: 0 } };
   rounds.forEach(r => {
-    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], fi = r.firArr || [], pa = r.puttsArr || [];
+    const hp = roundPars(r), sc = r.scores || [], gi = r.girArr || [], fi = r.firArr || [], pa = r.puttsArr || [], mu = r.mulliArr || [];
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!(s > 0)) continue;
       const p = hp[i] || 4; const t = T[p]; if (!t) continue;
       t.n++; t.vs += s - p; if (gi[i]) t.gir++;
       const pt = pa[i] || 0; if (pt > 0) { t.putt += pt; t.puttN++; }
-      if (p > 3) { t.firN++; if (fi[i]) t.fir++; }
+      if (p > 3) { t.firN++; if (fi[i] && !mu[i]) t.fir++; }   // 멀리건 홀은 첫 샷 기준 FIR 아님
     }
   });
   const pct = (a, b) => b ? Math.round(a / b * 100) : null;
@@ -2171,7 +2193,31 @@ function coreMetricsHTML(rounds, includeSd) {
   const avgMulli = rounds.reduce((a, r) => a + (r.mulligan || 0), 0) / n;
   const avgOb = rounds.reduce((a, r) => a + obCountOf(r), 0) / n;
   const avgHz = rounds.reduce((a, r) => a + hzCountOf(r), 0) / n;
-  return `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', n > 1 ? '평균 스코어' : '스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', n > 1 ? '평균 오버파' : '오버파')}${statCard(avg('putts').toFixed(1), '', n > 1 ? '평균 퍼팅' : '퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${includeSd ? statCard('±' + sd.toFixed(1), '', '기복(편차)') : ''}${statCard(nf(avgMulli), '', n > 1 ? '평균 멀리건' : '멀리건')}${statCard(nf(avgOb), '', n > 1 ? '평균 OB' : 'OB')}${statCard(nf(avgHz), '', n > 1 ? '평균 해저드' : '해저드')}</div>`;
+  const vol = includeSd ? volatilityOf(rounds) : null;
+  return `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', n > 1 ? '평균 스코어' : '스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', n > 1 ? '평균 오버파' : '오버파')}${statCard(avg('putts').toFixed(1), '', n > 1 ? '평균 퍼팅' : '퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${includeSd ? statCard('±' + sd.toFixed(1), '', '기복(편차)') : ''}${statCard(nf(avgMulli), '', n > 1 ? '평균 멀리건' : '멀리건')}${statCard(nf(avgOb), '', n > 1 ? '평균 OB' : 'OB')}${statCard(nf(avgHz), '', n > 1 ? '평균 해저드' : '해저드')}</div>${vol ? volatilityHTML(vol) : ''}`;
+}
+// ── 기복 지수 = (최악 라운드 스코어 − 최고 라운드 스코어) ÷ 평균 타수 × 100 ──
+// 9홀만 친(또는 덜 채운) 라운드가 섞이면 차이가 터무니없이 커지므로 18홀을 다 채운 라운드만 쓴다(2개 이상일 때만).
+const VOL_GRADES = [
+  [10, '매우 뛰어난 일관성', 'var(--g)', '최악과 최고의 차이가 평균 타수의 10% 이내예요.'],
+  [15, '양호한 안정성', 'var(--b)', '주말 골퍼 기준 상당히 일정하게 유지되는 편이에요.'],
+  [20, '보통 수준의 기복', 'var(--a)', '드라이버 컨디션이나 숏게임감에 따라 스코어 변화가 느껴지는 편이에요.'],
+  [Infinity, '기복이 매우 큼', 'var(--r)', '컨디션이 안 좋을 때 타수가 크게 무너지는 스타일이에요.'],
+];
+function volatilityOf(rounds) {
+  const sc = rounds.filter(r => (r.scores || []).length === 18 && r.scores.every(x => x > 0)).map(r => r.score);
+  if (sc.length < 2) return null;
+  const best = Math.min(...sc), worst = Math.max(...sc), mean = sc.reduce((a, b) => a + b, 0) / sc.length;
+  const pct = (worst - best) / mean * 100;
+  const g = VOL_GRADES.find(x => pct <= x[0]);
+  return { n: sc.length, best, worst, mean, pct, label: g[1], color: g[2], desc: g[3] };
+}
+function volatilityHTML(v) {
+  return `<div class="cb" style="display:flex;align-items:center;gap:14px;padding:14px">
+    <div style="text-align:center;flex-shrink:0;min-width:70px"><div style="font-size:24px;font-weight:800;color:${v.color}">${v.pct.toFixed(1)}<span style="font-size:13px">%</span></div><div style="font-size:10.5px;color:var(--t3)">기복 지수</div></div>
+    <div style="flex:1;font-size:12px;color:var(--t2);line-height:1.55"><b style="color:${v.color};font-size:13.5px">${v.label}</b><br>${v.desc}<br>
+      <span style="font-size:10.5px;color:var(--t3)">(최악 ${v.worst} − 최고 ${v.best}) ÷ 평균 ${v.mean.toFixed(1)} × 100 · 18홀 ${v.n}R 기준</span></div></div>
+  ${explainBox('기복 지수 기준', VOL_GRADES.map(([t, l, c], k) => `<b style="color:${c}">${k ? (t === Infinity ? '20% 초과' : `${VOL_GRADES[k - 1][0]}~${t}%`) : '10% 이하'}</b> — ${l}`).join('<br>') + '<br>예) 평균 85타에서 최악과 최고 차이가 8타 이내면 10% 이하예요.')}`;
 }
 // ── 도넛(원형) 차트: 값이 서로 겹치지 않고 합쳐서 전체가 되는 비율 데이터용 ──
 // stroke-dasharray 로 원을 나눠 그리는 방식이라 별도 라이브러리 없이 SVG 하나로 끝난다.
@@ -2624,7 +2670,7 @@ function guideScorecardHTML() {
   ${btn('퍼팅', '그린에서 홀에 넣기까지 친 횟수. 0(칩인)도 가능해요.')}
   ${btn('결과 배너', '위 두 값으로 계산된 스코어(파·보기·더블 등)를 실시간으로 보여줘요. 오버파도 함께 표시.')}
   ${btn('GIR', '자동 계산돼요. <b>온그린까지 타수 ≤ 파−2</b>면 ON — 따로 누를 필요 없어요.')}
-  ${btn('티샷 결과', '페어웨이 / 러프 / 벙커 / 해저드 / OB / 멀리건 중 하나를 선택해요(파3은 페어웨이 대신 온그린이고, 러프·벙커는 파3도 똑같이 골라요). <b>페어웨이 = FIR 반영(파4·5)</b> · <b>온그린·러프·벙커 = FIR 미반영, 페널티 없음</b> · <b>해저드·OB = 페널티</b> · <b>멀리건 = 페널티 없음</b>. 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">GIR은 이 선택과 무관하게</b> "온그린까지 타수"만으로 계산돼요(파3도 온그린 칩이 아니라 온그린까지 타수가 1 이하면 GIR).<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
+  ${btn('티샷 결과', '페어웨이 / 러프 / 벙커 / 해저드 / OB 중 하나를 선택해요(파3은 페어웨이 대신 온그린이고, 러프·벙커는 파3도 똑같이 골라요). <b>페어웨이 = FIR 반영(파4·5)</b> · <b>온그린·러프·벙커 = FIR 미반영, 페널티 없음</b> · <b>해저드·OB = 페널티</b>.<br><b>🔄 멀리건</b>은 결과와 따로 켜는 버튼이에요 — 멀리건을 받았으면 켜고, 결과 칩에는 <b>다시 친 샷</b>의 결과를 골라요(예: 멀리건 + 페어웨이 = 멀리건 받고 친 샷이 페어웨이). 멀리건은 첫 샷이 OB·해저드였다는 뜻이라 FIR·티샷 페널티율은 <b>첫 샷 기준(페널티)</b>으로 세고, 다시 친 샷은 "멀리건 살림률"로 따로 집계해요(스코어에 벌타는 안 붙어요). 드라이버 진단(페어웨이%·OB/해저드 홀 수)에 쓰여요.<br><b style="color:var(--a)">GIR은 이 선택과 무관하게</b> "온그린까지 타수"만으로 계산돼요(파3도 온그린 칩이 아니라 온그린까지 타수가 1 이하면 GIR).<br><b style="color:var(--a)">주의: 해저드·OB를 골라도 벌타가 스코어에 자동으로 더해지지 않아요.</b> 실제 벌타는 "온그린까지 타수"에 직접 포함해서 넣어야 해요(예: OB면 재출발 포함해 온그린까지 늘어난 타수 그대로 입력).')}
   ${btn('레귤러온 실패 시 숏게임 창', '"온그린까지" 타수가 정규타수(파−2)보다 많아지면 아래에 숏게임 창이 새로 떠요. <b>숏게임(100m 이내)을 얼마나 붙였나요?</b>에서 컨시드 / 🦶🏻5 이내 / 🦶🏻6~10 / 🦶🏻11~20 / 🦶🏻21 이상 중 하나를 고르고(🦶🏻 = 발자국 수, 한 걸음 약 0.8m)(다시 누르면 해제), 필요하면 <b>티샷 외 해저드·OB</b> 횟수도 같이 더하세요. 티샷 결과는 첫 샷만 기록하므로, 어프로치 등 다른 샷에서 난 해저드·OB는 여기에 기록해요. <b>스코어에는 영향 없어요</b>(이미 "온그린까지 타수"에 포함) — 통계의 숏게임 근접률·거리별 1퍼트율 분석에 쓰여요.')}
 
   ${S('⑤ 이동·저장')}
@@ -2652,10 +2698,10 @@ function guideStatsHTML() {
   ${it('💥 큰 실수의 원인', '블로업(트리플보기 이상, 파보다 3타↑) 홀이 무엇 때문이었는지 원인별로 세요(한 홀에 겹칠 수 있음). 티샷 사고 = 티샷 결과가 해저드·OB · 3퍼팅↑ = 퍼팅 3 이상 · 그린 미스 = GIR 실패이면서 티샷 사고가 아닌 홀.')}
 
   ${S('🚩 구간별 (라운드 상세 · 통계 공통)')}
-  ${it('티샷 안정성 (Off-the-Tee · 파3~5)', '티샷 페널티율(OB+해저드 홀 ÷ 전체 홀) · OB·해저드·멀리건 홀 수 · 안전 미스(러프·벙커, 페널티 없음) 개수와 비율. 러프·벙커 개별 구분은 v12.37 이후 입력분만 가능해요.')}
+  ${it('티샷 안정성 (Off-the-Tee · 파3~5)', '<b>첫 샷 기준</b> 티샷 페널티율((OB+해저드+멀리건) 홀 ÷ 전체 홀) · OB·해저드·멀리건 홀 수 · 멀리건 받고 다시 친 샷의 결과(멀리건 살림률 = 다시 친 샷이 페널티 없이 살아난 비율) · 안전 미스(러프·벙커, 페널티 없음) 개수와 비율. 러프·벙커 개별 구분은 v12.37 이후 입력분만 가능해요.')}
   ${it('드라이버 안정성 (Driver · 파4·5)', '<b>기준</b> = 페어웨이에 떨어진 홀들의 온그린까지 평균 타수. 러프·벙커·해저드·OB·멀리건 등 결과별로 이 기준보다 온그린까지 평균 몇 타 더 걸렸는지가 "1회당 손실"이고, 라운드에 나온 횟수만큼 곱해 더한 값이 <b>드라이버 손실 타수</b>예요(퍼팅 제외). 예) 러프 1회당 0.4타 손실 × 4번 = 1.6타. 기록이 적으면 고정값(OB 2타·해저드 1타·그 외 0타)과 섞어 추정해요. FIR = 페어웨이 적중률. 티샷 결과를 선택하지 않은 홀은 제외.')}
   ${it('아이언·웨지 정확도 (Approach)', '<b>기준</b> = 레귤러온 타수(파−2)까지 온그린, 그린을 놓쳐도 칩 1타+1퍼트면 파(정상). 홀마다 "온그린까지 타수 − 레귤러온 타수"에서 드라이버 몫과(그린 미스 홀이면) 칩 1타를 빼서 더한 라운드 평균이 <b>아이언 손실 타수</b>예요. 예) 파4 페어웨이→칩 두 번 만에 온그린(4타) = 1타 손실. GIR(그린 적중률)도 함께 표시. "티샷 외 해저드·OB"를 입력한 홀이 있으면 아이언 손실을 "벌타 때문"과 "거리감·클럽 선택 등 나머지"로 나눠서도 보여줌.')}
-  ${it('숏게임 능력 (Short Game)', '<b>기준</b> = 그린 놓친 홀에서 업앤다운(칩 1타+1퍼트=파). "퍼트 수 − 1"을 더해 라운드 평균 낸 값이 <b>숏게임 손실 타수</b>예요. 예) 칩 온 후 2퍼트 = 1타 손실, 칩 온 후 1퍼트 = 0타, 칩인 = −1타. 스크램블링(그린 놓친 홀을 파 이하로 막은 비율) · 근접률(어프로치를 컨시드·🦶🏻5 이내로 붙인 비율) · 붙인 거리별(컨시드/🦶🏻5 이내/🦶🏻6~10/🦶🏻11~20/🦶🏻21 이상, 🦶🏻 = 발자국 수·한 걸음 약 0.8m) 1퍼트율(칩인 포함)·평균 퍼트·3퍼트율·손실 타수. 붙인 거리는 v12.51 이후 입력분만 집계돼요.')}
+  ${it('숏게임 능력 (Short Game)', '<b>기준</b> = 그린 놓친 홀에서 업앤다운(칩 1타+1퍼트=파). "퍼트 수 − 1"을 더해 라운드 평균 낸 값이 <b>숏게임 손실 타수</b>예요. 예) 칩 온 후 2퍼트 = 1타 손실, 칩 온 후 1퍼트 = 0타, 칩인 = −1타. 업앤다운(그린 놓친 홀에서 마지막 온그린 샷 뒤 1퍼트 이하로 마무리한 비율 — 그린 올리기 전 미스샷·레이업 타수는 안 봄) · 근접률(어프로치를 컨시드·🦶🏻5 이내로 붙인 비율) · 붙인 거리별(컨시드/🦶🏻5 이내/🦶🏻6~10/🦶🏻11~20/🦶🏻21 이상, 🦶🏻 = 발자국 수·한 걸음 약 0.8m) 1퍼트율(칩인 포함)·평균 퍼트·3퍼트율·손실 타수. 붙인 거리는 v12.51 이후 입력분만 집계돼요.')}
   ${it('⚠️ 티샷 외 해저드·OB', '티샷(첫 샷)이 아닌 샷에서 난 해저드·OB 횟수(라운드당)와 벌타 추정 타수(해저드 1타·OB 2타). 숏게임과 따로 보여줘요.')}
   ${it('퍼팅 효율성 (Putting)', '<b>기준</b> = 레귤러온 성공 홀은 2퍼트(정상). "퍼트 수 − 2"를 더해 라운드 평균 낸 값이 <b>퍼팅 손실 타수</b>예요(그린 적중 홀만). 예) 2퍼트 = 0타, 1퍼트 = −1타(이득), 3퍼트 = +1타(손실). 그 외 PPR(총 퍼팅) · 홀당 평균 · GIR 시 평균 퍼트(순수 퍼팅력) · 3퍼트 이상 비율 · 1퍼트율 · 퍼팅 분포(1/2/3/4+)도 함께 봐요. 드라이버·아이언·숏게임·퍼팅 손실은 한 타를 한 구간에만 배정해 합계가 평균 오버파와 같아요. 라운드 상세에서는 각 값에 내 평균 대비 🟢🟡🔴 신호등과 평균값이 붙어요(3R↑).')}
 
