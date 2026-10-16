@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.64.0';
+const APP_VERSION = 'v12.64.1';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -297,6 +297,10 @@ function goSelectCourse() {
   cm('m-nr'); renderCourses(); showPg('course');
 }
 
+// 총 퍼팅 = 스코어를 입력한 홀의 퍼팅만 합산. 퍼팅은 18칸 모두 기본값 2로 시작하므로
+// 그냥 다 더하면 아직 안 친 홀까지 2씩 붙는다(9홀만 치고 저장하면 +18).
+function puttTotal(scores, putts) { return (putts || []).reduce((a, b, i) => a + ((scores || [])[i] > 0 ? (b || 0) : 0), 0); }
+
 function buildRound(isDraft) {
   const h = getH(); const par = h.reduce((a, b) => a + b, 0);
   const c = A.sc.course; const [l0, l1] = A.sc.li;
@@ -307,7 +311,7 @@ function buildRound(isDraft) {
     layoutIdx: [l0, l1], layoutNames: [c.layouts[l0].name, c.layouts[l1].name],   // ★ 실제 플레이한 나인 이름을 박제(인덱스에 의존 안 함 → 마스터 순서 바뀌어도 안 뒤바뀜)
     date: A.sc.date, weather: A.sc.wx, partner: A.sc.partner, memo: A.sc.memo,
     score: tot, vs: tot - par, par,
-    putts: A.sc.putts.reduce((a, b) => a + b, 0),
+    putts: puttTotal(A.sc.scores, A.sc.putts),
     gir: Math.round(A.sc.gir.filter(Boolean).length / 18 * 100),
     fir: Math.round(A.sc.fir.filter((f, i) => f && !A.sc.mulli[i]).length / 18 * 100),   // 멀리건 홀은 첫 샷(페널티) 기준 → FIR 아님(firArr 엔 멀리건 후 샷 결과가 남음)
     mulligan: A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0),
@@ -1005,7 +1009,7 @@ function updFt() {
   const h = getH(); const pl = A.sc.scores.filter(x => x > 0);
   const tot = pl.reduce((a, b) => a + b, 0), ps = h.slice(0, pl.length).reduce((a, b) => a + b, 0), vs = tot - ps;
   Q('f-tot').textContent = tot || '-'; const ve = Q('f-vs'); ve.textContent = pl.length ? vsL(vs) : '-'; ve.className = 'fv ' + (vs > 0 ? 'r' : vs < 0 ? 'g' : '');
-  Q('f-g').textContent = A.sc.gir.filter(Boolean).length; Q('f-p').textContent = A.sc.putts.reduce((a, b) => a + b, 0);
+  Q('f-g').textContent = A.sc.gir.filter(Boolean).length; Q('f-p').textContent = puttTotal(A.sc.scores, A.sc.putts);
   const mc = A.sc.mulli.reduce((a, b) => a + (b ? 1 : 0), 0), tc = (A.sc.tp || []).reduce((a, b) => a + (b ? 1 : 0), 0);
   Q('f-m').textContent = (mc || tc) ? `${mc}/${tc}` : '-';
 }
