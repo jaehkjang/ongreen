@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.67.0';
+const APP_VERSION = 'v12.68.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -212,7 +212,7 @@ async function loadAll(silent) {
     A.rounds = [];   // 이전 데이터가 아예 없을 때만 방어적 초기화
   }
   // ── 코스: 성공일 때만 교체, 실패 시 기존/캐시 보존 (빈 목록으로 덮지 않음)
-  A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(c => ({ ...c, status: 'official' }))
+  A.official = (cr && cr.courses && cr.courses.length) ? cr.courses.map(officialCourse)
                                                        : ((A.official && A.official.length) ? A.official : [...DEF]);
   // ── 캐시는 "라운드를 성공적으로 받았을 때만" 갱신 (실패 응답으로 캐시를 비우지 않도록)
   if (roundsOk) { try { localStorage.setItem('og_cache', JSON.stringify({ rounds: A.rounds, official: A.official })); } catch (e) {} }
@@ -1321,6 +1321,16 @@ function masterParsFor(course) {                 // 마스터 공식 파 18개 (
 // 앱은 켤 때만 코스 목록을 받으므로, 켜 둔 사이 다른 사람이 고친 내용이 이 기기엔 없다.
 // 그 낡은 목록으로 "코스 전체"를 저장하면 남의 수정을 덮어쓴다. 그래서 저장 직전엔 항상 최신 목록을 다시 받고,
 // 그 위에 "이번에 사용자가 실제로 바꾼 부분"만 얹어서 저장한다.
+// 서버에서 받은 골프장 하나를 앱이 쓰는 모양으로. 골프장은 모든 사용자가 함께 고치는 공용 데이터라
+// 홀별 파(holes)가 숫자가 아니면(예: 누군가 "<img onerror=…>" 같은 글자를 넣어 저장) 화면에 그대로 그려져
+// 그 골프장을 여는 다른 사람 폰에서 스크립트가 실행될 수 있다(v12.68.0 에서 막음). 그래서 파는 정수로만 받는다.
+// 정상 데이터(이미 숫자)는 값이 그대로다. 숫자로 못 읽는 값만 4(기본 파)로 둔다.
+function parNum(v) { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 4; }
+function officialCourse(c) {
+  const o = { ...c, status: 'official' };
+  if (Array.isArray(c.layouts)) o.layouts = c.layouts.map(l => (l && Array.isArray(l.holes)) ? { ...l, holes: l.holes.map(parNum) } : l);
+  return o;
+}
 function saveOfficialCache() {                   // 콜드 스타트용 캐시의 코스 목록만 갱신
   try {
     const cache = JSON.parse(localStorage.getItem('og_cache') || 'null') || {};
@@ -1330,7 +1340,7 @@ function saveOfficialCache() {                   // 콜드 스타트용 캐시�
 async function refreshOfficial() {               // 서버 최신 코스 목록으로 교체. 성공 true / 실패 false(기존 목록 유지)
   const r = await callAPI(() => API.getCourses());
   if (!r || !Array.isArray(r.courses) || !r.courses.length) return false;   // 실패·빈 응답으로 목록을 비우지 않음
-  A.official = r.courses.map(c => ({ ...c, status: 'official' }));
+  A.official = r.courses.map(officialCourse);
   saveOfficialCache();
   if (curPg() === 'course') renderCourses();     // 보고 있는 골프장 목록도 최신으로
   if (A.isAdm && _admOffLoaded) renderAdmOfficial();
@@ -1602,7 +1612,7 @@ async function admLoadOfficial() {
   const r = await callAPI(() => API.getCourses());
   const list = (r && r.courses) || [];
   if (!list.length) { el.innerHTML = '<div style="color:var(--t2);font-size:13px">공식 코스 없음</div>'; return; }
-  A.official = list.map(c => ({ ...c, status: 'official' }));
+  A.official = list.map(officialCourse);
   _admOffLoaded = true; _admOffOpen = false;
   renderAdmOfficial();
   if (prevQ) { const qi = Q('adm-off-q'); if (qi) { qi.value = prevQ; renderAdmOffList(); } }   // 보관해 둔 검색어 복원 후 바로 결과 표시
@@ -2040,7 +2050,7 @@ async function checkVersion() {
       const cache = JSON.parse(localStorage.getItem('og_cache') || 'null');  // 지난번 받아둔 데이터로 즉시 화면 표시
       if (cache && cache.rounds) {
         A.rounds = mergeRounds(cache.rounds, pendGet()).rounds;   // 캐시 위에 아직 못 올린 변경도 얹어서 표시
-        A.official = (cache.official && cache.official.length) ? cache.official : [...DEF];
+        A.official = (cache.official && cache.official.length) ? cache.official.map(officialCourse) : [...DEF];
         setUserLabels(); renderHome(); showPg('home'); goHome();
         shownFromCache = true;
       }
