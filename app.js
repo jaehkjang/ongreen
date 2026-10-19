@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.65.0';
+const APP_VERSION = 'v12.66.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -76,6 +76,7 @@ let _modalStack = [];          // 열린 모달 id들(연 순서). 뒤로가기�
 let _modalPopFromBack = false; // 지금 닫는 게 popstate(뒤로가기)가 이미 소비한 히스토리에 대한 반응인지
 let _suppressPageBack = false; // 모달을 직접(X·배경탭 등으로) 닫아 히스토리만 맞출 때, 그 아래 페이지의 뒤로 동작까지 같이 실행되지 않게 막는다
 function cm(id) {
+  if (id === 'm-cf' && _cfResolve) { const r = _cfResolve; _cfResolve = null; r(false); }   // 확인창은 어떻게 닫혀도(취소·배경·뒤로) "취소"
   Q(id).classList.remove('on');
   const idx = _modalStack.lastIndexOf(id); if (idx === -1) return;
   _modalStack.splice(idx, 1);
@@ -86,6 +87,20 @@ function cm(id) {
 function om(id) {
   Q(id).classList.add('on');
   if (!_modalStack.includes(id)) { _modalStack.push(id); if (!IS_IOS) history.pushState({ mog: 1 }, '', location.href); }
+}
+// ── 앱 모양 확인창 (브라우저 기본 confirm() 대신, v12.66.0) ── await askConfirm(제목, 문구, 버튼글자) → true/false
+// 문구는 textContent 로 넣으므로 이름에 특수문자가 있어도 안전하다.
+let _cfResolve = null;
+function askConfirm(title, msg, okLabel) {
+  cfSettle(false);                                 // 혹시 열려 있던 확인창은 "취소"로 정리
+  Q('cf-t').textContent = title; Q('cf-m').textContent = msg; Q('cf-ok').textContent = okLabel || '확인';
+  om('m-cf');
+  return new Promise(res => { _cfResolve = res; });
+}
+function cfSettle(ok) {                            // 확인(true)·취소(false) 버튼
+  const res = _cfResolve; _cfResolve = null;
+  if (_modalStack.includes('m-cf') || Q('m-cf').classList.contains('on')) cm('m-cf');
+  if (res) res(ok);
 }
 function load(msg) { Q('ldm').textContent = msg || '불러오는 중...'; Q('ld').classList.add('on'); }
 function hide() { Q('ld').classList.remove('on'); }
@@ -139,10 +154,12 @@ async function doLogin() {
   await loadAll();
 }
 
-function logout() {
+async function logout() {
   // 아직 서버에 못 올린 변경이 있으면 분명히 알려주고 확인받는다 (로그아웃하면 로컬 캐시와 함께 사라짐)
   const p = pendGet(); const n = Object.keys(p.edits).length + p.dels.length;
-  if (!confirm(n ? `아직 서버에 못 올린 변경이 ${n}건 있어요.\n이 기기에 보관해 두었다가, 같은 이름으로 다시 로그인하면 자동으로 올라가요.\n로그아웃할까요?` : '로그아웃 하시겠어요?')) return;
+  if (!await askConfirm('로그아웃', n ? `아직 서버에 못 올린 변경이 ${n}건 있어요.\n이 기기에 보관해 두었다가, 같은 이름으로 다시 로그인하면 자동으로 올라가요.\n로그아웃할까요?` : '로그아웃 하시겠어요?', '로그아웃')) return;
+  if (!A.u) return;                                // 확인창이 떠 있는 사이 이미 로그아웃됐으면(토큰 만료 등) 아무것도 안 함
+  delDrop();                                       // 되돌리기 대기 중인 삭제는 대기목록째 보관(아래 pendPark)
   pendPark(A.u);                                   // 지우지 않고 이 이름 앞으로 보관
   localStorage.removeItem('og_s'); localStorage.removeItem('og_cache');
   API.setAuth('', '');
@@ -225,6 +242,7 @@ function setUserLabels() {
 function logoutSilent() {
   // 관리자가 PIN 을 초기화했거나 다른 기기에서 PIN 을 바꿔 토큰이 풀린 경우 — 아직 못 올린 기록은 지우지 않고
   // 이 이름 앞으로 보관한다. 같은 이름으로 다시 로그인하면 되찾아 서버에 올린다(다른 사람 기록과는 안 섞임).
+  delDrop();                                       // 되돌리기 대기 중인 삭제는 대기목록째 보관(아래 pendPark)
   pendPark(A.u);
   localStorage.removeItem('og_s'); localStorage.removeItem('og_cache'); API.setAuth('', '');
   Object.assign(A, { u: '', isAdm: false, rounds: [], official: [...DEF], notes: [] });
@@ -488,6 +506,8 @@ async function pushRounds() {
     if (a.changed && curPg() === 'home') renderHome();   // 다른 기기에서 바뀐 내용이 홈에 바로 보이게
     if (!a.needSync) return { ok: true };               // 보낼 변경이 없으면 서버를 건드리지 않음
     const snap = pendGet(), sent = A.rounds.slice();   // 이번 요청이 실어 보내는 대기분·목록
+    snap.dels = snap.dels.filter(d => !delHeld(d));    // 되돌리기 대기 중인 삭제는 아직 안 보낸다(대기목록엔 그대로 남음)
+    if (!Object.keys(snap.edits).length && !snap.dels.length) return { ok: true };   // 보낼 게 그것뿐이면 서버를 건드리지 않음
     const r = await callAPI(() => API.saveRounds(sent, snap.dels));
     if (r && r.ok) { pendResolve(snap); seenSet(sent); }
     return r;
@@ -730,14 +750,64 @@ async function confirmDel() {
   cm('m-del'); if (!_delId) return;
   const id = _delId; _delId = null;
   clearTimeout(_asTimer); _asTimer = null;         // 대기 중인 자동저장이 삭제 뒤에 라운드를 되살리지 않게 취소
-  A.rounds = A.rounds.filter(r => !sameId(r.id, id));
-  markDeleted(id);                                 // 동기화 실패해도 다음 로드에서 안 되살아나게 기록
-  saveRoundsCache();
+  delRelease();                                    // 앞서 지운 라운드가 아직 되돌리기 대기 중이면 먼저 확정(서버로 보냄)
+  const held = delHoldStart(id);                   // 화면·기기에선 바로 지우고, 서버엔 5초 뒤에 보낸다
   A.sc.course = null; A.sc.eid = null; A.sc.ro = false;
   goHome();                                        // 서버 응답을 기다리지 않고 바로 홈으로(삭제가 즉시 보이게)
-  const r = await pushRounds();                    // 서버 반영은 뒤에서 진행
+  if (held) { _delHold.timer = setTimeout(() => delRelease(), UNDO_MS); showUndoBar(); return; }
+  const r = await pushRounds();                    // 되돌릴 원본이 없으면(목록에 없던 id) 예전처럼 바로 보낸다
   toast(r.ok ? '삭제됐어요' : (r.__unsafe ? '기기에서 삭제됨 · 연결 후 동기화' : '⚠️ 삭제됐지만 동기화 실패'));
 }
+
+// ── 라운드 삭제 되돌리기 (v12.66.0 — tests/data-safety.test.js 가 검증) ──
+// 삭제하면 화면·기기(대기목록 og_pending 의 dels)에서는 바로 지우지만, 서버에는 UNDO_MS 뒤에 보낸다.
+// 그 사이 [되돌리기]를 누르면 서버는 삭제를 전혀 모른 채로 끝난다. "서버에서 지웠다가 다시 올리기"는
+// 서버가 휴대폰 시계(updatedAt)와 서버 시계(삭제시각)를 비교해 되살리므로, 휴대폰 시계가 늦으면 조용히 실패할 수 있어서 쓰지 않는다.
+//  · 기다리는 동안 앱이 꺼져도 삭제 표시는 대기목록에 남아 있다가 다음 동기화 때 서버로 간다(삭제가 그대로 진행됨).
+//  · 기다리는 동안에도 다른 저장(새 라운드·수정)은 평소처럼 서버로 가고, 이 삭제(dels)만 pushRounds 가 빼고 보낸다.
+//  · 되돌리면 지우기 직전의 대기목록 상태(아직 못 올린 수정본 포함)를 그대로 되돌린다.
+const UNDO_MS = 5000;
+let _delHold = null;   // { id, round, idx, prevEdit, timer } — 아직 서버에 안 보낸(되돌릴 수 있는) 삭제 하나
+function delHeld(id) { return !!_delHold && sameId(_delHold.id, id); }
+function delHoldStart(id) {                        // 지우고 되돌리기용 원본을 잡아 둔다. 원본이 없으면 null(바로 확정)
+  const idx = A.rounds.findIndex(r => sameId(r.id, id));
+  const round = idx >= 0 ? A.rounds[idx] : null;
+  const prevEdit = pendGet().edits[id];            // 지우기 전 아직 못 올린 수정본(없으면 undefined)
+  A.rounds = A.rounds.filter(r => !sameId(r.id, id));
+  markDeleted(id);                                 // 동기화 실패·앱 종료에도 다음 로드에서 안 되살아나게 기록
+  saveRoundsCache();
+  _delHold = round ? { id, round, idx, prevEdit, timer: null } : null;
+  return !!_delHold;
+}
+function delUndo() {                               // 되돌리기: 대기목록·목록·캐시를 지우기 직전으로. 이미 확정됐으면 false
+  const h = _delHold; if (!h) return false;
+  clearTimeout(h.timer); _delHold = null;
+  const p = pendGet();
+  p.dels = p.dels.filter(d => !sameId(d, h.id));
+  if (h.prevEdit !== undefined) p.edits[h.id] = h.prevEdit;
+  pendSet(p);
+  if (!A.rounds.some(r => sameId(r.id, h.id))) A.rounds.splice(Math.min(h.idx, A.rounds.length), 0, h.round);
+  saveRoundsCache();
+  return true;
+}
+function delRelease() {                            // 되돌리기 기회를 닫고 삭제를 서버로 보낸다(대기 중인 게 없으면 아무것도 안 함)
+  if (!_delHold) return;
+  clearTimeout(_delHold.timer); _delHold = null; hideUndoBar();
+  pushRounds().then(r => { if (!(r && r.ok)) toast(r && r.__unsafe ? '기기에서 삭제됨 · 연결 후 동기화' : '⚠️ 삭제됐지만 동기화 실패'); });
+}
+function delDrop() {                               // 로그아웃 때: 서버로 보내지 않고 대기만 끝낸다(삭제 표시는 대기목록과 함께 보관됨)
+  if (_delHold) clearTimeout(_delHold.timer);
+  _delHold = null; hideUndoBar();
+}
+function undoDel() {                               // [되돌리기] 버튼
+  hideUndoBar();
+  if (!delUndo()) { toast('이미 삭제가 반영됐어요'); return; }
+  if (curPg() === 'home') renderHome();
+  toast('되돌렸어요');
+  pushRounds();                                    // 되살린 수정본이 있으면 마저 올린다(보낼 게 없으면 서버를 건드리지 않음)
+}
+function showUndoBar() { const el = Q('undo-bar'); if (el) el.classList.add('on'); }
+function hideUndoBar() { const el = Q('undo-bar'); if (el) el.classList.remove('on'); }
 
 function scBack() {
   if (!A.sc.ro && A.sc.course) {
@@ -1373,9 +1443,9 @@ function addSec(name, ex) {
   Q('cs-secs').appendChild(d);
   if (ex && ex.length === 18) d.querySelector('.cs-hn').value = '18';
 }
-function delSec(uid) {
+async function delSec(uid) {
   if (document.querySelectorAll('.css').length <= 1) { toast('최소 1개 코스 필요 (9홀 골프장은 코스 1개만 등록)'); return; }
-  if (!confirm('이 코스를 삭제할까요?')) return;
+  if (!await askConfirm('코스 삭제', '이 코스를 삭제할까요?\n(골프장 저장을 눌러야 실제로 반영돼요)', '삭제하기')) return;
   Q('cs-s-' + uid)?.remove();
 }
 
@@ -1496,7 +1566,7 @@ async function submitCourseForm() {
 async function delCourse(key) {                  // 관리자만 호출 (버튼이 관리자에게만 보임)
   const c = A.official.find(x => x.id === key || x.name === key);
   const name = c ? c.name : key;
-  if (!confirm(`"${name}" 골프장을 삭제할까요? 목록에서 영구 삭제됩니다.`)) return;
+  if (!await askConfirm('골프장 삭제', `"${name}" 골프장을 삭제할까요?\n목록에서 영구 삭제됩니다.`, '삭제하기')) return;
   const r = await callAPI(() => API.deleteCourse(name));
   // 로컬 삭제는 id 로 정확히 한 개만 — 이름으로 지우면 동명의 다른 코스까지 함께 사라진다.
   if (r.ok) { A.official = A.official.filter(x => (c && c.id) ? x.id !== c.id : x.name !== name); renderCourses(); if (A.isAdm && _admOffLoaded) renderAdmOfficial(); toast('✅ 삭제 완료'); }   // 마지막으로 보던 목록 유지
@@ -1596,7 +1666,7 @@ async function admResetPin(u) {
   toast(r.ok ? '✅ ' + u + ' 비밀번호 변경' : '❌ 실패');
 }
 async function admDelUser(u) {
-  if (!confirm(`"${u}" 님을 삭제할까요? 라운드 기록도 함께 삭제됩니다.`)) return;
+  if (!await askConfirm('회원 삭제', `"${u}" 님을 삭제할까요?\n라운드 기록도 함께 삭제됩니다.`, '삭제하기')) return;
   const r = await callAPI(() => API.deleteUser(u));
   if (r.ok) { toast('✅ 삭제 완료'); admLoadUsers(); } else toast('❌ 실패');
 }
@@ -1983,8 +2053,8 @@ async function checkVersion() {
 
 // 앱을 가리거나(홈 화면으로 나가기·화면 잠금) 닫을 때, 대기 중인 자동저장을 곧바로 서버로 보낸다.
 // (기기 저장은 입력 즉시 끝나 있으므로 여기서 실패해도 기록은 남고 다음 실행에 동기화된다)
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAutoSave(); else syncRounds(); });
-window.addEventListener('pagehide', flushAutoSave);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushAutoSave(); delRelease(); } else syncRounds(); });
+window.addEventListener('pagehide', () => { flushAutoSave(); delRelease(); });   // 되돌리기 대기 중인 삭제도 곧바로 서버로
 
 // ── 실시간 동기화: 다른 기기(폰↔PC)에서 바꾼 기록이 새로고침 없이 보이도록 ──
 // 앱·탭·창으로 돌아올 때, 그리고 화면이 켜져 있는 동안 20초마다 서버 기록을 다시 받는다(10초에 한 번까지).

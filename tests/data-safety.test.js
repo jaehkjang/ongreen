@@ -356,13 +356,13 @@ function makeRealServer(rounds) {
   return srv;
 }
 function makeDevice(srv) {
-  const dev = { localStorage: makeStore(), console, JSON, Object, Array, String, Promise,
+  const dev = { localStorage: makeStore(), console, JSON, Object, Array, String, Promise, clearTimeout,
     A: { rounds: [], official: [], sc: { eid: null } }, API: srv.API,
     callAPI: async f => { try { return await f(); } catch (e) { return { ok: false, __net: true }; } },
     curPg: () => 'home', renderHome: () => {} };
   vm.createContext(dev);
-  vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\nconst PARK_PREFIX = 'og_park_', PEND_OWNER = 'og_pend_owner';\nlet _syncChain = Promise.resolve();\n`
-    + [...NAMES, 'saveRoundsCache', 'applyServerRounds', 'queueSync', 'fetchRounds', 'pushRounds'].map(extractFn).join('\n'), dev);
+  vm.runInContext(`const PEND_KEY = 'og_pending';\nconst SEEN_KEY = 'og_seen';\nconst PARK_PREFIX = 'og_park_', PEND_OWNER = 'og_pend_owner';\nlet _syncChain = Promise.resolve();\nlet _delHold = null;\n`
+    + [...NAMES, 'saveRoundsCache', 'applyServerRounds', 'queueSync', 'fetchRounds', 'pushRounds', 'delHeld', 'delHoldStart', 'delUndo'].map(extractFn).join('\n'), dev);
   dev.A.sc = { eid: null };
   // loadAll·실시간 동기화의 라운드 부분과 같은 흐름: 서버 목록 + 이 기기 대기분 → 필요하면 곧바로 서버 반영
   dev.open = async () => {
@@ -371,6 +371,10 @@ function makeDevice(srv) {
   };
   dev.del = async id => { dev.A.rounds = dev.A.rounds.filter(r => !dev.sameId(r.id, id)); dev.markDeleted(id); return dev.pushRounds(); };
   dev.save = async rd => { dev.markSaved(rd); return dev.pushRounds(); };
+  // 되돌리기 있는 삭제(confirmDel 과 같은 흐름): 지우고 5초 대기 → release(시간 끝·앱 가림) 또는 undo
+  dev.delHold = id => dev.delHoldStart(id);
+  dev.release = () => { vm.runInContext('_delHold = null', dev); return dev.pushRounds(); };
+  dev.restart = () => { vm.runInContext('_delHold = null', dev); dev.A.rounds = []; };   // 앱이 꺼졌다 다시 켜짐(메모리만 초기화, 기기 저장소는 그대로)
   dev.ids = () => dev.A.rounds.map(r => r.id).sort((a, b) => a - b);
   return dev;
 }
@@ -568,6 +572,87 @@ const asyncTests = [
   }],
 ];
 
+// ── 라운드 삭제 되돌리기 (v12.66.0): 삭제는 5초 동안 서버에 안 보내고, 그 안에 되돌리면 서버는 삭제를 모른다 ──
+const undoTests = [
+  ['지우고 5초 안에 되돌리면 서버엔 삭제가 안 가고, 폰·PC 모두에 라운드가 그대로 있다', async () => {
+    const srv = makeServer([R(1, 90), R(2, 88)]);
+    const phone = makeDevice(srv), pc = makeDevice(srv);
+    await phone.open(); await pc.open();
+    assert(phone.delHold(2) === true, '되돌리기 대기가 시작돼야 함');
+    assert(eq(phone.ids(), [1]), `화면에선 바로 지워져야 하는데 [${phone.ids()}]`);
+    await phone.open();                                // 기다리는 사이 실시간 동기화가 돌아도
+    assert(eq(phone.ids(), [1]), '대기 중엔 화면에 다시 나타나면 안 됨');
+    assert(eq(ids(srv.rounds), [1, 2]), `대기 중엔 서버에 삭제가 가면 안 되는데 서버 [${ids(srv.rounds)}]`);
+    assert(phone.delUndo() === true, '되돌리기가 돼야 함');
+    assert(eq(phone.ids(), [1, 2]), `되돌리면 바로 보여야 하는데 [${phone.ids()}]`);
+    await phone.open(); await pc.open();
+    assert(eq(phone.ids(), [1, 2]) && eq(pc.ids(), [1, 2]) && eq(ids(srv.rounds), [1, 2]), `모두 [1,2] 여야 함: 폰 [${phone.ids()}] PC [${pc.ids()}] 서버 [${ids(srv.rounds)}]`);
+    assert(!phone.pendGet().dels.length, '대기목록에 삭제 표시가 남으면 안 됨');
+  }],
+  ['되돌리지 않으면(5초 끝) 삭제가 서버로 가고, PC 에서도 사라지며 되살아나지 않는다', async () => {
+    const srv = makeServer([R(1, 90), R(2, 88)]);
+    const phone = makeDevice(srv), pc = makeDevice(srv);
+    await phone.open(); await pc.open();
+    phone.delHold(2);
+    await phone.release();
+    assert(eq(ids(srv.rounds), [1]), `서버에서 지워져야 하는데 [${ids(srv.rounds)}]`);
+    await pc.open(); await pc.save(R(3, 85)); await phone.open();
+    assert(eq(pc.ids(), [1, 3]) && eq(phone.ids(), [1, 3]) && eq(ids(srv.rounds), [1, 3]), `2 는 되살아나면 안 됨: 폰 [${phone.ids()}] PC [${pc.ids()}] 서버 [${ids(srv.rounds)}]`);
+    assert(phone.delUndo() === false, '확정된 뒤엔 되돌리기가 안 돼야 함');
+  }],
+  ['기다리는 사이 다른 라운드를 저장해도 그 저장은 서버로 가고, 삭제만 기다린다', async () => {
+    const srv = makeServer([R(1, 90), R(2, 88)]);
+    const phone = makeDevice(srv); await phone.open();
+    phone.delHold(2);
+    await phone.save(R(3, 84));
+    assert(eq(ids(srv.rounds), [1, 2, 3]), `3 은 올라가고 2 는 남아 있어야 하는데 [${ids(srv.rounds)}]`);
+    phone.delUndo(); await phone.open();
+    assert(eq(phone.ids(), [1, 2, 3]) && eq(ids(srv.rounds), [1, 2, 3]), `되돌린 뒤 [1,2,3]: 폰 [${phone.ids()}] 서버 [${ids(srv.rounds)}]`);
+  }],
+  ['기다리는 사이 앱이 꺼지면, 다시 켤 때 삭제가 그대로 서버로 간다(사라진 삭제가 되살아나지 않음)', async () => {
+    const srv = makeServer([R(1, 90), R(2, 88)]);
+    const phone = makeDevice(srv); await phone.open();
+    phone.delHold(2);
+    phone.restart(); await phone.open();
+    assert(eq(phone.ids(), [1]) && eq(ids(srv.rounds), [1]), `삭제가 진행돼야 함: 폰 [${phone.ids()}] 서버 [${ids(srv.rounds)}]`);
+  }],
+  ['아직 못 올린 수정본이 있던 라운드를 지웠다 되돌리면 그 수정본까지 살아나 서버에 올라간다', async () => {
+    const srv = makeServer([R(1, 90)]);
+    const phone = makeDevice(srv); await phone.open();
+    srv.online = false;
+    await phone.save(R(1, 77)); await phone.save(R(2, 99));   // 오프라인: 1 수정 · 2 신규(서버에 없음)
+    phone.A.rounds = [R(2, 99), R(1, 77)];             // 실제 앱(stashSC)처럼 저장 즉시 화면 목록에도 반영
+    assert(phone.pendGet().edits[2] && phone.pendGet().edits[1], '두 수정본이 대기목록에 있어야 함');
+    phone.delHold(1); phone.delUndo();
+    phone.delHold(2); phone.delUndo();
+    srv.online = true; await phone.open();
+    const s = srv.rounds;
+    assert(eq(ids(s), [1, 2]), `1·2 모두 서버에 있어야 하는데 [${ids(s)}]`);
+    assert(s.find(r => r.id === 1).score === 77, '수정본(77)이 살아 있어야 함');
+  }],
+  ['오프라인에서 지우고 되돌리지 않으면, 연결된 뒤 삭제가 서버로 간다', async () => {
+    const srv = makeServer([R(1, 90), R(2, 88)]);
+    const phone = makeDevice(srv); await phone.open();
+    srv.online = false;
+    phone.delHold(2); await phone.release();
+    assert(eq(ids(srv.rounds), [1, 2]), '오프라인이라 서버는 그대로');
+    srv.online = true; await phone.open();
+    assert(eq(phone.ids(), [1]) && eq(ids(srv.rounds), [1]), `연결 후 삭제 반영: 폰 [${phone.ids()}] 서버 [${ids(srv.rounds)}]`);
+  }],
+];
+const undoWorldTests = [
+  ['되돌리기 대기 중 로그아웃해도 삭제 표시는 보관되고, 다시 로그인하면 서버로 간다', async () => {
+    const w = makeWorld();
+    const ph = w.device('장재혁'); await ph.login();
+    await ph.save(R(1, 90, { updatedAt: w.b.g.Date.now() })); await ph.save(R(2, 88, { updatedAt: w.b.g.Date.now() }));
+    ph.delHold(2);
+    vm.runInContext('_delHold = null', ph);            // logout 의 delDrop()
+    ph.logoutSilent();
+    await ph.login();
+    assert(eq(ph.ids(), [1]) && eq(ids(w.b.api.get('장재혁', 'getRounds').rounds), [1]), `삭제 반영: 폰 [${ph.ids()}] 서버 [${ids(w.b.api.get('장재혁', 'getRounds').rounds)}]`);
+  }],
+];
+
 (async () => {
   const run = async (list, tag) => {
     for (const [name, fn] of list) {
@@ -585,6 +670,11 @@ const asyncTests = [
   makeServer = realMakeServer;
   console.log('\n[여러 사람] 관리자·사용자 + 진짜 새 서버(PIN·토큰 포함)');
   await run(worldTests, '');
+  console.log('\n[삭제 되돌리기] 진짜 새 서버(v13+)');
+  makeServer = makeRealServer;
+  await run(undoTests, '');
+  makeServer = realMakeServer;
+  await run(undoWorldTests, '');
   console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
   process.exit(fail === 0 ? 0 : 1);
 })();
