@@ -432,7 +432,8 @@ function trendChartSVG(vals, M, lc) {
   const n = vals.length;
   const mn = Math.min(...vals), mx = Math.max(...vals), rng = (mx - mn) || 1;
   const X = i => pl + (n === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (n - 1));
-  const Y = v => pt + (1 - (v - mn) / rng) * (H - pt - pb);
+  // 위로 갈수록 좋음 — 낮을수록 좋은 지표(스코어·퍼팅 등)는 축을 뒤집어 값이 줄면 선이 올라가게 그린다
+  const Y = v => pt + (M.low ? (v - mn) / rng : 1 - (v - mn) / rng) * (H - pt - pb);
   const ma = vals.map((_, i) => { const s = Math.max(0, i - 4); const a = vals.slice(s, i + 1); return a.reduce((x, y) => x + y, 0) / a.length; });
   const ptsRaw = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
   const ptsMa = ma.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
@@ -445,7 +446,7 @@ function trendChartSVG(vals, M, lc) {
       <polyline points="${ptsMa}" fill="none" stroke="${lc}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
     </svg>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:4px">
-      <span>최저 ${nf(mn)}${u}</span><span style="color:${lc}">━ 5R 이동평균 (${n}R)</span><span>최고 ${nf(mx)}${u}</span></div></div>`;
+      <span>나쁨 ${nf(M.low ? mx : mn)}${u}</span><span style="color:${lc}">━ 5R 이동평균 (${n}R) · 위로 갈수록 좋음</span><span>좋음 ${nf(M.low ? mn : mx)}${u}</span></div></div>`;
 }
 
 
