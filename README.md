@@ -30,9 +30,10 @@ python3 -m http.server 8000
 
 | 파일 | 별명 | 역할 |
 |------|------|------|
-| `index.html` | 뼈대 | 6개 페이지(`pg-login`·`pg-home`·`pg-course`·`pg-sc`·`pg-stat`·`pg-set`)의 정적 마크업과 인라인 SVG 아이콘. `api.js` → `app.js` 순서로 로드 |
+| `index.html` | 뼈대 | 6개 페이지(`pg-login`·`pg-home`·`pg-course`·`pg-sc`·`pg-stat`·`pg-set`)의 정적 마크업과 인라인 SVG 아이콘. `api.js` → `stat.js` → `app.js` 순서로 로드 |
 | `api.js` | 통신 방 (우체부) | 서버와 주고받는 **모든** 코드. 전역 `API` 객체가 모든 엔드포인트를 노출하고, `_get`/`_post`가 인증 정보(`u`, `token`)를 자동으로 붙임 |
-| `app.js` | 두뇌 방 | 로그인 판단·점수 계산·통계·화면 전환 등 모든 로직과 `render*()` 기반 UI 렌더링 |
+| `app.js` | 두뇌 방 | 로그인 판단·점수 계산·저장·동기화·화면 전환 등 모든 로직과 `render*()` 기반 UI 렌더링 |
+| `stat.js` | 통계 방 | 라운드 기록만으로 통계·분석·추세를 계산하고 그림(저장·통신 없음). `app.js` 보다 먼저 로드 |
 | `style.css` | 모양 | 다크 테마, iOS 스타일. CSS 변수는 `:root`에 정의 |
 
 ### 상태 관리
@@ -50,14 +51,18 @@ python3 -m http.server 8000
 graph TD
     subgraph Browser["📱 브라우저 (모바일 SPA, max-width 430px)"]
         HTML["index.html<br/>뼈대 · 6개 페이지"]
-        APP["app.js<br/>두뇌: 로직·통계·렌더링"]
+        APP["app.js<br/>두뇌: 로직·렌더링"]
+        STAT["stat.js<br/>통계 방: 계산·표시"]
         API["api.js<br/>통신: API 객체"]
         CSS["style.css<br/>다크 테마"]
         STATE["전역 상태 A<br/>(메모리)"]
         LS["localStorage<br/>og_s: 세션/토큰만"]
 
         HTML --> APP
+        HTML --> STAT
         HTML --> CSS
+        APP --> STAT
+        STAT --> STATE
         APP --> STATE
         APP --> API
         APP <--> LS
@@ -71,7 +76,7 @@ graph TD
 
     classDef front fill:#1f6f43,stroke:#0d3,color:#fff
     classDef back fill:#33415c,stroke:#5b7,color:#fff
-    class HTML,APP,API,CSS,STATE,LS front
+    class HTML,APP,STAT,API,CSS,STATE,LS front
     class GAS,SHEET back
 ```
 
