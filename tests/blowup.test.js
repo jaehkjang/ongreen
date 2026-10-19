@@ -11,11 +11,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+const SRC = fs.readFileSync(path.join(__dirname, '..', 'stat.js'), 'utf8');   // 통계 코드는 v12.65.0 부터 stat.js
 
 function extractFn(name) {
   const start = SRC.indexOf(`function ${name}(`);
-  if (start < 0) throw new Error(`app.js 에 function ${name} 이(가) 없습니다`);
+  if (start < 0) throw new Error(`stat.js 에 function ${name} 이(가) 없습니다`);
   let i = SRC.indexOf('{', start), depth = 0;
   for (; i < SRC.length; i++) {
     if (SRC[i] === '{') depth++;
@@ -25,7 +25,7 @@ function extractFn(name) {
 }
 function extractConst(name) {
   const start = SRC.indexOf(`const ${name} =`);
-  if (start < 0) throw new Error(`app.js 에 const ${name} 이(가) 없습니다`);
+  if (start < 0) throw new Error(`stat.js 에 const ${name} 이(가) 없습니다`);
   return SRC.slice(start, SRC.indexOf('];', start) + 2);
 }
 

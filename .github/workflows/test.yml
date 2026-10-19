@@ -1,0 +1,28 @@
+# 온그린 자동 테스트 — PR 과 main 푸시마다 데이터 안전장치 테스트를 돌린다.
+# 설치할 것 없는 순수 Node 스크립트라 npm install 단계가 없다.
+name: 테스트
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 문법 검사
+        run: node --check api.js && node --check stat.js && node --check app.js && node --check sw.js
+      - name: 라운드 데이터 안전장치 (data-safety)
+        run: node tests/data-safety.test.js
+      - name: 골프장 홀맵 저장 안전장치 (course-map)
+        run: node tests/course-map.test.js
+      - name: 서버 라운드 저장 안전장치 (backend)
+        run: node tests/backend.test.js
+      - name: 블로업 원인 분해 (blowup)
+        run: node tests/blowup.test.js
