@@ -32,7 +32,7 @@ function makeStore() {
   return { getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
 }
 
-const NAMES = ['findCourse', 'saveOfficialCache', 'refreshOfficial', 'parDiffs', 'applyParDiffs',
+const NAMES = ['findCourse', 'parNum', 'officialCourse', 'saveOfficialCache', 'refreshOfficial', 'parDiffs', 'applyParDiffs',
   'persistParsToOfficial', 'persistParsNow', 'mergeCourseForm', 'masterParsFor'];
 
 // ── 가짜 서버: 코스 목록을 들고 있고, saveCourse 는 oldName(수정)으로 찾아 통째로 교체 ──
@@ -83,6 +83,17 @@ const srvCourse = (srv, name) => srv.courses.find(c => c.name === name);
 const nine = (c, n) => c.layouts.find(l => l.name === n).holes;
 
 // ════════ 문제 2: 고유번호(id) 없는 골프장 짝짓기 ════════
+t('공용 골프장의 파 칸에 숫자가 아닌 글자가 있으면 숫자로만 받는다(정상 값·원본은 그대로)', async () => {
+  const bad = '4<img src=x onerror="steal()">';
+  const srv = makeServer([{ id: 'x', name: 'X', layouts: [{ name: 'A', holes: [4, '5', bad, null, 3, 4, 4, 5, 3] }, { name: 'B', holes: [4, 4, 3, 5, 4, 4, 3, 5, 4] }] }]);
+  const d = makeDevice(srv);
+  assert(await d.refreshOfficial(), '목록을 받아야 함');
+  const c = d.A.official[0];
+  assert(eq(c.layouts[0].holes, [4, 5, 4, 4, 3, 4, 4, 5, 3]), `파는 숫자만: ${JSON.stringify(c.layouts[0].holes)}`);
+  assert(eq(c.layouts[1].holes, [4, 4, 3, 5, 4, 4, 3, 5, 4]), '정상 나인은 그대로');
+  assert(c.name === 'X' && c.layouts[0].name === 'A' && c.status === 'official', '이름 등 다른 값은 그대로');
+  assert(srv.courses[0].layouts[0].holes[2] === bad, '서버 원본은 건드리지 않음(받는 쪽에서만 정리)');
+});
 t('id 없는 골프장을 찾을 때 "id 없는 첫 번째 골프장"과 짝지어지지 않는다', () => {
   const dev = makeDevice(makeServer([]));
   const list = [{ name: '가CC', layouts: [] }, { name: '나CC', layouts: [] }];
