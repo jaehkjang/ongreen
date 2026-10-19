@@ -8,7 +8,7 @@ const API = {
   // ▼▼▼ 배포 후 받은 웹앱 URL을 여기에 붙여넣으세요 ▼▼▼
   URL: 'https://script.google.com/macros/s/AKfycbwmJhJ3nLOGgIVzXnoOe1YcnXfAq-gHQ44xyouczhr20l1P_k2uDOTRDqZRJWOjzjoXiw/exec',
 
-  VERSION: 'v14-2026.10.13',   // ← backend/Apps_Script.gs 의 VERSION 과 반드시 동일
+  VERSION: 'v15-2026.10.19',   // ← backend/Apps_Script.gs 의 VERSION 과 반드시 동일
 
   // 로그인 후 받은 손목밴드(토큰)를 보관 — 비밀번호는 저장하지 않음
   u: '', token: '',
@@ -71,7 +71,8 @@ const API = {
 function explainError(e) {
   if (e && e.__net)        return { msg: '인터넷 연결을 확인해주세요', code: 'NET' };
   if (!e)                  return { msg: '잠시 후 다시 시도해주세요', code: 'ERR' };
-  if (e.wrongPin)          return { msg: '비밀번호가 달라요', code: 'PIN' };
+  if (e.wrongPin)          return { msg: '비밀번호가 달라요' + (e.left ? ` (남은 기회 ${e.left}번)` : ''), code: 'PIN' };
+  if (e.locked)            return { msg: e.err || '비밀번호를 여러 번 틀려서 잠시 잠겼어요', code: 'LOCK' };   // 서버 v15: 5번 틀리면 15분 잠김
   if (e.err === '인증실패') return { msg: '다시 로그인해주세요', code: 'AUTH' };
   if (e.err === '권한없음') return { msg: '권한이 없어요', code: 'AUTH' };
   if (e.err === '이름2자')  return { msg: '이름은 2자 이상 입력해주세요', code: 'PIN' };

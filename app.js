@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.68.0';
+const APP_VERSION = 'v12.69.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -143,7 +143,7 @@ async function doLogin() {
   btn.textContent = '로그인 / 가입'; btn.disabled = false;
 
   if (!r.ok && !r.wrongPin) { const e = explainError(r); err.textContent = '❌ ' + e.msg + ' (' + e.code + ')'; return; }
-  if (r.wrongPin) { err.textContent = '❌ 비밀번호가 달라요 (PIN)'; return; }
+  if (r.wrongPin) { err.textContent = '❌ ' + explainError(r).msg + ' (PIN)'; return; }   // 서버 v15: 남은 기회도 함께
 
   // 성공
   A.u = n; A.isAdm = !!r.isAdmin;
@@ -1678,7 +1678,7 @@ async function admResetPin(u) {
 async function admDelUser(u) {
   if (!await askConfirm('회원 삭제', `"${u}" 님을 삭제할까요?\n라운드 기록도 함께 삭제됩니다.`, '삭제하기')) return;
   const r = await callAPI(() => API.deleteUser(u));
-  if (r.ok) { toast('✅ 삭제 완료'); admLoadUsers(); } else toast('❌ 실패');
+  if (r.ok) { toast('✅ 삭제 완료'); admLoadUsers(); } else toast('❌ ' + explainError(r).msg);   // 예: 관리자 계정은 삭제 불가(서버 v15)
 }
 
 // ════════════════════════════════════════
