@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.64.1';
+const APP_VERSION = 'v12.65.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -1900,24 +1900,25 @@ function trendWrapHTML() {
     : rs.map(r => +(r[M.k] || 0));
   if (vals.length < 2) return toggle + `<div class="cb" style="text-align:center;color:var(--t3);font-size:12px;padding:20px">${M.k === 'consist' ? '라운드가 4개 이상이면 기복 추세가 표시됩니다' : '라운드가 2개 이상이면 추세가 표시됩니다'}</div>`;
   const fmt = v => (M.k === 'gir' || M.k === 'fir') ? Math.round(v) + '%' : (M.k === 'consist' ? '±' + v.toFixed(1) : v.toFixed(1));
-  const slope = regSlope(vals);
-  const improving = M.low ? slope < -0.05 : slope > 0.05;
-  const worsening = M.low ? slope > 0.05 : slope < -0.05;
+  // 부호는 "좋아진 쪽이 +" 로 통일한다(v12.65.0) — 낮을수록 좋은 지표(스코어·퍼팅 등)는 값이 줄면 +.
+  const sg = M.low ? -1 : 1;
+  const slope = regSlope(vals) * sg;                          // 라운드당 개선량(+ 좋아짐 · − 나빠짐)
+  const improving = slope > 0.05, worsening = slope < -0.05;
   const vc = improving ? 'var(--g)' : worsening ? 'var(--r)' : 'var(--a)';
   const vTxt = improving ? '개선 중 📈' : worsening ? '주의 필요' : '정체';
   const perR = (slope >= 0 ? '+' : '') + slope.toFixed(2) + (M.u || '');
   const seg = Math.max(1, Math.min(5, Math.round(rs.length / 3)));
   const early = vals.slice(0, seg), recent = vals.slice(-seg);
   const ea = early.reduce((a, b) => a + b, 0) / early.length, ra = recent.reduce((a, b) => a + b, 0) / recent.length;
-  const dd = ra - ea, ddGood = M.low ? dd < -0.05 : dd > 0.05;
+  const dd = (ra - ea) * sg, ddGood = dd > 0.05;               // 초기 → 최근 개선량(+ 좋아짐)
   const ddTxt = (M.k === 'gir' || M.k === 'fir') ? (dd >= 0 ? '+' : '') + Math.round(dd) + '%' : (dd >= 0 ? '+' : '') + dd.toFixed(1);
   const cmp = `<div class="sgd" style="margin-top:12px">
     ${statCard(fmt(ea), '', '초기 ' + seg + 'R')}
     ${statCard(fmt(ra), '', '최근 ' + seg + 'R')}
-    <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${ddGood ? 'var(--g)' : Math.abs(dd) < 0.05 ? 'var(--t)' : 'var(--r)'}">${ddTxt}</span><span class="sl">초기 → 최근 변화 ${ddGood ? '(좋아짐 🎉)' : Math.abs(dd) < 0.05 ? '' : '(나빠짐)'}</span></div></div>`;
+    <div class="sc" style="grid-column:1/-1"><span class="sn" style="color:${ddGood ? 'var(--g)' : Math.abs(dd) < 0.05 ? 'var(--t)' : 'var(--r)'}">${ddTxt}</span><span class="sl">초기 → 최근 개선 ${ddGood ? '(좋아짐 🎉)' : Math.abs(dd) < 0.05 ? '' : '(나빠짐)'}</span></div></div>`;
   return toggle + trendChartSVG(vals, M, vc) +
     `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:0 2px">
-      <span style="font-size:12px;color:var(--t2)">추세: 라운드당 <b style="color:${vc}">${perR}</b></span>
+      <span style="font-size:12px;color:var(--t2)">추세(+ 좋아짐): 라운드당 <b style="color:${vc}">${perR}</b></span>
       <span style="font-size:13px;font-weight:700;color:${vc}">${vTxt}</span></div>` + cmp;
 }
 function trendChartSVG(vals, M, lc) {
@@ -1925,7 +1926,8 @@ function trendChartSVG(vals, M, lc) {
   const n = vals.length;
   const mn = Math.min(...vals), mx = Math.max(...vals), rng = (mx - mn) || 1;
   const X = i => pl + (n === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (n - 1));
-  const Y = v => pt + (1 - (v - mn) / rng) * (H - pt - pb);
+  // 위로 갈수록 좋음 — 낮을수록 좋은 지표(스코어·퍼팅 등)는 축을 뒤집어 값이 줄면 선이 올라가게 그린다
+  const Y = v => pt + (M.low ? (v - mn) / rng : 1 - (v - mn) / rng) * (H - pt - pb);
   const ma = vals.map((_, i) => { const s = Math.max(0, i - 4); const a = vals.slice(s, i + 1); return a.reduce((x, y) => x + y, 0) / a.length; });
   const ptsRaw = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
   const ptsMa = ma.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
@@ -1938,7 +1940,7 @@ function trendChartSVG(vals, M, lc) {
       <polyline points="${ptsMa}" fill="none" stroke="${lc}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
     </svg>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:4px">
-      <span>최저 ${nf(mn)}${u}</span><span style="color:${lc}">━ 5R 이동평균 (${n}R)</span><span>최고 ${nf(mx)}${u}</span></div></div>`;
+      <span>나쁨 ${nf(M.low ? mx : mn)}${u}</span><span style="color:${lc}">━ 5R 이동평균 (${n}R) · 위로 갈수록 좋음</span><span>좋음 ${nf(M.low ? mn : mx)}${u}</span></div></div>`;
 }
 
 
@@ -2693,7 +2695,7 @@ function guideStatsHTML() {
 
   ${S('📋 요약 · 발전')}
   ${it('추정 핸디', '최근 20R 중 좋은 라운드들의 오버파 평균(간이 추정). 코스 난이도는 미반영이에요.')}
-  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/티샷패널티/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
+  ${it('발전 한 줄 · 발전 추세', '초기 vs 최근 평균 비교로 발전 정도를 보여줘요. 추세 그래프는 지표(스코어/퍼팅/GIR/FIR/티샷패널티/<b>기복</b>)를 골라 5R 이동평균선·라운드당 변화량(개선/정체/주의)으로 표시. 모든 지표가 <b>위로 갈수록 좋음</b>이고 숫자도 <b>좋아지면 +, 나빠지면 −</b>예요(예: 스코어가 줄면 선이 올라가고 +). <b>기복</b>은 최근 5R 스코어 편차의 흐름(작아질수록 일정해짐).')}
 
   ${S('스코어')}
   ${it('평균 스코어·오버파·기복', '총타수 평균 / 오버파(+오버·−언더) / 점수 편차(작을수록 일정).')}
