@@ -1,5 +1,5 @@
 // ============================================================
-// 온그린 백엔드 (Apps Script) — v14-2026.10.13
+// 온그린 백엔드 (Apps Script) — v15-2026.10.19
 // ------------------------------------------------------------
 // [방 나누기]
 //   ① 설정/공용  ② 라우팅  ③ 인증  ④ 라운드(절대 안 지움)
@@ -18,6 +18,13 @@
 //   · [v14] 골프장 수정은 앱이 "어떤 값을 보고 고쳤는지(base)"를 함께 보내고, 서버가 잠금 안에서
 //     지금 저장된 값 위에 "바뀐 부분만" 얹는다 → 관리자·사용자 여러 명이 동시에 같은 골프장을 고쳐도 서로 안 지움.
 //
+// [v15 보안] — 2026-10-19
+//   · 비밀번호(PIN 4자리)를 5번 연달아 틀리면 그 이름은 15분 동안 로그인 잠김(맞는 PIN 이어도). 맞히면 횟수 초기화.
+//     관리자가 PIN 을 초기화하면 잠김도 풀린다. (4자리는 10,000가지라 무제한으로 시도하면 몇 시간이면 뚫린다)
+//   · 관리자 이름(ADMINS)은 "처음 보는 이름 자동 가입"을 막는다. 관리자 계정이 없을 때 아무나 그 이름으로
+//     가입해 관리자가 되는 것을 막기 위함. 관리자를 새로 정할 땐 그 사람이 먼저 일반 가입 → ADMINS 에 이름 추가.
+//   · 관리자 계정은 회원 삭제로 지울 수 없다(지워지면 위 자동 가입 구멍이 다시 생기므로).
+//
 // [최초 1회 / 업데이트 시 할 일]
 //   1) 이 파일 전체를 Apps Script 편집기 Code.gs 에 붙여넣고 저장
 //   2) 메뉴 ▶ 실행 ▶ setup  (권한 허용 → 일지 시트·매일 백업 예약·첫 백업 생성)
@@ -27,7 +34,7 @@
 // ============================================================
 
 // ── ① 설정/공용 ─────────────────────────────────────────────
-const VERSION = 'v14-2026.10.13';   // ← 프론트(api.js)와 반드시 동일하게 유지
+const VERSION = 'v15-2026.10.19';   // ← 프론트(api.js)와 반드시 동일하게 유지
 
 const SHEETS = {
   users:   ['이름', 'PIN해시', '가입일'],
@@ -155,6 +162,21 @@ function findUserRow_(username) {
   return -1;
 }
 
+// ── PIN 연속 오답 잠금 (v15) ── 스크립트 속성에 이름별 { n: 연속 오답 수, until: 잠김 끝 시각(ms) } 를 둔다.
+// 이미 가입된 이름에서만 기록하므로(없는 이름은 자동 가입) 기록 수는 회원 수를 넘지 않는다.
+const PIN_MAX_FAIL = 5, PIN_LOCK_MS = 15 * 60 * 1000;
+function failKey_(username) { return 'PINFAIL_' + sha_(String(username)).slice(0, 24); }
+function failGet_(username) {
+  try { const f = JSON.parse(props_().getProperty(failKey_(username)) || 'null'); if (f && typeof f === 'object') return { n: Number(f.n) || 0, until: Number(f.until) || 0 }; } catch (e) {}
+  return { n: 0, until: 0 };
+}
+function failSet_(username, f) { props_().setProperty(failKey_(username), JSON.stringify(f)); }
+function failClear_(username) { props_().deleteProperty(failKey_(username)); }
+function lockedErr_(until) {
+  const mins = Math.max(1, Math.ceil((until - Date.now()) / 60000));
+  return out_({ ok: false, err: `비밀번호를 ${PIN_MAX_FAIL}번 틀려서 잠겼어요 — ${mins}분 뒤에 다시 해주세요`, locked: true, mins });
+}
+
 function login_(username, pin) {
   if (!username || username.length < 2) return err_('이름2자');
   if (!/^\d{4}$/.test(String(pin)))     return err_('비번4자');
@@ -162,13 +184,19 @@ function login_(username, pin) {
   const row = findUserRow_(username);
   const hash = hashPin_(pin);
 
-  if (row === -1) {                                   // 처음 보는 이름 → 자동 가입
+  if (row === -1) {                                   // 처음 보는 이름 → 자동 가입 (관리자 이름은 제외)
+    if (isAdmin) return err_('관리자 이름은 새로 가입할 수 없어요 — 관리자에게 문의해주세요');
     SH_USERS().appendRow([username, hash, new Date().toLocaleDateString('ko-KR')]);
     return ok_({ token: makeToken_(username, hash), isAdmin, isNew: true });
   }
+  const f = failGet_(username);
+  if (f.until > Date.now()) return lockedErr_(f.until);   // 잠긴 동안엔 맞는 PIN 이어도 거절(그래야 대입이 안 됨)
   const stored = String(SH_USERS().getRange(row, 2).getValue());
-  if (stored === hash) return ok_({ token: makeToken_(username, stored), isAdmin });
-  return ok_({ wrongPin: true });
+  if (stored === hash) { if (f.n || f.until) failClear_(username); return ok_({ token: makeToken_(username, stored), isAdmin }); }
+  const n = f.n + 1;
+  if (n >= PIN_MAX_FAIL) { const until = Date.now() + PIN_LOCK_MS; failSet_(username, { n: 0, until }); return lockedErr_(until); }
+  failSet_(username, { n, until: 0 });
+  return ok_({ wrongPin: true, left: PIN_MAX_FAIL - n });
 }
 
 function verify_(username, token) {
@@ -419,10 +447,12 @@ function resetUserPin_(target, pin) {
   const row = findUserRow_(target);
   if (row === -1) return err_('사용자없음');
   SH_USERS().getRange(row, 2).setValue(hashPin_(pin));
+  failClear_(target);                                  // 관리자가 PIN 을 새로 정해 주면 잠김도 푼다
   return ok_({});
 }
 // 회원 삭제: 계정 줄만 없앤다. 라운드 기록은 지우지 않고 '삭제시각'만 표시(같은 이름으로 다시 와도 되살릴 수 있게).
 function deleteUser_(target) {
+  if (isAdmin_(target)) return err_('관리자 계정은 삭제할 수 없어요');   // v15: 지워지면 그 이름으로 아무나 가입해 관리자가 될 수 있음
   const row = findUserRow_(target);
   if (row !== -1) {
     const old = SH_USERS().getRange(row, 1, 1, 3).getValues()[0];
@@ -445,6 +475,7 @@ function deleteUser_(target) {
 // ── ⑧ 헬퍼 ────────────────────────────────────────────────
 function ok_(d)  { return ContentService.createTextOutput(JSON.stringify(Object.assign({ ok: true }, d))).setMimeType(ContentService.MimeType.JSON); }
 function err_(m) { return ContentService.createTextOutput(JSON.stringify({ ok: false, err: m })).setMimeType(ContentService.MimeType.JSON); }
+function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
 // ── ⑨ 최초설정 / 백업 ──────────────────────────────────────
 function setup() {

@@ -380,5 +380,64 @@ t('골프장: 관리자·사용자 4명이 옛 값(base)을 들고 1,000번 번�
   }
 });
 
+console.log('\n[v15 보안] PIN 대입 잠금 · 관리자 이름 보호');
+
+t('PIN 을 5번 연달아 틀리면 15분 동안 맞는 PIN 으로도 못 들어온다(남은 기회도 알려줌)', () => {
+  const b = setup();
+  const lefts = [];
+  for (let i = 0; i < 4; i++) { const r = b.raw.login('장재혁', '000' + i); assert(r.ok && r.wrongPin, `${i + 1}번째는 wrongPin: ${JSON.stringify(r)}`); lefts.push(r.left); }
+  assert(eq(lefts, [4, 3, 2, 1]), `남은 기회 [${lefts}]`);
+  const r5 = b.raw.login('장재혁', '0009');
+  assert(!r5.ok && r5.locked && r5.mins === 15, `5번째에 잠겨야 함: ${JSON.stringify(r5)}`);
+  const ok = b.raw.login('장재혁', '1234');
+  assert(!ok.ok && ok.locked && !ok.token, '잠긴 동안엔 맞는 PIN 도 거절(토큰 안 줌)');
+  b.tick(14 * 60 * 1000);
+  assert(b.raw.login('장재혁', '1234').locked, '14분 뒤에도 잠김');
+  b.tick(61 * 1000);
+  const after = b.raw.login('장재혁', '1234');
+  assert(after.ok && after.token, `15분 지나면 맞는 PIN 으로 들어옴: ${JSON.stringify(after)}`);
+});
+
+t('맞히면 틀린 횟수가 초기화된다 · 잠김은 그 이름만 · 기존 토큰(이미 로그인한 폰)은 계속 동작', () => {
+  const b = setup();
+  for (let i = 0; i < 4; i++) b.raw.login('장재혁', '0000');
+  assert(b.raw.login('장재혁', '1234').ok, '4번 틀린 뒤 맞힘');
+  for (let i = 0; i < 4; i++) assert(b.raw.login('장재혁', '0000').wrongPin, '횟수가 초기화돼서 다시 4번까지는 wrongPin');
+  b.raw.login('장재혁', '0000');                                   // 5번째 → 잠김
+  assert(b.raw.login('박유림', '1234').ok, '다른 사람은 영향 없음');
+  b.api.post('장재혁', { action: 'saveRounds', rounds: [R(1, 90)] });
+  assert(eq(ids(b.api.get('장재혁', 'getRounds').rounds), [1]), '이미 로그인한 기기(토큰)는 저장·조회가 계속 됨');
+});
+
+t('관리자가 PIN 을 초기화하면 잠김이 풀린다', () => {
+  const b = setup();
+  for (let i = 0; i < 5; i++) b.raw.login('장재혁', '0000');
+  assert(b.raw.login('장재혁', '1234').locked, '잠김');
+  b.api.post('관리자', { action: 'resetUserPin', target: '장재혁', pin: '5678' });
+  const r = b.raw.login('장재혁', '5678');
+  assert(r.ok && r.token, `초기화한 PIN 으로 바로 들어옴: ${JSON.stringify(r)}`);
+});
+
+t('없는 일반 이름은 지금처럼 자동 가입되고, 관리자 이름은 자동 가입되지 않는다', () => {
+  const b = makeBackend();
+  const r = b.raw.login('새회원', '4321');
+  assert(r.ok && r.isNew && r.token && !r.isAdmin, `일반 가입: ${JSON.stringify(r)}`);
+  b.props.ADMINS += ',새관리자';                                    // 아직 가입 안 한 이름이 관리자 목록에 있음
+  const a = b.raw.login('새관리자', '1111');
+  assert(!a.ok && !a.token, `관리자 이름 자동 가입 거절: ${JSON.stringify(a)}`);
+  assert(b.g.findUserRow_('새관리자') === -1, '계정이 만들어지면 안 됨');
+  const ex = b.raw.login('관리자', '1234');
+  assert(ex.ok && ex.isAdmin, '이미 가입된 관리자는 그대로 로그인');
+});
+
+t('관리자 계정은 회원 삭제로 지울 수 없다(일반 회원 삭제는 그대로)', () => {
+  const b = setup(); b.api.login('관리자1');
+  const r = b.api.post('관리자', { action: 'deleteUser', target: '관리자1' });
+  assert(!r.ok, `관리자 삭제 거절: ${JSON.stringify(r)}`);
+  assert(b.g.findUserRow_('관리자1') !== -1, '관리자 계정이 남아 있어야 함');
+  assert(b.api.post('관리자', { action: 'deleteUser', target: '오지훈' }).ok, '일반 회원 삭제는 됨');
+  assert(b.g.findUserRow_('오지훈') === -1, '일반 회원은 지워짐');
+});
+
 console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
 process.exit(fail === 0 ? 0 : 1);

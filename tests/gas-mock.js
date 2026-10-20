@@ -94,6 +94,8 @@ function makeBackend() {
   };
   vm.createContext(g);
   vm.runInContext(GAS_SRC, g);
+  // v15 부터 관리자 이름은 자동 가입이 막히므로, 실제처럼 "먼저 가입한 뒤 관리자로 지정된" 상태(PIN 1234)로 시작한다.
+  props.ADMINS.split(',').forEach(a => g.sheet_('사용자').appendRow([a, g.hashPin_('1234'), '2026. 1. 1.']));
   // 앱이 하는 요청 그대로 흉내 (doGet/doPost 경유 → 인증·잠금까지 같이 검사)
   const token = u => g.makeToken_(u, g.hashPin_('1234'));
   const raw = {

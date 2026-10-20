@@ -66,6 +66,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - **실제 사고 사례(재발 방지):** 원터치 공유(프런트 전용) 기능을 추가하며 `API.VERSION`을 `v12-2026.06.21` → `v13-2026.06.22`로 같이 올렸는데, 서버는 그대로 v12라서 모든 사용자에게 VER 에러가 발생했습니다. 백엔드는 바뀐 게 없었으므로 잘못된 건 프런트의 `API.VERSION`이었고, 다시 v12로 되돌려 해결했습니다.
   - **체크리스트:** 이번 변경이 `Apps_Script.gs`를 건드렸나? → **아니오면 `API.VERSION` 손대지 않기.** → **예면** `Apps_Script.gs`의 `VERSION`과 `api.js`의 `API.VERSION`을 같은 값으로 바꾸고 Apps Script [배포 관리] → [새 버전] 배포까지 끝내기.
 - **권한 체크는 서버에서**: 관리자 전용 동작은 클라이언트가 아니라 서버(`isAdm`)에서 검증됩니다. 프런트의 표시 숨김은 편의일 뿐입니다.
+- **로그인 보안(서버 v15)**: 같은 이름으로 PIN 을 5번 연달아 틀리면 15분 잠김(`PIN_MAX_FAIL`/`PIN_LOCK_MS`, 스크립트 속성 `PINFAIL_*`). 관리자 이름(`ADMINS`)은 자동 가입 불가, 관리자 계정은 회원 삭제 불가 — 새 관리자는 먼저 일반 가입한 뒤 `ADMINS` 에 추가합니다. 이 부분을 고치면 `node tests/backend.test.js` 를 돌리세요.
 - 인증은 사용자명 + 4자리 PIN → 토큰 방식. PIN은 저장하지 않고 토큰만 보관합니다.
 - 백엔드 수정 후에는 Apps Script에서 [배포 관리] → [새 버전] 배포가 필요합니다(URL은 안 바뀜).
 - **작업 제출 규칙**: 모든 변경은 `main`에 직접 커밋하지 말고, **반드시 새 브랜치를 만들어 Pull Request(PR)로 제출**합니다.
