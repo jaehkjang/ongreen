@@ -320,12 +320,16 @@ function puttingHTML(a, ref) {
   };
   const R = ref || {};
   const pc = x => Math.round(x) + '%';
+  // 3퍼트 이상: 한 라운드면 "x홀 (xx%)", 여러 라운드면 "라운드당 x홀 (xx%)" — 신호등은 비율(%)로 비교
+  const threeTxt = (cnt, p, many) => `${many ? '<span style="font-size:12px;font-weight:400;color:var(--t2)">라운드당 </span>' : ''}${nf(cnt)}<span class="su">홀 (${p}%)</span>`;
+  const threeAvgTxt = (rn && R.threePct != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${nf(R.threeAvg)}홀 (${R.threePct}%)</span>` : '';
+  const threeCard = `<div class="sc"><span class="sn">${dot(sig(a.threePct, R.threePct, true, 5, rn))}${threeTxt(a.n > 1 ? a.threeAvg : a.p3 + a.p4, a.threePct, a.n > 1)}</span><span class="sl">3퍼트 이상</span>${threeAvgTxt}</div>`;
   const legend = rn >= 3 ? `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 8px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : '';
   return `<div class="lbl">🍩 퍼팅 효율성 (Putting)</div><div class="sgd">
     ${card(a.puttAvg, '', 'PPR(총 퍼팅)', R.puttAvg, true, 2, nf)}
     ${card(a.puttPerHole, '', '홀당 평균', R.puttPerHole, true, 0.1, x => (+x).toFixed(2))}
     ${card(a.girPuttAvg, '', 'GIR 시 평균 퍼트', R.girPuttAvg, true, 0.15, x => (+x).toFixed(2))}
-    ${card(a.threePct, '', '3퍼트 이상', R.threePct, true, 5, pc)}
+    ${threeCard}
     ${card(a.onePuttPct, '', '1퍼트율', R.onePuttPct, false, 5, pc)}
     ${card(a.puttLossRound, '', '퍼팅 손실(GIR 홀)', R.puttLossRound, true, 1, x => nfs(x) + '타')}</div>${legend}
   ${explainBox('퍼팅 손실 타수는 어떻게 계산하나요?', `<b>기준</b> — 그린에 레귤러온한 홀에서는 <b>2퍼트</b>를 정상으로 봐요.<br>
@@ -432,8 +436,8 @@ function trendChartSVG(vals, M, lc) {
   const n = vals.length;
   const mn = Math.min(...vals), mx = Math.max(...vals), rng = (mx - mn) || 1;
   const X = i => pl + (n === 1 ? (W - pl - pr) / 2 : i * (W - pl - pr) / (n - 1));
-  // 위로 갈수록 좋음 — 낮을수록 좋은 지표(스코어·퍼팅 등)는 축을 뒤집어 값이 줄면 선이 올라가게 그린다
-  const Y = v => pt + (M.low ? (v - mn) / rng : 1 - (v - mn) / rng) * (H - pt - pb);
+  // 값 그대로 — 값이 크면 위, 작으면 아래(스코어·퍼팅도 축을 뒤집지 않음). 좋아지는지는 선 색(lc: 개선 초록·악화 빨강)으로 본다
+  const Y = v => pt + (1 - (v - mn) / rng) * (H - pt - pb);
   const ma = vals.map((_, i) => { const s = Math.max(0, i - 4); const a = vals.slice(s, i + 1); return a.reduce((x, y) => x + y, 0) / a.length; });
   const ptsRaw = vals.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
   const ptsMa = ma.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
@@ -446,7 +450,7 @@ function trendChartSVG(vals, M, lc) {
       <polyline points="${ptsMa}" fill="none" stroke="${lc}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
     </svg>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:4px">
-      <span>나쁨 ${nf(M.low ? mx : mn)}${u}</span><span style="color:${lc}">━ 5R 이동평균 (${n}R) · 위로 갈수록 좋음</span><span>좋음 ${nf(M.low ? mn : mx)}${u}</span></div></div>`;
+      <span>최저 ${nf(mn)}${u}</span><span style="color:${lc}">━ 5R 이동평균 (${n}R) · ${M.low ? '낮을수록' : '높을수록'} 좋음</span><span>최고 ${nf(mx)}${u}</span></div></div>`;
 }
 
 
