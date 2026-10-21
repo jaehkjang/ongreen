@@ -321,7 +321,8 @@ function puttingHTML(a, ref) {
   const R = ref || {};
   const pc = x => Math.round(x) + '%';
   // 3퍼트 이상: 한 라운드면 "x홀 (xx%)", 여러 라운드면 "라운드당 x홀 (xx%)" — 신호등은 비율(%)로 비교
-  const threeTxt = (cnt, p, many) => `${many ? '<span style="font-size:12px;font-weight:400;color:var(--t2)">라운드당 </span>' : ''}${nf(cnt)}<span class="su">홀 (${p}%)</span>`;
+  // 폭이 모자라 줄이 바뀌면 "(라운드당) x홀" / "(xx%)" 사이에서만 넘어가게 두 덩어리를 각각 nowrap
+  const threeTxt = (cnt, p, many) => `<span style="white-space:nowrap">${many ? '<span style="font-size:12px;font-weight:400;color:var(--t2)">라운드당 </span>' : ''}${nf(cnt)}<span class="su">홀</span></span> <span class="su" style="white-space:nowrap">(${p}%)</span>`;
   const threeAvgTxt = (rn && R.threePct != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${nf(R.threeAvg)}홀 (${R.threePct}%)</span>` : '';
   const threeCard = `<div class="sc"><span class="sn">${dot(sig(a.threePct, R.threePct, true, 5, rn))}${threeTxt(a.n > 1 ? a.threeAvg : a.p3 + a.p4, a.threePct, a.n > 1)}</span><span class="sl">3퍼트 이상</span>${threeAvgTxt}</div>`;
   const legend = rn >= 3 ? `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 8px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : '';
@@ -414,8 +415,10 @@ function trendWrapHTML() {
   const slope = regSlope(vals);
   const improving = M.low ? slope < -0.05 : slope > 0.05;
   const worsening = M.low ? slope > 0.05 : slope < -0.05;
-  const vc = improving ? 'var(--g)' : worsening ? 'var(--r)' : 'var(--a)';
-  const vTxt = improving ? '개선 중 📈' : worsening ? '주의 필요' : '정체';
+  // 선 색은 초록/빨강 둘뿐 — 정체(변화 ±0.05 이내)도 방향대로 칠한다(기울기 0 은 나빠지지 않았으니 초록)
+  const better = M.low ? slope <= 0 : slope >= 0;
+  const vc = better ? 'var(--g)' : 'var(--r)';
+  const vTxt = improving ? '개선 중 📈' : worsening ? '주의 필요' : (better ? '정체 (소폭 개선)' : '정체 (소폭 악화)');
   const perR = (slope >= 0 ? '+' : '') + slope.toFixed(2) + (M.u || '');
   const seg = Math.max(1, Math.min(5, Math.round(rs.length / 3)));
   const early = vals.slice(0, seg), recent = vals.slice(-seg);
