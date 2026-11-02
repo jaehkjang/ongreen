@@ -25,11 +25,14 @@ const DRIVE_K = 5;   // 고정값의 무게(홀 수 환산). 본인 기록이 �
 //   그린을 놓쳤어도 늦어진 타수가 전부 벌타 때문이면(예: 파4 티샷 해저드 → 3온) 칩을 친 게 아니므로
 //   "칩 1타" 공제 없이 레귤러온 홀처럼 나눈다(아이언 = 초과 − 벌타 몫, 퍼팅 = 퍼트 − 2). analyze · blowupPartsOf 공용.
 function onRegOf(gir, ex, pen) { return !!gir || ex - pen <= 0; }
-// 파4·5 티샷 결과 분류(setTee 의 저장 규칙과 같은 우선순위). 미선택 · 옛 기록의 구분 불가 미스는 null
+// 멀리건 받은 첫 샷의 종류(mulliArr 값): 1 = 종류 모름(옛 기록·미선택) · 2 = 해저드 · 3 = OB (v12.72.0). 0 이 아니면 모두 "멀리건 받음"
+const MULL_HZ = 2, MULL_OB = 3;
+// 파4·5 티샷 결과 분류. 미선택 · 옛 기록의 구분 불가 미스는 null
+//   벌타(OB·해저드)가 있으면 멀리건 여부와 상관없이 그 벌타 칸으로(v12.72.0) — 멀리건 뒤 다시 친 샷이 OB 면 OB 2타를 드라이버 몫으로
 function teeCatOf(fir, mull, tpv, missT) {
-  if (mull) return 'mull';
   if (tpv === 2) return 'ob';
   if (tpv === 1) return 'hazard';
+  if (mull) return 'mull';
   if (fir) return 'fw';
   return (missT === 'rough' || missT === 'bunker') ? missT : null;
 }
@@ -41,6 +44,7 @@ function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
   const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, one: 0, three: 0, loss: 0 }; });   // 어프로치 거리 구간별 집계(loss: 숏게임 손실 합). 옛 m 기준 키(AP_LEGACY)는 통계에서 제외
+  const mulFirst = { hz: 0, ob: 0, unk: 0 };          // 멀리건 받은 첫 샷의 종류(v12.72.0+ 입력분만 구분)
   const mulR = { fw: 0, safe: 0, pen: 0, unk: 0 };   // 멀리건 받고 다시 친 샷의 결과: 페어웨이(파3 온그린) / 러프·벙커 / 또 페널티 / 미선택
   const holes = [];   // 홀별 타수 분해용 기록 — 드라이버 1회당 손실이 전체 집계 뒤에 정해지므로 루프 뒤에서 한 번 더 훑는다
   const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, ex: 0 }; });   // 드라이버: 티샷 결과별 홀 수·온그린까지 초과 타수 합
@@ -67,6 +71,7 @@ function analyze(rounds) {
       //    멀리건 = 첫 샷이 OB·해저드였다는 뜻 → 페널티로 세고, 다시 친 샷의 결과는 멀리건 살림 지표(mulR)로 따로 센다
       if (mull) {
         mullCount++;
+        mulFirst[mull === MULL_OB ? 'ob' : mull === MULL_HZ ? 'hz' : 'unk']++;
         const re = tpv ? 'pen' : (par === 3 ? gi[i] : fi[i]) ? 'fw' : (missT === 'rough' || missT === 'bunker') ? 'safe' : null;
         if (re) mulR[re]++; else mulR.unk++;
       }
@@ -180,7 +185,7 @@ function analyze(rounds) {
   const vsRound = f1(vsSum, n);                            // 네 구간 합계와 같아야 하는 라운드 평균 오버파
 
   return { n, played,
-    obCount, hzCount, mullCount, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
+    obCount, hzCount, mullCount, mulFirst, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
     par45, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
     girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles,
     missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound, xPenStrokesRound, xHzCnt, xObCnt,
@@ -241,7 +246,8 @@ function teeStabilityHTML(a) {
   ${pie}
   ${a.mullCount ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;margin-top:8px"><div class="cbt" style="margin-bottom:6px">🔄 멀리건 받고 다시 친 샷 (${a.mullCount}회)</div>
     ${a.mulSavePct == null ? '' : `<div style="display:flex;gap:16px;margin-bottom:6px"><div>멀리건 살림률 <b style="font-size:16px;color:${a.mulSavePct >= 70 ? 'var(--g)' : a.mulSavePct >= 40 ? 'var(--a)' : 'var(--r)'}">${a.mulSavePct}%</b></div><div>페어웨이(온그린) <b style="font-size:16px;color:var(--t)">${a.mulFwPct}%</b></div></div>`}
-    페어웨이(온그린) <b style="color:var(--t)">${a.mulR.fw}</b> · 러프·벙커 <b style="color:var(--t)">${a.mulR.safe}</b> · 또 페널티 <b style="color:var(--r)">${a.mulR.pen}</b>${a.mulR.unk ? ` · 결과 미선택 ${a.mulR.unk}` : ''}
+    <div style="margin-bottom:4px">첫 샷: OB <b style="color:var(--r)">${a.mulFirst.ob}</b> · 해저드 <b style="color:var(--r)">${a.mulFirst.hz}</b>${a.mulFirst.unk ? ` · 종류 모름 ${a.mulFirst.unk}` : ''}</div>
+    다시 친 샷: 페어웨이(온그린) <b style="color:var(--t)">${a.mulR.fw}</b> · 러프·벙커 <b style="color:var(--t)">${a.mulR.safe}</b> · 또 페널티 <b style="color:var(--r)">${a.mulR.pen}</b>${a.mulR.unk ? ` · 결과 미선택 ${a.mulR.unk}` : ''}
     <div class="tx-note">멀리건 = 첫 티샷이 OB·해저드였다는 뜻이라 위 페널티율·FIR은 첫 샷 기준으로 세요. 살림률 = 다시 친 샷이 페널티 없이 살아난 비율(결과를 고른 ${a.mulKnown}회 기준).</div></div>` : ''}
   <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
 }

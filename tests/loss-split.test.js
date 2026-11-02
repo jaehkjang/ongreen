@@ -37,7 +37,7 @@ vm.createContext(ctx);
 vm.runInContext([
   'function roundPars(r) { return r.holePars; }',
   grab(APP, 'const AP_OPTS =', '];'), grab(APP, 'const AP_NEAR =', '];'),
-  grab(SRC, 'const DRIVE_CATS =', '];'), grab(SRC, 'const DRIVE_K =', ';'),
+  grab(SRC, 'const MULL_HZ =', ';'), grab(SRC, 'const DRIVE_CATS =', '];'), grab(SRC, 'const DRIVE_K =', ';'),
   extractFn('onRegOf'), extractFn('teeCatOf'), extractFn('analyze'),
   'this.analyze = analyze;',
 ].join('\n'), ctx);
@@ -86,6 +86,17 @@ t('해저드·OB 1회당 손실은 기록과 상관없이 1타·2타 고정', ()
   const hz = a.driveCats.find(c => c.k === 'hazard');
   assert(hz.cost === 1 && hz.exact && !hz.approx, JSON.stringify(hz));
   assert(near(a.driveLossRound, 1) && near(a.ironLossRound, 3), JSON.stringify([a.driveLossRound, a.ironLossRound]));
+});
+t('멀리건 뒤 다시 친 샷 OB → 4온 2퍼트 → 일반 OB 와 같게 드라이버 +2 · 아이언 0', () => {
+  for (const m of [1, 2, 3]) {   // 첫 샷 종류(모름·해저드·OB)와 상관없이
+    const a = analyze([R({ scores: 6, girArr: 0, firArr: 0, tpArr: 2, mulliArr: m })]);
+    assert(near(a.driveLossRound, 2) && near(a.ironLossRound, 0), JSON.stringify([m, a.driveLossRound, a.ironLossRound]));
+  }
+});
+t('멀리건 첫 샷 종류 집계(모름·해저드·OB)', () => {
+  const r = R({ mulliArr: 3 }); r.mulliArr[1] = 2; r.mulliArr[2] = 1; r.mulliArr[3] = 3;
+  const a = analyze([r]);
+  assert(a.mullCount === 4 && a.mulFirst.ob === 2 && a.mulFirst.hz === 1 && a.mulFirst.unk === 1, JSON.stringify(a.mulFirst));
 });
 t('그린 미스 후 칩 온 2퍼트(페어웨이) → 아이언 0 · 숏게임 +1 (기존 규칙 유지)', () => {
   const a = analyze([R({ scores: 5, girArr: 0 })]);

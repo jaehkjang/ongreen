@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.71.0';
+const APP_VERSION = 'v12.72.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -882,6 +882,8 @@ function deriveTeeSel() {                          // 저장된 라운드를 다
 function setTee(i, key) {
   if (A.sc.ro) return;
   if (key === 'mull') { A.sc.mulli[i] = A.sc.mulli[i] ? 0 : 1; renderSC(); autoSaveSC(); return; }   // 멀리건은 결과 칩과 별개로 켜고 끔
+  // 멀리건 받은 첫 샷의 종류(v12.72.0): mulli 값 1 = 종류 모름(옛 기록·미선택) · 2 = 해저드 · 3 = OB. 같은 걸 다시 누르면 1(모름)로
+  if (key === 'mullhz' || key === 'mullob') { const v = key === 'mullob' ? MULL_OB : MULL_HZ; A.sc.mulli[i] = A.sc.mulli[i] === v ? 1 : v; renderSC(); autoSaveSC(); return; }
   if (key === 'fw' && getH()[i] === 3) return;   // 파3엔 페어웨이 개념 없음(직접 그린을 노림) — 러프는 파3도 놓친 결과라 허용
   if (key === 'green' && getH()[i] !== 3) return;                     // 온그린 칩은 파3 전용(파4·5는 온그린까지 숫자로 입력)
   if (!A.sc.teeSel) A.sc.teeSel = Array(18).fill(null);
@@ -1016,6 +1018,7 @@ function renderHoleWizard() {
   const chip = (key, lbl) => `<button class="lb ${ts === key ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'${key}')">${lbl}</button>`;
   const chips = (par === 3 ? [chip('green', '온그린'), chip('rough', '러프'), chip('bunker', '벙커')] : [chip('fw', '페어웨이'), chip('rough', '러프'), chip('bunker', '벙커')]).concat([chip('hazard', '해저드'), chip('ob', 'OB')]);
   const mullOn = !!A.sc.mulli[i];   // 멀리건은 결과 칩과 함께 켤 수 있는 별도 토글
+  const mullFirst = (key, lbl, v) => `<button class="lb ${A.sc.mulli[i] === v ? 'on' : ''}" style="flex:1;padding:7px 4px;font-size:12.5px" onclick="setTee(${i},'${key}')">${lbl}</button>`;   // 멀리건 첫 샷 종류
   const mullChip = `<button class="lb ${mullOn ? 'on' : ''}" style="flex:1;min-width:64px;padding:10px 4px;font-size:13px" onclick="setTee(${i},'mull')">🔄 멀리건${mullOn ? ' 받음' : ''}</button>`;
   const parTab = p => `<button class="sg ${par === p ? 'on' : ''}" onclick="setHolePar(${i},${p})">파${p}</button>`;
   const holeCell = idx => { const on = idx === i, done = A.sc.scores[idx] > 0;
@@ -1034,7 +1037,8 @@ function renderHoleWizard() {
       <div class="seg" style="margin-bottom:14px">${parTab(3)}${parTab(4)}${parTab(5)}</div>
       <div style="font-size:12px;color:var(--t2);margin-bottom:6px">⛳ 티샷 결과</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${mullChip}</div>
-      ${mullOn ? `<div style="font-size:11px;color:#ffcc80;margin-bottom:6px;line-height:1.5">첫 티샷은 페널티(OB·해저드)로 기록돼요. 아래에서 <b>멀리건 받고 다시 친 샷</b>의 결과를 골라 주세요.</div>` : ''}
+      ${mullOn ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-size:11.5px;color:#ffcc80;flex-shrink:0">첫 티샷은</span>${mullFirst('mullhz', '해저드', MULL_HZ)}${mullFirst('mullob', 'OB', MULL_OB)}</div>
+      <div style="font-size:11px;color:#ffcc80;margin-bottom:6px;line-height:1.5">첫 티샷이 어디로 갔는지 고르고(모르면 비워 두세요), 아래에서 <b>멀리건 받고 다시 친 샷</b>의 결과를 골라 주세요.</div>` : ''}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">${chips.join('')}</div>
       <div style="display:flex;gap:10px;margin-bottom:14px">
         <div style="flex:1;text-align:center;background:var(--bg2);border-radius:14px;padding:14px 8px">
@@ -1105,7 +1109,7 @@ function holeDetail(id, i) {
   const girRow = row('🎯 그린 (GIR)', gg ? '<b style="color:#7dd4ff">온그린 ⭕</b>' : '<span style="color:var(--t2)">놓침 ❌</span>');
   const puttRow = row('🍩 퍼팅 수', `<b>${pp}</b>퍼팅${pp >= 3 ? ' <span style="color:var(--a)">(3퍼팅↑)</span>' : ''}`);
   const reTxt = tpv === 2 ? 'OB' : tpv ? '해저드' : ff ? '페어웨이' : (r.missArr || [])[i] === 'rough' ? '러프' : (r.missArr || [])[i] === 'bunker' ? '벙커' : (par === 3 && gg) ? '온그린' : '';
-  const teeTxt = mm ? `<b style="color:#ffcc80">멀리건${reTxt ? ` → ${reTxt}` : ''}</b> <span style="color:var(--t3)">(첫 샷 페널티 · 다시 친 결과)</span>`
+  const teeTxt = mm ? `<b style="color:#ffcc80">멀리건${mm === MULL_OB ? '(첫 샷 OB)' : mm === MULL_HZ ? '(첫 샷 해저드)' : ''}${reTxt ? ` → ${reTxt}` : ''}</b> <span style="color:var(--t3)">(첫 샷 페널티 · 다시 친 결과)</span>`
     : tpv === 2 ? '<b style="color:#ff8a80">OB (스코어에 벌타 포함됨)</b>'
     : tpv ? '<b style="color:#ff8a80">해저드 (스코어에 벌타 포함됨)</b>'
     : (par !== 3 && !ff) ? '<span style="color:var(--t3)">러프/벙커 (사고 없음)</span>' : '<span style="color:var(--t3)">사고 없음</span>';
@@ -1728,7 +1732,7 @@ function exportScorecards() {
     push(['퍼팅', ...Array.from({ length: 18 }, (_, i) => at18(pu, i)), r.putts]);
     push(['GIR', ...Array.from({ length: 18 }, (_, i) => gi[i] ? 'O' : ''), gi.filter(Boolean).length]);
     push(['FIR', ...Array.from({ length: 18 }, (_, i) => pars[i] === 3 ? '-' : (fi[i] ? 'O' : '')), fi.filter(Boolean).length]);
-    push(['멀리건', ...Array.from({ length: 18 }, (_, i) => mu[i] ? 'O' : ''), r.mulligan || 0]);
+    push(['멀리건', ...Array.from({ length: 18 }, (_, i) => mu[i] === MULL_OB ? 'OB' : mu[i] === MULL_HZ ? '해저드' : mu[i] ? 'O' : ''), r.mulligan || 0]);
     push(['트러블샷', ...Array.from({ length: 18 }, (_, i) => tp[i] ? 'O' : ''), r.tpCount || 0]);
     blank();
   });
