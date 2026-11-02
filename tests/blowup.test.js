@@ -32,7 +32,7 @@ function extractConst(name) {
 const ctx = { console, Math, Array, Object };
 vm.createContext(ctx);
 // roundPars 는 박제된 holePars 만 쓰는 단순판으로 대체(마스터 코스 조회 불필요)
-vm.runInContext(`function roundPars(r) { return r.holePars; }\n` + extractConst('BLOWUP_CATS') + '\n' + extractFn('blowupPartsOf') + '\nthis.blowupPartsOf = blowupPartsOf;', ctx);
+vm.runInContext(`function roundPars(r) { return r.holePars; }\n` + extractConst('BLOWUP_CATS') + '\n' + extractFn('onRegOf') + '\n' + extractFn('blowupPartsOf') + '\nthis.blowupPartsOf = blowupPartsOf;', ctx);
 const { blowupPartsOf } = ctx;
 
 let pass = 0, fail = 0;
@@ -74,6 +74,10 @@ t('파5 9타 · 세컨드 해저드 1회 · 온그린 7타 · 2퍼트', () => {
   // 7 − 3 − 1(칩) − 1(해저드) = 2
   assert(b.v.xpen === 1 && b.v.iron === 2 && b.v.short === 1, JSON.stringify(b.v));
   assert(b.main === 'iron');
+});
+t('파4 7타 · 티샷 OB → 4온(칩 안 침) · 3퍼트 → 티샷 +2 · 온그린까지 0 · 퍼팅 +1 (칩 1타 중복 공제 없음)', () => {
+  const b = blowupPartsOf(H(4, { s: 7, putt: 3, tp: 2 }), 0);
+  assert(b.v.tee === 2 && b.v.iron === 0 && b.v.short === 0 && b.v.putt === 1, JSON.stringify(b.v));
 });
 t('칩인은 숏게임 −1(만회)', () => {
   const b = blowupPartsOf(H(4, { s: 7, putt: 0 }), 0);

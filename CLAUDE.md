@@ -17,7 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `node tests/course-map.test.js` — 골프장 홀맵(공식맵) 저장 안전장치 검사(저장 직전 최신 목록 위에 바뀐 홀만 얹기, id 없는 골프장 혼동 방지). `findCourse`·`refreshOfficial`·`parDiffs`/`applyParDiffs`·`persistParsToOfficial`/`persistParsNow`·`mergeCourseForm` 을 고칠 때 돌리세요.
   - `node tests/backend.test.js` — 서버(`backend/Apps_Script.gs`) 라운드 저장 안전장치 검사. 실제 소스를 가짜 구글 시트(`tests/gas-mock.js`) 위에서 돌립니다. **`saveRounds_`·`getRounds_`·`deleteUser_`·복구(`recover*`·`xlsxSheetRows_`)를 고칠 때 반드시 돌리세요.**
   - `node tests/blowup.test.js` — 블로업 원인 분해(`blowupPartsOf`, `stat.js`)의 원인별 타수 합 = 홀 오버파 검사. `blowupPartsOf` 를 고칠 때 돌리세요.
-  - **자동 실행(CI)**: `.github/workflows/test.yml` 이 PR 과 `main` 푸시마다 위 4개 테스트와 문법 검사(`node --check`)를 돌립니다. 테스트를 새로 만들면 여기에도 한 줄 추가하세요.
+  - `node tests/loss-split.test.js` — 구간별 손실타수(`analyze`, `stat.js`) 검사: 드라이버+아이언+숏게임+퍼팅 합 = 오버파, 해저드·OB 1회당 손실 고정(1·2타), 벌타 때문에만 그린을 놓친 홀은 칩 1타를 빼지 않음(`onRegOf`). `analyze`·`onRegOf`·`DRIVE_CATS` 를 고칠 때 돌리세요.
+  - **자동 실행(CI)**: `.github/workflows/test.yml` 이 PR 과 `main` 푸시마다 위 5개 테스트와 문법 검사(`node --check`)를 돌립니다. 테스트를 새로 만들면 여기에도 한 줄 추가하세요.
 
 ## 아키텍처 (방 비유)
 
