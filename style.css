@@ -10,6 +10,15 @@ html,body{background:var(--bg);height:100%;overflow:hidden;overflow-x:hidden;tou
 .sc-mid{flex:1;min-width:0;text-align:center;margin:0 6px}
 .sc-mid .t-ttl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .t-sub{font-size:11px;color:var(--t2);margin-top:2px}
+/* 홈 상단: 1행 로고 · 온그린 · 버튼 / 2행 이름 · 앱 버전(v12.71.0) */
+#pg-home .top{flex-wrap:wrap;row-gap:6px}
+.h-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.h-brand .t-ttl{overflow:visible}
+.h-logo{width:54px;height:54px;border-radius:13px;flex-shrink:0;display:block}
+.h-meta{flex-basis:100%;display:flex;align-items:baseline;gap:8px;min-width:0}
+.h-meta #h-user{margin-top:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.h-ver{font-size:10px;color:var(--t3);letter-spacing:.3px;flex-shrink:0}
+@media (max-width:360px){.h-logo{width:42px;height:42px;border-radius:10px}.h-brand{gap:8px}}   /* 좁은 폰: 버튼이 둘째 줄로 밀리지 않게 */
 .t-acts{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .back{background:var(--bg3);border:1.5px solid #6a6a6e;border-radius:22px;color:var(--t);font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;padding:8px 16px;min-height:44px;white-space:nowrap}
 .add{background:var(--g);border:none;border-radius:12px;color:#000;font-size:15px;font-weight:700;cursor:pointer;padding:10px 18px;min-height:44px;white-space:nowrap}
