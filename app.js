@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.72.0';
+const APP_VERSION = 'v12.73.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -667,8 +667,8 @@ function openDet(id) {
     <div class="sgd" style="margin-bottom:12px">
       <div class="sc"><span class="sn">${dot(cS)}${r.score}</span><span class="sl">총 스코어</span>${avgTag(nf(AV.score))}</div>
       <div class="sc"><span class="sn" style="color:${r.vs > 0 ? 'var(--r)' : 'var(--g)'}">${dot(cV)}${vsL(r.vs)}</span><span class="sl">오버파</span>${avgTag(nfs(AV.vs))}</div>
-      <div class="sc"><span class="sn">${dot(cF)}${r.fir}<span class="su">%</span></span><span class="sl">FIR</span>${avgTag(nf(AV.fir) + '%')}</div>
-      <div class="sc"><span class="sn">${dot(cG)}${r.gir}<span class="su">%</span></span><span class="sl">GIR</span>${avgTag(nf(AV.gir) + '%')}</div>
+      <div class="sc"><span class="sn">${dot(cF)}${cntPctTxt(firCountOf(r), r.fir, false, '홀')}</span><span class="sl">FIR</span>${avgTag(AV.n ? cntPctAvg(AV.firN, AV.fir, '홀') : null)}</div>
+      <div class="sc"><span class="sn">${dot(cG)}${cntPctTxt(girCountOf(r), r.gir, false, '홀')}</span><span class="sl">GIR</span>${avgTag(AV.n ? cntPctAvg(AV.girN, AV.gir, '홀') : null)}</div>
       <div class="sc"><span class="sn">${dot(cP)}${r.putts}</span><span class="sl">퍼팅</span>${avgTag(nf(AV.putts))}</div>
       <div class="sc"><span class="sn">${dot(cM)}${r.mulligan || 0}</span><span class="sl">멀리건 (페널티 없음)</span>${avgTag(nf(AV.mulligan))}</div>
       <div class="sc"><span class="sn">${dot(cB)}${blowupCountOf(r)}</span><span class="sl">블로업 (트리플+)</span>${avgTag(nf(AV.blowup))}</div>
