@@ -79,6 +79,10 @@ t('파4 7타 · 티샷 OB → 4온(칩 안 침) · 3퍼트 → 티샷 +2 · 온�
   const b = blowupPartsOf(H(4, { s: 7, putt: 3, tp: 2 }), 0);
   assert(b.v.tee === 2 && b.v.iron === 0 && b.v.short === 0 && b.v.putt === 1, JSON.stringify(b.v));
 });
+t('파5 8타 · 티샷 OB + 티샷 외 OB 2번 → 바로 홀인: 벌타 빼면 레귤러온 안 홀인이라 퍼팅 0 · 합 = 오버파', () => {
+  const b = blowupPartsOf(H(5, { s: 8, putt: 0, tp: 2, xo: 2 }), 0);   // 파5 OB 티샷 + 티샷 외 OB 2번 → 8타 만에 홀인
+  assert(sumOf(b) === 3 && b.v.putt === 0, JSON.stringify(b.v));
+});
 t('칩인은 숏게임 −1(만회)', () => {
   const b = blowupPartsOf(H(4, { s: 7, putt: 0 }), 0);
   assert(b.v.short === -1 && b.v.iron === 4, JSON.stringify(b.v));

@@ -37,7 +37,7 @@ vm.createContext(ctx);
 vm.runInContext([
   'function roundPars(r) { return r.holePars; }',
   grab(APP, 'const AP_OPTS =', '];'), grab(APP, 'const AP_NEAR =', '];'),
-  grab(SRC, 'const DRIVE_CATS =', '];'), grab(SRC, 'const DRIVE_K =', ';'),
+  grab(SRC, 'const MULL_HZ =', ';'), grab(SRC, 'const DRIVE_CATS =', '];'), grab(SRC, 'const DRIVE_K =', ';'),
   extractFn('onRegOf'), extractFn('teeCatOf'), extractFn('analyze'),
   'this.analyze = analyze;',
 ].join('\n'), ctx);
@@ -86,6 +86,55 @@ t('해저드·OB 1회당 손실은 기록과 상관없이 1타·2타 고정', ()
   const hz = a.driveCats.find(c => c.k === 'hazard');
   assert(hz.cost === 1 && hz.exact && !hz.approx, JSON.stringify(hz));
   assert(near(a.driveLossRound, 1) && near(a.ironLossRound, 3), JSON.stringify([a.driveLossRound, a.ironLossRound]));
+});
+t('멀리건 뒤 다시 친 샷 OB → 4온 2퍼트 → 일반 OB 와 같게 드라이버 +2 · 아이언 0', () => {
+  for (const m of [1, 2, 3]) {   // 첫 샷 종류(모름·해저드·OB)와 상관없이
+    const a = analyze([R({ scores: 6, girArr: 0, firArr: 0, tpArr: 2, mulliArr: m })]);
+    assert(near(a.driveLossRound, 2) && near(a.ironLossRound, 0), JSON.stringify([m, a.driveLossRound, a.ironLossRound]));
+  }
+});
+t('멀리건 첫 샷 종류 집계(모름·해저드·OB)', () => {
+  const r = R({ mulliArr: 3 }); r.mulliArr[1] = 2; r.mulliArr[2] = 1; r.mulliArr[3] = 3;
+  const a = analyze([r]);
+  assert(a.mullCount === 4 && a.mulFirst.ob === 2 && a.mulFirst.hz === 1 && a.mulFirst.unk === 1, JSON.stringify(a.mulFirst));
+});
+t('② 파3 티샷 해저드 → 아이언에 남고, 아이언 벌타 분해에 잡힘', () => {
+  const r = R({ scores: 5, girArr: 0, tpArr: 1 }); r.holePars[0] = 3;   // 파3 해저드 → 3온 2퍼트
+  const a = analyze([r]);
+  assert(near(a.driveLossRound, 0) && near(a.ironLossRound, 1) && near(a.ironPenaltyLossRound, 1) && a.ironPenHoles === 1,
+    JSON.stringify([a.driveLossRound, a.ironLossRound, a.ironPenaltyLossRound, a.ironPenHoles]));
+});
+t('④ 벌타 때문에만 늦은 홀(파4 해저드 → 3온 1퍼트 파)은 업앤다운·거리별 표에서 빠짐', () => {
+  const a = analyze([R({ scores: 4, puttsArr: 1, girArr: 0, firArr: 0, tpArr: 1, apArr: 's5' })]);
+  assert(a.missGreen === 0 && a.scrPct === null && a.apN === 0, JSON.stringify([a.missGreen, a.scrPct, a.apN]));
+});
+t('④ 칩을 친 홀(페어웨이 → 3온 1퍼트)은 업앤다운에 그대로', () => {
+  const a = analyze([R({ scores: 4, puttsArr: 1, girArr: 0 })]);
+  assert(a.missGreen === 1 && a.scrPct === 100, JSON.stringify([a.missGreen, a.scrPct]));
+});
+t('⑤ 파4 세컨샷 홀인(이글) → 아이언 −2 · 퍼팅 0', () => {
+  const a = analyze([R({ scores: 2, puttsArr: 0 })]);
+  assert(near(a.ironLossRound, -2) && near(a.puttLossRound, 0), JSON.stringify([a.ironLossRound, a.puttLossRound]));
+});
+t('⑤ 파3 홀인원 → 아이언 −2', () => {
+  const r = R({ scores: 1, puttsArr: 0 }); r.holePars[0] = 3;
+  const a = analyze([r]);
+  assert(near(a.ironLossRound, -2) && near(a.puttLossRound, 0), JSON.stringify([a.ironLossRound, a.puttLossRound]));
+});
+t('⑤ 1온 1퍼트 이글은 그대로(아이언 −1 · 퍼팅 −1)', () => {
+  const a = analyze([R({ scores: 2, puttsArr: 1 })]);
+  assert(near(a.ironLossRound, -1) && near(a.puttLossRound, -1), JSON.stringify([a.ironLossRound, a.puttLossRound]));
+});
+t('⑥ 옛 기록(missArr 없음)의 티샷 미스는 러프로 드라이버 계산에 들어감', () => {
+  const r = R({ scores: 5, girArr: 0, firArr: 0 }); delete r.missArr;
+  const a = analyze([r]);
+  const rough = a.driveCats.find(c => c.k === 'rough');
+  assert(rough.n === 1 && a.driveKnown === 18, JSON.stringify([rough.n, a.driveKnown]));
+  assert(a.roughCount === 0, '티샷 안정성의 러프 개수는 그대로(구분 불가)');
+});
+t('⑥ 새 기록에서 결과를 안 고른 티샷은 그대로 제외', () => {
+  const a = analyze([R({ scores: 5, girArr: 0, firArr: 0 })]);
+  assert(a.driveCats.find(c => c.k === 'rough').n === 0 && a.driveKnown === 17);
 });
 t('그린 미스 후 칩 온 2퍼트(페어웨이) → 아이언 0 · 숏게임 +1 (기존 규칙 유지)', () => {
   const a = analyze([R({ scores: 5, girArr: 0 })]);

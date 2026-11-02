@@ -25,11 +25,14 @@ const DRIVE_K = 5;   // 고정값의 무게(홀 수 환산). 본인 기록이 �
 //   그린을 놓쳤어도 늦어진 타수가 전부 벌타 때문이면(예: 파4 티샷 해저드 → 3온) 칩을 친 게 아니므로
 //   "칩 1타" 공제 없이 레귤러온 홀처럼 나눈다(아이언 = 초과 − 벌타 몫, 퍼팅 = 퍼트 − 2). analyze · blowupPartsOf 공용.
 function onRegOf(gir, ex, pen) { return !!gir || ex - pen <= 0; }
-// 파4·5 티샷 결과 분류(setTee 의 저장 규칙과 같은 우선순위). 미선택 · 옛 기록의 구분 불가 미스는 null
+// 멀리건 받은 첫 샷의 종류(mulliArr 값): 1 = 종류 모름(옛 기록·미선택) · 2 = 해저드 · 3 = OB (v12.72.0). 0 이 아니면 모두 "멀리건 받음"
+const MULL_HZ = 2, MULL_OB = 3;
+// 파4·5 티샷 결과 분류. 미선택 · 옛 기록의 구분 불가 미스는 null
+//   벌타(OB·해저드)가 있으면 멀리건 여부와 상관없이 그 벌타 칸으로(v12.72.0) — 멀리건 뒤 다시 친 샷이 OB 면 OB 2타를 드라이버 몫으로
 function teeCatOf(fir, mull, tpv, missT) {
-  if (mull) return 'mull';
   if (tpv === 2) return 'ob';
   if (tpv === 1) return 'hazard';
+  if (mull) return 'mull';
   if (fir) return 'fw';
   return (missT === 'rough' || missT === 'bunker') ? missT : null;
 }
@@ -41,6 +44,7 @@ function analyze(rounds) {
   rounds = (rounds || []).filter(r => !r.isDraft);
   const n = rounds.length;
   const apB = {}; AP_OPTS.forEach(([k]) => { apB[k] = { n: 0, putt: 0, one: 0, three: 0, loss: 0 }; });   // 어프로치 거리 구간별 집계(loss: 숏게임 손실 합). 옛 m 기준 키(AP_LEGACY)는 통계에서 제외
+  const mulFirst = { hz: 0, ob: 0, unk: 0 };          // 멀리건 받은 첫 샷의 종류(v12.72.0+ 입력분만 구분)
   const mulR = { fw: 0, safe: 0, pen: 0, unk: 0 };   // 멀리건 받고 다시 친 샷의 결과: 페어웨이(파3 온그린) / 러프·벙커 / 또 페널티 / 미선택
   const holes = [];   // 홀별 타수 분해용 기록 — 드라이버 1회당 손실이 전체 집계 뒤에 정해지므로 루프 뒤에서 한 번 더 훑는다
   const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, ex: 0 }; });   // 드라이버: 티샷 결과별 홀 수·온그린까지 초과 타수 합
@@ -50,6 +54,7 @@ function analyze(rounds) {
       par45 = 0, fwHit = 0,                                           // 2) 드라이버(파4·5) — 결과별 집계는 아래 dc
       girHit = 0, girHoles = 0,                                       // 3) 아이언(GIR) — 손실 타수는 루프 뒤 타수 분해에서 계산
       xPenHoles = 0,                                                   // 티샷 외 벌타가 한 번이라도 있었던 홀 수(표본 안내용)
+      ironPenHoles = 0,                                                // 아이언 몫 벌타(티샷 외 + 파3 티샷)가 있었던 홀 수 — 아이언 카드 벌타 분해 표시용
       missGreen = 0, scrSave = 0,                                      // 4) 숏게임(업앤다운 — 마지막 온그린 샷 기준)
       apN = 0, xHzCnt = 0, xObCnt = 0,                                 //    어프로치 붙인 거리 기록 홀 수(v12.51+) · 티샷 외 해저드/OB 횟수 합
       puttSum = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, girPuttSum = 0, girPuttN = 0;  // 5) 퍼팅(1/2/3/4+ 분포)
@@ -58,6 +63,7 @@ function analyze(rounds) {
     const sc = r.scores || [], pa = r.puttsArr || [], gi = r.girArr || [], fi = r.firArr || [], mu = r.mulliArr || [], tpa = r.tpArr || [], mi = r.missArr || [];
     const xh = r.xhzArr || [], xo = r.xobArr || [];   // 티샷 외(어프로치 등) 해저드·OB 횟수 — 최근 입력분만 있을 수 있음
     const ap = r.apArr || [];                         // 어프로치 붙인 거리(v12.51+ 입력분만)
+    const oldMiss = !r.missArr;                       // 러프/벙커 구분 입력 이전(v12.37 전) 기록 — 티샷 미스를 드라이버 계산에선 러프로 본다(v12.72.0)
     for (let i = 0; i < 18; i++) {
       const s = sc[i]; if (!s || s <= 0) continue;        // 미입력 홀 스킵
       played++;
@@ -67,6 +73,7 @@ function analyze(rounds) {
       //    멀리건 = 첫 샷이 OB·해저드였다는 뜻 → 페널티로 세고, 다시 친 샷의 결과는 멀리건 살림 지표(mulR)로 따로 센다
       if (mull) {
         mullCount++;
+        mulFirst[mull === MULL_OB ? 'ob' : mull === MULL_HZ ? 'hz' : 'unk']++;
         const re = tpv ? 'pen' : (par === 3 ? gi[i] : fi[i]) ? 'fw' : (missT === 'rough' || missT === 'bunker') ? 'safe' : null;
         if (re) mulR[re]++; else mulR.unk++;
       }
@@ -83,7 +90,8 @@ function analyze(rounds) {
 
       // ── 2) 드라이버(파4·5만): 티샷 결과별로 "온그린까지 타수 − 레귤러온 타수(파−2)"를 모아, 페어웨이 홀 대비 몇 타 더 걸렸는지로 손실 추정
       //    (홀 스코어가 아니라 온그린까지 타수를 써서 퍼팅 결과가 드라이버 손실에 섞이지 않게 한다)
-      const cat = par > 3 ? teeCatOf(fi[i], mull, tpv, missT) : null;   // 결과 미선택(또는 옛 기록의 구분 불가 미스) 홀은 null → 드라이버 손실 계산에서 제외
+      // 결과 미선택 홀은 null → 드라이버 손실 계산에서 제외. 옛 기록의 구분 불가 미스(페어웨이·벌타·멀리건 아님)는 러프로 계산
+      const cat = par > 3 ? teeCatOf(fi[i], mull, tpv, (oldMiss && !fi[i] && !tpv && !mull) ? 'rough' : missT) : null;
       if (par > 3) {
         par45++;
         if (fi[i] && !mull && !tpv) fwHit++;
@@ -96,13 +104,17 @@ function analyze(rounds) {
       if (holePenalty > 0) xPenHoles++;
       const teePen = tpv === 2 ? 2 : tpv === 1 ? 1 : 0;      // 티샷 벌타(OB=2타·해저드=1타)
       const ex = og - (par - 2);                                // 레귤러온(파−2) 대비 온그린까지 초과 타수
-      holes.push({ ex, putt, onReg: onRegOf(gi[i], ex, teePen + holePenalty), cat, ap: gi[i] ? '' : ap[i], pen: holePenalty });
+      const onReg = onRegOf(gi[i], ex, teePen + holePenalty);
+      const ironPen = holePenalty + (par === 3 ? teePen : 0);   // 아이언 몫 벌타: 티샷 외 벌타 + 파3 티샷 벌타(파3 티샷은 아이언 샷, v12.72.0)
+      if (ironPen > 0) ironPenHoles++;
+      holes.push({ ex, putt, onReg, cat, ap: onReg ? '' : ap[i], pen: ironPen });
 
       // ── 4) 숏게임(업앤다운): 그린 놓친 홀 중 "마지막 온그린 샷 + 1퍼트 이하"로 마무리한 비율 ──
       //    그린에 올리기 전에 친 타수(미스샷·레이업 등)는 아이언 몫이라 보지 않는다 → 파4 4온 1퍼트도 숏게임은 성공
-      if (!gi[i]) { missGreen++; if (putt <= 1) scrSave++; }
+      //    벌타 때문에만 늦게 올라간 홀(onReg, 칩 안 침)은 숏게임 기회가 아니라서 뺀다(v12.72.0)
+      if (!onReg) { missGreen++; if (putt <= 1) scrSave++; }
       //    어프로치 붙인 거리별: 레귤러온 실패 홀 중 거리를 기록한 홀만. 거리별 1퍼트율(칩인 포함)·평균 퍼트를 함께 모은다.
-      if (!gi[i] && apB[ap[i]]) { const b = apB[ap[i]]; apN++; b.n++; b.putt += putt; if (putt <= 1) b.one++; if (putt >= 3) b.three++; }
+      if (!onReg && apB[ap[i]]) { const b = apB[ap[i]]; apN++; b.n++; b.putt += putt; if (putt <= 1) b.one++; if (putt >= 3) b.three++; }
       xHzCnt += xh[i] || 0; xObCnt += xo[i] || 0;
 
       // ── 5) 퍼팅 (1/2/3/4+ 분포) ──
@@ -147,10 +159,11 @@ function analyze(rounds) {
   let ironSum = 0, ironPenaltySum = 0, shortSum = 0, puttNetSum = 0, vsSum = 0;
   holes.forEach(h => {
     const D = costOf[h.cat] || 0;
-    const iron = h.onReg ? h.ex - D : h.ex - 1 - D;
+    const holed = h.onReg && h.putt === 0;   // 레귤러온 안에서 그린 밖 샷이 바로 홀인(예: 파4 세컨샷 이글, 파3 홀인원) → 퍼팅 −2 가 아니라 아이언 이득(v12.72.0)
+    const iron = h.onReg ? h.ex - D - (holed ? 2 : 0) : h.ex - 1 - D;
     ironSum += iron;
     if (h.pen > 0) ironPenaltySum += Math.min(Math.max(0, iron), h.pen);   // 아이언 몫 중 "티샷 외 벌타" 부분(아이언 몫을 넘지 않게)
-    if (h.onReg) puttNetSum += h.putt - 2;
+    if (h.onReg) puttNetSum += holed ? 0 : h.putt - 2;
     else { const sh = h.putt - 1; shortSum += sh; if (apB[h.ap]) apB[h.ap].loss += sh; }
     vsSum += h.ex + h.putt - 2;                                            // = 스코어 − 파 (검산용 합계)
   });
@@ -158,7 +171,7 @@ function analyze(rounds) {
   // 3) 아이언 + 어프로치 낭비
   const girPct = pct(girHit, girHoles);
   const ironLossRound = f1(ironSum, n);
-  const ironPenaltyLossRound = f1(ironPenaltySum, n);     // 아이언 손실 중 "티샷 외 벌타" 몫(입력한 홀이 있을 때만 의미 있음)
+  const ironPenaltyLossRound = f1(ironPenaltySum, n);     // 아이언 손실 중 벌타(파3 티샷 + 티샷 외) 몫(입력한 홀이 있을 때만 의미 있음)
   const ironOtherLossRound = ironLossRound - ironPenaltyLossRound;   // 나머지(거리감·클럽 선택 등)
 
   // 4) 숏게임
@@ -180,9 +193,9 @@ function analyze(rounds) {
   const vsRound = f1(vsSum, n);                            // 네 구간 합계와 같아야 하는 라운드 평균 오버파
 
   return { n, played,
-    obCount, hzCount, mullCount, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
+    obCount, hzCount, mullCount, mulFirst, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
     par45, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
-    girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles,
+    girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles, ironPenHoles,
     missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound, xPenStrokesRound, xHzCnt, xObCnt,
     puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, vsRound, p1, p2, p3, p4 };
 }
@@ -241,7 +254,8 @@ function teeStabilityHTML(a) {
   ${pie}
   ${a.mullCount ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;margin-top:8px"><div class="cbt" style="margin-bottom:6px">🔄 멀리건 받고 다시 친 샷 (${a.mullCount}회)</div>
     ${a.mulSavePct == null ? '' : `<div style="display:flex;gap:16px;margin-bottom:6px"><div>멀리건 살림률 <b style="font-size:16px;color:${a.mulSavePct >= 70 ? 'var(--g)' : a.mulSavePct >= 40 ? 'var(--a)' : 'var(--r)'}">${a.mulSavePct}%</b></div><div>페어웨이(온그린) <b style="font-size:16px;color:var(--t)">${a.mulFwPct}%</b></div></div>`}
-    페어웨이(온그린) <b style="color:var(--t)">${a.mulR.fw}</b> · 러프·벙커 <b style="color:var(--t)">${a.mulR.safe}</b> · 또 페널티 <b style="color:var(--r)">${a.mulR.pen}</b>${a.mulR.unk ? ` · 결과 미선택 ${a.mulR.unk}` : ''}
+    <div style="margin-bottom:4px">첫 샷: OB <b style="color:var(--r)">${a.mulFirst.ob}</b> · 해저드 <b style="color:var(--r)">${a.mulFirst.hz}</b>${a.mulFirst.unk ? ` · 종류 모름 ${a.mulFirst.unk}` : ''}</div>
+    다시 친 샷: 페어웨이(온그린) <b style="color:var(--t)">${a.mulR.fw}</b> · 러프·벙커 <b style="color:var(--t)">${a.mulR.safe}</b> · 또 페널티 <b style="color:var(--r)">${a.mulR.pen}</b>${a.mulR.unk ? ` · 결과 미선택 ${a.mulR.unk}` : ''}
     <div class="tx-note">멀리건 = 첫 티샷이 OB·해저드였다는 뜻이라 위 페널티율·FIR은 첫 샷 기준으로 세요. 살림률 = 다시 친 샷이 페널티 없이 살아난 비율(결과를 고른 ${a.mulKnown}회 기준).</div></div>` : ''}
   <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
 }
@@ -264,12 +278,12 @@ function driverHTML(a) {
     · 해저드 <b>1타</b> · OB <b>2타</b> (벌타 그대로)<br>
     · 러프·벙커·멀리건 — 페어웨이 홀보다 온그린까지 평균 몇 타 더 걸렸는지 (내 기록 기준 · 기록이 적으면 0타 쪽으로 보정)<br>
     <b>예</b>) 해저드 2번 + OB 1번 = 1×2 + 2×1 = <b>4타</b> · 러프 1회당 0.4타 × 4번 = <b>1.6타</b><br>
-    <b>참고</b> — 퍼트는 안 섞여요. 티샷 결과를 고르지 않은 홀은 빠져요(현재 ${a.driveKnown}/${a.par45}홀 반영).`)}`;
+    <b>참고</b> — 퍼트는 안 섞여요. 멀리건 뒤 다시 친 샷이 OB·해저드면 그 벌타로 세요. 티샷 결과를 고르지 않은 홀은 빠지고, 러프·벙커 구분이 없던 옛 기록(v12.37 이전)의 티샷 미스는 러프로 봐요(현재 ${a.driveKnown}/${a.par45}홀 반영).`)}`;
 }
 function approachHTML(a) {
   if (!a.n) return '';
-  const penaltyBreak = a.xPenHoles ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6"><div class="cbt" style="margin-bottom:6px">아이언 손실 ${nfs(a.ironLossRound)}타, 원인별로 보면</div>
-    ⚠️ 벌타(티샷 외 해저드·OB) <b style="color:var(--r)">${nf(a.ironPenaltyLossRound)}타</b> · 🎯 거리감·클럽 선택 등 <b style="color:var(--t)">${nfs(a.ironOtherLossRound)}타</b>
+  const penaltyBreak = a.ironPenHoles ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6"><div class="cbt" style="margin-bottom:6px">아이언 손실 ${nfs(a.ironLossRound)}타, 원인별로 보면</div>
+    ⚠️ 벌타(파3 티샷 · 티샷 외 해저드·OB) <b style="color:var(--r)">${nf(a.ironPenaltyLossRound)}타</b> · 🎯 거리감·클럽 선택 등 <b style="color:var(--t)">${nfs(a.ironOtherLossRound)}타</b>
     <div class="tx-note">💡 벌타 손실이 크면 안전하게 치는 클럽 선택을, 나머지가 크면 거리감·정확도 연습을 우선하세요.</div></div>` : '';
   return `<div class="lbl">🎯 아이언·웨지 정확도 (Approach)</div><div class="sgd">
     ${statCard(a.girPct, '%', 'GIR')}
@@ -278,7 +292,8 @@ function approachHTML(a) {
     <b>계산</b> — 홀마다 <b>온그린까지 타수 − 레귤러온 타수 − 티샷 몫</b>. 그린을 놓친 홀은 <b>칩 1타</b>를 더 빼요(칩 + 1퍼트 = 파는 정상).<br>
     <b>예</b>) 파4 페어웨이 → 3온 = 3 − 2 − 1(칩) = <b>0타</b> · 4온 = <b>+1타</b> · 파5 2온 = <b>−1타(이득)</b><br>
     파4 티샷 해저드 → 3온 = 3 − 2 − 1(벌타) = <b>0타</b> — 칩을 안 쳤으니 칩 1타는 안 빼요.<br>
-    <b>참고</b> — 파3 티샷은 아이언으로 봐요. 칩을 여러 번 친 타수도 입력으로는 구분이 안 돼 여기에 잡혀요.`)}
+    레귤러온 안에서 바로 홀인하면 아이언 이득이에요. 예) 파4 세컨샷 이글 · 파3 홀인원 = <b>−2타</b><br>
+    <b>참고</b> — 파3 티샷은 아이언으로 봐요(파3 티샷 벌타도 여기에 들어가고, 아래 벌타 분해에 따로 보여 줘요). 칩을 여러 번 친 타수도 입력으로는 구분이 안 돼 여기에 잡혀요.`)}
   ${penaltyBreak}`;
 }
 function shortGameHTML(a, stepLegend) {
@@ -301,8 +316,8 @@ function shortGameHTML(a, stepLegend) {
     ${statCard(a.apNearPct == null ? '-' : a.apNearPct, a.apNearPct == null ? '' : '%', '근접률(🦶🏻5↓)')}</div>
   ${explainBox('숏게임 지표는 어떻게 계산하나요?', `<b>숏게임 손실</b> — 그린을 놓친 뒤 "칩 + 1퍼트"로 못 막아 잃은 타수예요. 그린 놓친 홀마다 <b>퍼트 − 1</b>.<br>
     <b>예</b>) 칩 온 → 2퍼트 = <b>+1타</b> · 1퍼트 = <b>0타</b> · 칩인 = <b>−1타(이득)</b><br>
-    <b>참고</b> — 벌타 때문에만 늦게 올라간 홀(예: 파4 티샷 해저드 → 3온)은 칩을 안 쳤으니 퍼팅으로 세요. 그린 밖에서 바로 들어간 샷은 거리와 상관없이 칩인으로 봐요.<br>
-    <b>업앤다운</b> — 그린 놓친 홀 중 1퍼트 이하로 마무리한 비율(칩인 포함). 예) 파4 4온 1퍼트 = 성공 · 2퍼트 = 실패.<br>
+    <b>참고</b> — 벌타 때문에만 늦게 올라간 홀(예: 파4 티샷 해저드 → 3온)은 칩을 안 쳤으니 퍼팅으로 세고, 업앤다운·근접률·거리별 표에서도 빠져요. 레귤러온을 넘긴 뒤 그린 밖에서 바로 들어간 샷은 거리와 상관없이 칩인으로 봐요.<br>
+    <b>업앤다운</b> — 칩을 친 홀(그린 놓친 홀) 중 1퍼트 이하로 마무리한 비율(칩인 포함). 예) 파4 4온 1퍼트 = 성공 · 2퍼트 = 실패.<br>
     <b>근접률(🦶🏻5↓)</b> — 붙인 거리를 기록한 홀 중 컨시드·5발자국(약 4m) 이내로 붙인 비율. 🦶🏻 한 걸음 ≈ 0.8m. v12.55 이전 m 기준 기록은 빠져요.`)}
   ${apBox}`;
 }
@@ -347,7 +362,7 @@ function puttingHTML(a, ref) {
   ${explainBox('퍼팅 손실 타수는 어떻게 계산하나요?', `<b>뜻</b> — 레귤러온한 홀에서 2퍼트보다 더 친 타수예요.<br>
     <b>계산</b> — 레귤러온 홀마다 <b>퍼트 − 2</b>. 벌타만 빼면 레귤러온인 홀(예: 파4 티샷 해저드 → 3온)도 넣어요.<br>
     <b>예</b>) 2퍼트 = <b>0타</b> · 1퍼트 = <b>−1타(이득)</b> · 3퍼트 = <b>+1타</b><br>
-    <b>참고</b> — 그린 놓친 홀의 퍼트는 숏게임에서 세요. 레귤러온 안에 바로 들어간 샷(예: 파4 세컨샷 이글)은 0퍼트라 −2타로 잡혀요. 위 PPR·홀당 평균·3퍼트·분포는 모든 홀 기준이에요.`)}
+    <b>참고</b> — 그린 놓친 홀의 퍼트는 숏게임에서 세요. 레귤러온 안에서 바로 홀인한 홀(예: 파4 세컨샷 이글)은 퍼트가 없어서 퍼팅 0타, 아이언 이득으로 세요. 위 PPR·홀당 평균·3퍼트·분포는 모든 홀 기준이에요.`)}
   <div class="cb"><div class="cbt">퍼팅 분포 (홀 수)</div>${[['1퍼팅', a.p1, 'var(--g)'], ['2퍼팅', a.p2, 'var(--b)'], ['3퍼팅', a.p3, 'var(--a)'], ['4+', a.p4, 'var(--r)']].map(([l, c, co]) => `<div class="br"><div class="bl">${l}</div><div class="bt"><div class="bf" style="width:${Math.round(c / pmx * 100)}%;background:${co}"><span>${c}</span></div></div></div>`).join('')}</div>`;
 }
 // ════════════════════════════════════════
@@ -501,8 +516,9 @@ function blowupPartsOf(r, i) {
   const tee = tpv === 2 ? 2 : tpv === 1 ? 1 : 0, xpen = xo * 2 + xh;
   const og = s - putt;                                             // 온그린까지 친 타수(벌타 포함)
   const ex = og - (par - 2), onReg = onRegOf(gir, ex, tee + xpen);  // 벌타만으로 늦어진 홀은 칩 1타를 빼지 않고 레귤러온 홀처럼
-  const iron = ex - (onReg ? 0 : 1) - tee - xpen;
-  const v = { tee, xpen, iron, short: onReg ? 0 : putt - 1, putt: onReg ? putt - 2 : 0 };   // 합 = d
+  const holed = onReg && putt === 0;                               // 레귤러온 안 홀인은 아이언 이득(analyze 와 같은 규칙)
+  const iron = ex - (onReg ? (holed ? 2 : 0) : 1) - tee - xpen;
+  const v = { tee, xpen, iron, short: onReg ? 0 : putt - 1, putt: onReg && !holed ? putt - 2 : 0 };   // 합 = d
   // 주원인: 가장 많이 잃은 원인(같으면 BLOWUP_CATS 순서 — 벌타를 먼저)
   const main = BLOWUP_CATS.reduce((m, [k]) => v[k] > v[m] ? k : m, BLOWUP_CATS[0][0]);
   const teeMiss = (r.mulliArr || [])[i] ? '멀리건' : tpv === 2 ? 'OB' : tpv === 1 ? '해저드' : par === 3 ? '' : (r.firArr || [])[i] ? '페어웨이' : ((r.missArr || [])[i] === 'rough' ? '러프' : (r.missArr || [])[i] === 'bunker' ? '벙커' : '');
@@ -554,7 +570,7 @@ function blowupExplain() {
     · <b>⚠️ 티샷 외 벌타</b> — 세컨드 이후 OB 2타 · 해저드 1타(홀 입력의 "티샷 외 해저드·OB")<br>
     · <b>🎯 온그린까지</b> — 그린에 올리기까지 레귤러온(파−2타)보다 더 친 타수에서 벌타를 빼고, 그린을 놓친 홀이면 칩 1타도 빼요(칩 + 1퍼트면 파라서 정상 경로로 봄). 단, 늦어진 타수가 전부 벌타 때문이면 칩을 안 친 것이라 칩 1타를 빼지 않아요<br>
     · <b>⛳ 숏게임</b> — 그린 놓친 홀에서 칩 뒤 퍼트 − 1(칩 후 2퍼트 = +1, 칩인 = −1)<br>
-    · <b>🍩 퍼팅</b> — 그린에 레귤러온한 홀(벌타만 빼면 레귤러온인 홀 포함)에서 퍼트 − 2(3퍼트 = +1)<br>
+    · <b>🍩 퍼팅</b> — 그린에 레귤러온한 홀(벌타만 빼면 레귤러온인 홀 포함)에서 퍼트 − 2(3퍼트 = +1). 그 안에서 바로 홀인했으면 퍼팅 0, 온그린까지 −2<br>
     예) 파4 8타 = 티샷 OB → 벌타 포함 5타 만에 칩으로 온그린 → 3퍼트 : 티샷 벌타 <b>+2</b> · 온그린까지 5 − 2(레귤러온) − 1(칩) − 2(벌타) = <b>+0</b> · 숏게임 칩 후 3퍼트 = <b>+2</b> → 합계 +4. · 파4 7타 = 티샷 OB → 4온(칩 안 침) → 3퍼트 : 티샷 벌타 <b>+2</b> · 온그린까지 4 − 2 − 2(벌타) = <b>+0</b> · 퍼팅 3퍼트 = <b>+1</b> → 합계 +3.<br>
     −(초록)은 그 원인에서 오히려 만회한 타수예요. 해저드·OB 벌타는 구간별 탭의 손실타수와 같은 고정값이에요. 다만 구간별 탭은 러프·벙커·멀리건 티샷 손실을 본인 기록으로 따로 추정해 드라이버 몫으로 떼므로, 그만큼 숫자가 다를 수 있어요.`);
 }
