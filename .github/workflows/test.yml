@@ -26,3 +26,5 @@ jobs:
         run: node tests/backend.test.js
       - name: 블로업 원인 분해 (blowup)
         run: node tests/blowup.test.js
+      - name: 구간별 손실타수 (loss-split)
+        run: node tests/loss-split.test.js
