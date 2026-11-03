@@ -236,8 +236,22 @@ function lossSummaryHTML(a) {
 }
 // ════════════════════════════════════════
 // 5구간 카테고리 카드 (라운드 상세 · 통계 화면 공용 — analyze() 결과 하나로 5개를 그린다)
+// ref: 비교할 "내 평균"(그 라운드를 뺀 다른 라운드들의 analyze 결과). 주면 네모마다 🟢🟡🔴 신호등과
+//      평균값을 붙인다(라운드 상세용, 퍼팅과 같은 방식 · v12.74.0). 통계 화면은 ref 없이 불러 신호등 없음.
 // ════════════════════════════════════════
-function teeStabilityHTML(a) {
+// 신호등 붙은 네모 한 칸: val 은 그릴 HTML, c 는 sig() 색, avgTxt 는 "평균 …" 줄(없으면 null)
+function sigCard(val, l, c, avgTxt) {
+  return `<div class="sc"><span class="sn">${dot(c)}${val}</span><span class="sl">${l}</span>${avgTxt != null ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${avgTxt}</span>` : ''}</div>`;
+}
+// ref 하나로 "색 고르기 · 평균 줄 만들기"를 묶어 준다. ref 가 없거나 비교할 값이 없으면 색·평균 줄 모두 없음
+function sigKit(ref) {
+  const rn = ref ? ref.n : 0, R = ref || {};
+  const col = (v, av, low, margin) => (v == null || av == null || !rn) ? '' : sig(v, av, low, margin, rn);
+  const avg = (ok, f) => (rn && ok) ? f() : null;
+  const legend = rn >= 3 ? `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 8px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : '';
+  return { rn, R, col, avg, legend };
+}
+function teeStabilityHTML(a, ref) {
   if (!a.n) return '';
   const known = a.missKnownCount, unknown = Math.max(0, a.safeMissCount - known);
   const breakdown = known
@@ -256,11 +270,15 @@ function teeStabilityHTML(a) {
     <span style="width:10px;height:10px;border-radius:3px;background:${s.c};flex-shrink:0"></span>
     <span style="flex:1">${s.l}</span><b style="color:var(--t)">${s.v}개${pieTotal ? ` (${Math.round(s.v / pieTotal * 100)}%)` : ''}</b></div>`).join('');
   const pie = pieTotal ? `<div class="cb" style="display:flex;align-items:center;gap:16px">${donutSVG(segs, 108, 18)}<div style="flex:1">${legend}</div></div>` : '';
+  const K = sigKit(ref), R = K.R;
+  // 횟수 네모(OB·해저드·멀리건): 라운드당 횟수로 비교, 노랑 폭 0.5회
+  const cnt = (k, l) => sigCard(a[k], l, K.col(a[k] / a.n, K.rn ? R[k] / K.rn : null, true, 0.5), K.avg(true, () => nf(R[k] / K.rn) + '회'));
   return `<div class="lbl">🚩 티샷 안정성 (Off-the-Tee · 파3~5 모두)</div><div class="sgd">
-    ${cntCard((a.obCount + a.hzCount + a.mullCount) / a.n, a.teePenaltyPct, '티샷 페널티', a.n > 1, '홀')}
-    ${statCard(a.obCount, '', 'OB')}
-    ${statCard(a.hzCount, '', '해저드')}
-    ${statCard(a.mullCount, '', '멀리건')}</div>
+    ${sigCard(cntPctTxt((a.obCount + a.hzCount + a.mullCount) / a.n, a.teePenaltyPct, a.n > 1, '홀'), '티샷 페널티', K.col(a.teePenaltyPct, R.played ? R.teePenaltyPct : null, true, 5),
+      K.avg(R.played, () => cntPctAvg((R.obCount + R.hzCount + R.mullCount) / K.rn, R.teePenaltyPct, '홀')))}
+    ${cnt('obCount', 'OB')}
+    ${cnt('hzCount', '해저드')}
+    ${cnt('mullCount', '멀리건')}</div>${K.legend}
   ${pie}
   ${a.mullCount ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;margin-top:8px"><div class="cbt" style="margin-bottom:6px">🔄 멀리건 받고 다시 친 샷 (${a.mullCount}회)</div>
     ${a.mulSavePct == null ? '' : `<div style="display:flex;gap:16px;margin-bottom:6px"><div>멀리건 살림률 <b style="font-size:16px;color:${a.mulSavePct >= 70 ? 'var(--g)' : a.mulSavePct >= 40 ? 'var(--a)' : 'var(--r)'}">${a.mulSavePct}%</b></div><div>페어웨이(온그린) <b style="font-size:16px;color:var(--t)">${a.mulFwPct}%</b></div></div>`}
@@ -269,7 +287,7 @@ function teeStabilityHTML(a) {
     <div class="tx-note">멀리건 = 첫 티샷이 OB·해저드였다는 뜻이라 위 페널티율·FIR은 첫 샷 기준으로 세요. 살림률 = 다시 친 샷이 페널티 없이 살아난 비율(결과를 고른 ${a.mulKnown}회 기준).</div></div>` : ''}
   <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
 }
-function driverHTML(a) {
+function driverHTML(a, ref) {
   if (!a.n || !a.par45) return '';
   const used = a.driveCats.filter(c => c.n);
   // 결과마다 한 줄: 이름 · (횟수 × 1회당 손실 · 내 기록 반영 %) · 라운드당 손실
@@ -279,9 +297,12 @@ function driverHTML(a) {
     <b style="color:${c.lossRound > 0 ? 'var(--r)' : 'var(--t2)'}">${nf(c.lossRound)}타</b></div>`).join('');
   const breakdown = used.length ? `<div class="cb"><div class="cbt" style="margin-bottom:6px">어떤 미스가 몇 타를 먹었나 (라운드 평균)</div>${rows}
     ${a.driveApprox ? `<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:4px">* 러프·벙커·멀리건은 아직 기록이 적어 1회당 손실의 절반 이상을 고정값(0타)으로 채웠어요. 라운드가 쌓일수록 내 기록 비중이 커져요.</div>` : ''}</div>` : '';
+  const K = sigKit(ref), R = K.R;
   return `<div class="lbl">🚗 드라이버 안정성 (Driver · 파4·5)</div><div class="sgd">
-    ${cntCard(a.fwHit / a.n, a.firPct, 'FIR', a.n > 1, '홀')}
-    ${statCard(nf(a.driveLossRound) + '타' + (a.driveApprox ? '*' : ''), '', '드라이버 손실/R')}</div>
+    ${sigCard(cntPctTxt(a.fwHit / a.n, a.firPct, a.n > 1, '홀'), 'FIR', K.col(a.firPct, R.par45 ? R.firPct : null, false, 7),
+      K.avg(R.par45, () => cntPctAvg(R.fwHit / K.rn, R.firPct, '홀')))}
+    ${sigCard(nf(a.driveLossRound) + '타' + (a.driveApprox ? '*' : ''), '드라이버 손실/R', K.col(a.driveLossRound, R.par45 ? R.driveLossRound : null, true, 1),
+      K.avg(R.par45, () => nf(R.driveLossRound) + '타'))}</div>${K.legend}
   ${breakdown}
   ${explainBox('드라이버 손실 타수는 어떻게 계산하나요?', `<b>뜻</b> — 티샷 때문에 라운드마다 잃은 타수예요.<br>
     <b>계산</b> — 티샷 결과별 <b>1회당 손실 × 횟수</b>를 더해요.<br>
@@ -290,14 +311,17 @@ function driverHTML(a) {
     <b>예</b>) 해저드 2번 + OB 1번 = 1×2 + 2×1 = <b>4타</b> · 러프 1회당 0.4타 × 4번 = <b>1.6타</b><br>
     <b>참고</b> — 퍼트는 안 섞여요. 멀리건 뒤 다시 친 샷이 OB·해저드면 그 벌타로 세요. 티샷 결과를 고르지 않은 홀은 빠지고, 러프·벙커 구분이 없던 옛 기록(v12.37 이전)의 티샷 미스는 러프로 봐요(현재 ${a.driveKnown}/${a.par45}홀 반영).`)}`;
 }
-function approachHTML(a) {
+function approachHTML(a, ref) {
   if (!a.n) return '';
   const penaltyBreak = a.ironPenHoles ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6"><div class="cbt" style="margin-bottom:6px">아이언 손실 ${nfs(a.ironLossRound)}타, 원인별로 보면</div>
     ⚠️ 벌타(파3 티샷 · 티샷 외 해저드·OB) <b style="color:var(--r)">${nf(a.ironPenaltyLossRound)}타</b> · 🎯 거리감·클럽 선택 등 <b style="color:var(--t)">${nfs(a.ironOtherLossRound)}타</b>
     <div class="tx-note">💡 벌타 손실이 크면 안전하게 치는 클럽 선택을, 나머지가 크면 거리감·정확도 연습을 우선하세요.</div></div>` : '';
+  const K = sigKit(ref), R = K.R;
   return `<div class="lbl">🎯 아이언·웨지 정확도 (Approach)</div><div class="sgd">
-    ${cntCard(a.girHit / a.n, a.girPct, 'GIR', a.n > 1, '홀')}
-    ${statCard(nfs(a.ironLossRound) + '타', '', '아이언 손실')}</div>
+    ${sigCard(cntPctTxt(a.girHit / a.n, a.girPct, a.n > 1, '홀'), 'GIR', K.col(a.girPct, R.played ? R.girPct : null, false, 5),
+      K.avg(R.played, () => cntPctAvg(R.girHit / K.rn, R.girPct, '홀')))}
+    ${sigCard(nfs(a.ironLossRound) + '타', '아이언 손실', K.col(a.ironLossRound, R.played ? R.ironLossRound : null, true, 1),
+      K.avg(R.played, () => nfs(R.ironLossRound) + '타'))}</div>${K.legend}
   ${explainBox('아이언 손실 타수는 어떻게 계산하나요?', `<b>뜻</b> — 그린에 올리기까지 기준보다 더 친 타수예요. 기준은 레귤러온(파3 1타 · 파4 2타 · 파5 3타 만에 온그린).<br>
     <b>계산</b> — 홀마다 <b>온그린까지 타수 − 레귤러온 타수 − 티샷 몫</b>. 그린을 놓친 홀은 <b>칩 1타</b>를 더 빼요(칩 + 1퍼트 = 파는 정상).<br>
     <b>예</b>) 파4 페어웨이 → 3온 = 3 − 2 − 1(칩) = <b>0타</b> · 4온 = <b>+1타</b> · 파5 2온 = <b>−1타(이득)</b><br>
@@ -306,7 +330,7 @@ function approachHTML(a) {
     <b>참고</b> — 파3 티샷은 아이언으로 봐요(파3 티샷 벌타도 여기에 들어가고, 아래 벌타 분해에 따로 보여 줘요). 칩을 여러 번 친 타수도 입력으로는 구분이 안 돼 여기에 잡혀요.`)}
   ${penaltyBreak}`;
 }
-function shortGameHTML(a, stepLegend) {
+function shortGameHTML(a, stepLegend, ref) {
   if (!a.n) return '';
   const cols = { ok: 'var(--g)', s5: 'var(--b)', s10: 'var(--a)', s20: 'var(--p)', sfar: 'var(--r)' };
   // 붙인 거리 분포 + 거리별 1퍼트율·평균 퍼트 (거리 기록이 있을 때만)
@@ -320,10 +344,15 @@ function shortGameHTML(a, stepLegend) {
     ${stepLegend ? `<div style="margin-top:10px;padding:9px 11px;background:var(--bg3);border-radius:10px;font-size:11px;color:var(--t2);line-height:1.65"><b style="color:var(--t)">${AP_STEP_NOTE}</b><br>${AP_OPTS.filter(([k]) => k !== 'ok').map(([, l, m]) => `<span style="white-space:nowrap">${l} ≈ ${m}</span>`).join(' · ')}</div>` : ''}
     <div class="tx-note">💡 근접률이 낮으면 어프로치 거리감(웨지) 연습을, 가깝게 붙였는데도 1퍼트가 낮으면 짧은 퍼트 연습을 우선하세요.</div></div>`
     : `<div style="font-size:10px;color:var(--t3);margin:-6px 2px 8px;line-height:1.5">💡 스코어 입력 때 레귤러온을 놓친 홀에서 "숏게임(100m 이내)을 얼마나 붙였나요?"를 고르면 근접률·거리별 1퍼트율이 여기 나와요.</div>`;
+  const K = sigKit(ref), R = K.R;
+  // 업앤다운·근접률은 한 라운드 표본이 10홀 안팎이라 1홀 = 약 10% → 노랑 폭 10%
   return `<div class="lbl">⛳ 숏게임 능력 (Short Game)</div><div class="sgd">
-    ${cntCard(a.scrSave / a.n, a.scrPct, '업앤다운', a.n > 1, '홀')}
-    ${statCard(nfs(a.shortLossRound) + '타', '', '숏게임 손실')}
-    ${statCard(a.apNearPct == null ? '-' : a.apNearPct, a.apNearPct == null ? '' : '%', '근접률(🦶🏻5↓)')}</div>
+    ${sigCard(cntPctTxt(a.scrSave / a.n, a.scrPct, a.n > 1, '홀'), '업앤다운', K.col(a.scrPct, R.scrPct, false, 10),
+      K.avg(R.scrPct != null, () => cntPctAvg(R.scrSave / K.rn, R.scrPct, '홀')))}
+    ${sigCard(nfs(a.shortLossRound) + '타', '숏게임 손실', K.col(a.shortLossRound, R.played ? R.shortLossRound : null, true, 1),
+      K.avg(R.played, () => nfs(R.shortLossRound) + '타'))}
+    ${sigCard(a.apNearPct == null ? '-' : `${a.apNearPct}<span class="su">%</span>`, '근접률(🦶🏻5↓)', K.col(a.apNearPct, R.apNearPct, false, 10),
+      K.avg(R.apNearPct != null, () => R.apNearPct + '%'))}</div>${K.legend}
   ${explainBox('숏게임 지표는 어떻게 계산하나요?', `<b>숏게임 손실</b> — 그린을 놓친 뒤 "칩 + 1퍼트"로 못 막아 잃은 타수예요. 그린 놓친 홀마다 <b>퍼트 − 1</b>.<br>
     <b>예</b>) 칩 온 → 2퍼트 = <b>+1타</b> · 1퍼트 = <b>0타</b> · 칩인 = <b>−1타(이득)</b><br>
     <b>참고</b> — 벌타 때문에만 늦게 올라간 홀(예: 파4 티샷 해저드 → 3온)은 칩을 안 쳤으니 퍼팅으로 세고, 업앤다운·근접률·거리별 표에서도 빠져요. 레귤러온을 넘긴 뒤 그린 밖에서 바로 들어간 샷은 거리와 상관없이 칩인으로 봐요.<br>
