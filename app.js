@@ -8,7 +8,7 @@
 // 기능이 추가될 때마다 여기 숫자를 올리고 CHANGELOG.md 에 기록을 남깁니다.
 // ⚠️ 이것은 API.VERSION(서버 통신 동기화용)과 다릅니다. 서버를 안 건드리는
 //    프런트 변경이면 API.VERSION 은 그대로 두고 APP_VERSION 만 올리세요.
-const APP_VERSION = 'v12.73.0';
+const APP_VERSION = 'v12.74.0';
 
 // ── 기본 골프장 (서버에서 못 불러올 때만 쓰는 비상용) ──
 const DEF = [
@@ -659,6 +659,7 @@ function openDet(id) {
   const cM = sig(r.mulligan || 0, AV.mulligan, true, 1, AV.n), cB = sig(blowupCountOf(r), AV.blowup, true, 1, AV.n);
   const cL = sig(lossStrokesOf(r), AV.loss, true, 2, AV.n);
   const a = analyze([r]);
+  const aRef = analyze(A.rounds.filter(x => !sameId(x.id, r.id)));   // 5구간 신호등 비교용 "내 평균"(이 라운드 제외)
   const avgTag = t => (AV.n && t != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${t}</span>` : '';
   Q('det-t').textContent = `${r.courseName} ${r.date}`;
   const trs = roundTrophies(r);
@@ -679,12 +680,12 @@ function openDet(id) {
     ${skillRatioHTML([r])}
     <div class="lbl">💥 블로업 홀별 원인</div>${blowupHolesHTML(r)}
     <div class="lbl">파 종류별</div>${parCrossHTML([r])}
-    ${teeStabilityHTML(a)}
-    ${driverHTML(a)}
-    ${approachHTML(a)}
-    ${shortGameHTML(a, true)}
+    ${teeStabilityHTML(a, aRef)}
+    ${driverHTML(a, aRef)}
+    ${approachHTML(a, aRef)}
+    ${shortGameHTML(a, true, aRef)}
     ${xPenaltyHTML(a)}
-    ${puttingHTML(a, analyze(A.rounds.filter(x => !sameId(x.id, r.id))))}
+    ${puttingHTML(a, aRef)}
     ${frontBackHTML([r], AV)}
     <div class="cb"><div class="cbt">홀별 스코어 <span style="font-size:11px;color:var(--t3);font-weight:400">· 홀을 누르면 상세 기록</span></div>
       ${[[0, 9], [9, 18]].map(([from, to]) => `<div style="display:flex;gap:5px;margin-top:${from ? 5 : 0}px">${Array.from({ length: to - from }, (_, j) => { const i = from + j; const s = (r.scores || [])[i]; const d = s > 0 ? s - hh[i] : null; const co = d === null ? '#2c2c2e' : d <= -2 ? 'var(--p)' : d === -1 ? 'var(--b)' : d === 0 ? 'var(--g)' : d === 1 ? 'var(--a)' : d === 2 ? 'var(--r)' : '#7f1d1d'; return `<div onclick="holeDetail(${id},${i})" style="width:32px;height:32px;border-radius:8px;background:${co};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;cursor:pointer">${s > 0 ? s : '-'}</div>`; }).join('')}</div>`).join('')}
@@ -1907,7 +1908,8 @@ function guideStatsHTML() {
   ${it('아이언·웨지 정확도 (Approach)', '<b>아이언 손실</b> = 홀마다 (온그린까지 타수 − 레귤러온 타수(파−2) − 티샷 몫), 그린을 놓친 홀은 칩 1타를 더 뺌(칩 + 1퍼트 = 파는 정상). 예) 파4 페어웨이 → 3온 = 0타 · 4온 = +1타 · 파5 2온 = −1타 · 파4 티샷 해저드 → 3온 = 0타(칩 안 침) · 파4 세컨샷 이글·파3 홀인원 = −2타. 파3 티샷 벌타도 아이언 몫. GIR(그린 적중률)도 표시. 파3 티샷 벌타나 "티샷 외 해저드·OB"가 있으면 아이언 손실을 "벌타"와 "그 외"로 나눠 보여줌.')}
   ${it('숏게임 능력 (Short Game)', '<b>숏게임 손실</b> = 그린 놓친 홀마다 (퍼트 − 1). 예) 칩 온 후 2퍼트 = +1타 · 1퍼트 = 0타 · 칩인 = −1타. 벌타 때문에만 늦게 올라간 홀은 칩을 안 쳤으니 퍼팅으로 세고 업앤다운·근접률에서도 뺌. 업앤다운(칩을 친 홀 중 1퍼트 이하 비율) · 근접률(컨시드·🦶🏻5 이내로 붙인 비율) · 붙인 거리별 1퍼트율·평균 퍼트·3퍼트율·손실(🦶🏻 = 발자국 수, 한 걸음 약 0.8m · v12.51 이후 입력분).')}
   ${it('⚠️ 티샷 외 해저드·OB', '티샷(첫 샷)이 아닌 샷에서 난 해저드·OB 횟수(라운드당)와 벌타 추정 타수(해저드 1타·OB 2타). 숏게임과 따로 보여줘요.')}
-  ${it('퍼팅 효율성 (Putting)', '<b>퍼팅 손실</b> = 레귤러온 홀마다 (퍼트 − 2). 예) 2퍼트 = 0타 · 1퍼트 = −1타 · 3퍼트 = +1타(레귤러온 안에서 바로 홀인한 홀은 퍼팅 0). 그 외 PPR · 홀당 평균 · GIR 시 평균 퍼트 · 3퍼트 이상 · 1퍼트율 · 퍼팅 분포. 드라이버·아이언·숏게임·퍼팅 손실은 한 타를 한 곳에만 세서 합계 = 평균 오버파. 라운드 상세에서는 내 평균 대비 🟢🟡🔴 신호등이 붙어요(3R↑).')}
+  ${it('퍼팅 효율성 (Putting)', '<b>퍼팅 손실</b> = 레귤러온 홀마다 (퍼트 − 2). 예) 2퍼트 = 0타 · 1퍼트 = −1타 · 3퍼트 = +1타(레귤러온 안에서 바로 홀인한 홀은 퍼팅 0). 그 외 PPR · 홀당 평균 · GIR 시 평균 퍼트 · 3퍼트 이상 · 1퍼트율 · 퍼팅 분포. 드라이버·아이언·숏게임·퍼팅 손실은 한 타를 한 곳에만 세서 합계 = 평균 오버파.')}
+  ${it('🟢🟡🔴 라운드 상세 신호등', '라운드 상세의 티샷 안정성·드라이버·아이언·숏게임·퍼팅 네모마다 <b>이 라운드를 뺀 내 평균</b>과 비교한 신호등과 평균값이 붙어요(다른 라운드 3개↑). 🟢 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨. 손실·페널티·OB처럼 적을수록 좋은 지표는 평균보다 적으면 🟢, FIR·GIR·업앤다운·근접률처럼 많을수록 좋은 지표는 평균보다 많으면 🟢.')}
 
   ${S('🏆 기록 · 트로피')}
   ${it('개인기록 · 마일스톤', '베스트·최소퍼팅·최고GIR/FIR·최다버디 기록 / 100·90·80 첫 돌파 날짜.')}
