@@ -14,6 +14,16 @@ function explainBox(title, html) {
   return `<details class="xpl"><summary>ℹ️ ${title}</summary><div class="xpl-b">${html}</div></details>`;
 }
 function statCard(n, u, l) { return `<div class="sc"><span class="sn">${n}${u ? `<span class="su">${u}</span>` : ''}</span><span class="sl">${l}</span></div>`; }
+// ── 개수 + 작은 비율: 한 라운드면 "7개 (39%)", 여러 라운드면 "라운드당 7.2개 (39%)" (v12.73.0) ──
+//   cnt: 한 라운드면 개수, 여러 라운드면 라운드당 평균 개수 · p: 비율(%) — null 이면 "-"
+//   폭이 모자라 줄이 바뀌면 "(라운드당) x개" / "(xx%)" 사이에서만 넘어가게 두 덩어리를 각각 nowrap
+function cntPctTxt(cnt, p, many, unit) {
+  if (p == null) return '-';
+  return `<span style="white-space:nowrap">${many ? '<span style="font-size:12px;font-weight:400;color:var(--t2)">라운드당 </span>' : ''}${nf(cnt)}<span class="su">${unit || '개'}</span></span> <span class="su" style="white-space:nowrap;font-size:12px;color:var(--t3)">(${p}%)</span>`;
+}
+// 평균 줄에 넣는 "x개 (xx%)" (라운드 상세의 "평균 …" 표시용)
+function cntPctAvg(cnt, p, unit) { return `${nf(cnt)}${unit || '개'} (${Math.round(p)}%)`; }
+function cntCard(cnt, p, l, many, unit) { return `<div class="sc"><span class="sn">${cntPctTxt(cnt, p, many, unit)}</span><span class="sl">${l}</span></div>`; }
 
 // ── 드라이버 손실: 티샷 결과(미스) 종류 · 표시 이름 · 고정 손실값(벌타 기준) · 고정값만 쓰는지 ──
 //   해저드·OB 는 벌타가 기록된 정확한 숫자라 본인 기록으로 추정하지 않고 항상 고정값(1타·2타)을 쓴다(v12.70.1).
@@ -194,7 +204,7 @@ function analyze(rounds) {
 
   return { n, played,
     obCount, hzCount, mullCount, mulFirst, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
-    par45, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
+    par45, fwHit, girHit, scrSave, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
     girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles, ironPenHoles,
     missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound, xPenStrokesRound, xHzCnt, xObCnt,
     puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, vsRound, p1, p2, p3, p4 };
@@ -247,7 +257,7 @@ function teeStabilityHTML(a) {
     <span style="flex:1">${s.l}</span><b style="color:var(--t)">${s.v}개${pieTotal ? ` (${Math.round(s.v / pieTotal * 100)}%)` : ''}</b></div>`).join('');
   const pie = pieTotal ? `<div class="cb" style="display:flex;align-items:center;gap:16px">${donutSVG(segs, 108, 18)}<div style="flex:1">${legend}</div></div>` : '';
   return `<div class="lbl">🚩 티샷 안정성 (Off-the-Tee · 파3~5 모두)</div><div class="sgd">
-    ${statCard(a.teePenaltyPct, '%', '티샷 페널티율')}
+    ${cntCard((a.obCount + a.hzCount + a.mullCount) / a.n, a.teePenaltyPct, '티샷 페널티', a.n > 1, '홀')}
     ${statCard(a.obCount, '', 'OB')}
     ${statCard(a.hzCount, '', '해저드')}
     ${statCard(a.mullCount, '', '멀리건')}</div>
@@ -270,7 +280,7 @@ function driverHTML(a) {
   const breakdown = used.length ? `<div class="cb"><div class="cbt" style="margin-bottom:6px">어떤 미스가 몇 타를 먹었나 (라운드 평균)</div>${rows}
     ${a.driveApprox ? `<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:4px">* 러프·벙커·멀리건은 아직 기록이 적어 1회당 손실의 절반 이상을 고정값(0타)으로 채웠어요. 라운드가 쌓일수록 내 기록 비중이 커져요.</div>` : ''}</div>` : '';
   return `<div class="lbl">🚗 드라이버 안정성 (Driver · 파4·5)</div><div class="sgd">
-    ${statCard(a.firPct, '%', 'FIR')}
+    ${cntCard(a.fwHit / a.n, a.firPct, 'FIR', a.n > 1, '홀')}
     ${statCard(nf(a.driveLossRound) + '타' + (a.driveApprox ? '*' : ''), '', '드라이버 손실/R')}</div>
   ${breakdown}
   ${explainBox('드라이버 손실 타수는 어떻게 계산하나요?', `<b>뜻</b> — 티샷 때문에 라운드마다 잃은 타수예요.<br>
@@ -286,7 +296,7 @@ function approachHTML(a) {
     ⚠️ 벌타(파3 티샷 · 티샷 외 해저드·OB) <b style="color:var(--r)">${nf(a.ironPenaltyLossRound)}타</b> · 🎯 거리감·클럽 선택 등 <b style="color:var(--t)">${nfs(a.ironOtherLossRound)}타</b>
     <div class="tx-note">💡 벌타 손실이 크면 안전하게 치는 클럽 선택을, 나머지가 크면 거리감·정확도 연습을 우선하세요.</div></div>` : '';
   return `<div class="lbl">🎯 아이언·웨지 정확도 (Approach)</div><div class="sgd">
-    ${statCard(a.girPct, '%', 'GIR')}
+    ${cntCard(a.girHit / a.n, a.girPct, 'GIR', a.n > 1, '홀')}
     ${statCard(nfs(a.ironLossRound) + '타', '', '아이언 손실')}</div>
   ${explainBox('아이언 손실 타수는 어떻게 계산하나요?', `<b>뜻</b> — 그린에 올리기까지 기준보다 더 친 타수예요. 기준은 레귤러온(파3 1타 · 파4 2타 · 파5 3타 만에 온그린).<br>
     <b>계산</b> — 홀마다 <b>온그린까지 타수 − 레귤러온 타수 − 티샷 몫</b>. 그린을 놓친 홀은 <b>칩 1타</b>를 더 빼요(칩 + 1퍼트 = 파는 정상).<br>
@@ -311,7 +321,7 @@ function shortGameHTML(a, stepLegend) {
     <div class="tx-note">💡 근접률이 낮으면 어프로치 거리감(웨지) 연습을, 가깝게 붙였는데도 1퍼트가 낮으면 짧은 퍼트 연습을 우선하세요.</div></div>`
     : `<div style="font-size:10px;color:var(--t3);margin:-6px 2px 8px;line-height:1.5">💡 스코어 입력 때 레귤러온을 놓친 홀에서 "숏게임(100m 이내)을 얼마나 붙였나요?"를 고르면 근접률·거리별 1퍼트율이 여기 나와요.</div>`;
   return `<div class="lbl">⛳ 숏게임 능력 (Short Game)</div><div class="sgd">
-    ${statCard(a.scrPct == null ? '-' : a.scrPct, a.scrPct == null ? '' : '%', '업앤다운')}
+    ${cntCard(a.scrSave / a.n, a.scrPct, '업앤다운', a.n > 1, '홀')}
     ${statCard(nfs(a.shortLossRound) + '타', '', '숏게임 손실')}
     ${statCard(a.apNearPct == null ? '-' : a.apNearPct, a.apNearPct == null ? '' : '%', '근접률(🦶🏻5↓)')}</div>
   ${explainBox('숏게임 지표는 어떻게 계산하나요?', `<b>숏게임 손실</b> — 그린을 놓친 뒤 "칩 + 1퍼트"로 못 막아 잃은 타수예요. 그린 놓친 홀마다 <b>퍼트 − 1</b>.<br>
@@ -345,19 +355,21 @@ function puttingHTML(a, ref) {
     return `<div class="sc"><span class="sn">${dot(c)}${v == null ? '-' : fmt(v)}${u ? `<span class="su">${u}</span>` : ''}</span><span class="sl">${l}</span>${avg}</div>`;
   };
   const R = ref || {};
-  const pc = x => Math.round(x) + '%';
   // 3퍼트 이상: 한 라운드면 "x홀 (xx%)", 여러 라운드면 "라운드당 x홀 (xx%)" — 신호등은 비율(%)로 비교
   // 폭이 모자라 줄이 바뀌면 "(라운드당) x홀" / "(xx%)" 사이에서만 넘어가게 두 덩어리를 각각 nowrap
   const threeTxt = (cnt, p, many) => `<span style="white-space:nowrap">${many ? '<span style="font-size:12px;font-weight:400;color:var(--t2)">라운드당 </span>' : ''}${nf(cnt)}<span class="su">홀</span></span> <span class="su" style="white-space:nowrap">(${p}%)</span>`;
   const threeAvgTxt = (rn && R.threePct != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${nf(R.threeAvg)}홀 (${R.threePct}%)</span>` : '';
   const threeCard = `<div class="sc"><span class="sn">${dot(sig(a.threePct, R.threePct, true, 5, rn))}${threeTxt(a.n > 1 ? a.threeAvg : a.p3 + a.p4, a.threePct, a.n > 1)}</span><span class="sl">3퍼트 이상</span>${threeAvgTxt}</div>`;
+  // 1퍼트: 개수(여러 라운드면 라운드당) + 작은 비율 — 신호등은 비율(%)로 비교
+  const onePuttAvgTxt = (rn && R.onePuttPct != null) ? `<span style="display:block;font-size:10px;color:var(--t3);margin-top:3px">평균 ${cntPctAvg(R.p1 / rn, R.onePuttPct, '홀')}</span>` : '';
+  const onePuttCard = `<div class="sc"><span class="sn">${dot(sig(a.onePuttPct, R.onePuttPct, false, 5, rn))}${cntPctTxt(a.p1 / a.n, a.onePuttPct, a.n > 1, '홀')}</span><span class="sl">1퍼트</span>${onePuttAvgTxt}</div>`;
   const legend = rn >= 3 ? `<div style="font-size:10px;color:var(--t3);margin:-4px 2px 8px">🟢 내 평균보다 좋음 · 🟡 평균 수준 · 🔴 평균보다 나쁨</div>` : '';
   return `<div class="lbl">🍩 퍼팅 효율성 (Putting)</div><div class="sgd">
     ${card(a.puttAvg, '', 'PPR(총 퍼팅)', R.puttAvg, true, 2, nf)}
     ${card(a.puttPerHole, '', '홀당 평균', R.puttPerHole, true, 0.1, x => (+x).toFixed(2))}
     ${card(a.girPuttAvg, '', 'GIR 시 평균 퍼트', R.girPuttAvg, true, 0.15, x => (+x).toFixed(2))}
     ${threeCard}
-    ${card(a.onePuttPct, '', '1퍼트율', R.onePuttPct, false, 5, pc)}
+    ${onePuttCard}
     ${card(a.puttLossRound, '', '퍼팅 손실(레귤러온)', R.puttLossRound, true, 1, x => nfs(x) + '타')}</div>${legend}
   ${explainBox('퍼팅 손실 타수는 어떻게 계산하나요?', `<b>뜻</b> — 레귤러온한 홀에서 2퍼트보다 더 친 타수예요.<br>
     <b>계산</b> — 레귤러온 홀마다 <b>퍼트 − 2</b>. 벌타만 빼면 레귤러온인 홀(예: 파4 티샷 해저드 → 3온)도 넣어요.<br>
@@ -408,6 +420,9 @@ function estHandicap(rsChrono) {
 function obCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 2 ? 1 : 0), 0); }
 function hzCountOf(r) { return (r.tpArr || []).reduce((a, t) => a + (t === 1 ? 1 : 0), 0); }
 function lossStrokesOf(r) { return obCountOf(r) * 2 + hzCountOf(r); }
+// 저장된 r.gir·r.fir(%) 와 같은 기준의 홀 수 — FIR 은 멀리건 홀 제외(첫 샷 기준, app.js 저장식과 동일)
+function girCountOf(r) { return (r.girArr || []).filter(Boolean).length; }
+function firCountOf(r) { const mu = r.mulliArr || []; return (r.firArr || []).filter((f, i) => f && !mu[i]).length; }
 // ── 블로업(트리플보기 이상) 홀 수 — blowupCauseHTML과 같은 기준 ──
 function blowupCountOf(r) {
   const hp = roundPars(r), sc = r.scores || []; let c = 0;
@@ -740,8 +755,9 @@ function coreMetricsHTML(rounds, includeSd) {
   const avgMulli = rounds.reduce((a, r) => a + (r.mulligan || 0), 0) / n;
   const avgOb = rounds.reduce((a, r) => a + obCountOf(r), 0) / n;
   const avgHz = rounds.reduce((a, r) => a + hzCountOf(r), 0) / n;
+  const avgF = f => rounds.reduce((a, r) => a + f(r), 0) / n;
   const vol = includeSd ? volatilityOf(rounds) : null;
-  return `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', n > 1 ? '평균 스코어' : '스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', n > 1 ? '평균 오버파' : '오버파')}${statCard(avg('putts').toFixed(1), '', n > 1 ? '평균 퍼팅' : '퍼팅')}${statCard(avg('gir').toFixed(0), '%', 'GIR')}${statCard(avg('fir').toFixed(0), '%', 'FIR')}${includeSd ? statCard('±' + sd.toFixed(1), '', '기복(편차)') : ''}${statCard(nf(avgMulli), '', n > 1 ? '평균 멀리건' : '멀리건')}${statCard(nf(avgOb), '', n > 1 ? '평균 OB' : 'OB')}${statCard(nf(avgHz), '', n > 1 ? '평균 해저드' : '해저드')}</div>${vol ? volatilityHTML(vol) : ''}`;
+  return `<div class="lbl">핵심 지표</div><div class="sgd">${statCard(avg('score').toFixed(1), '', n > 1 ? '평균 스코어' : '스코어')}${statCard((avg('vs') >= 0 ? '+' : '') + avg('vs').toFixed(1), '', n > 1 ? '평균 오버파' : '오버파')}${statCard(avg('putts').toFixed(1), '', n > 1 ? '평균 퍼팅' : '퍼팅')}${cntCard(avgF(girCountOf), Math.round(avg('gir')), 'GIR', n > 1, '홀')}${cntCard(avgF(firCountOf), Math.round(avg('fir')), 'FIR', n > 1, '홀')}${includeSd ? statCard('±' + sd.toFixed(1), '', '기복(편차)') : ''}${statCard(nf(avgMulli), '', n > 1 ? '평균 멀리건' : '멀리건')}${statCard(nf(avgOb), '', n > 1 ? '평균 OB' : 'OB')}${statCard(nf(avgHz), '', n > 1 ? '평균 해저드' : '해저드')}</div>${vol ? volatilityHTML(vol) : ''}`;
 }
 // ── 기복 지수 = (최악 라운드 스코어 − 최고 라운드 스코어) ÷ 평균 타수 × 100 ──
 // 9홀만 친(또는 덜 채운) 라운드가 섞이면 차이가 터무니없이 커지므로 18홀을 다 채운 라운드만 쓴다(2개 이상일 때만).
@@ -801,7 +817,7 @@ function skillRatioHTML(rounds) {
   return `<div class="lbl">실력 비율 (홀 기준)</div>
   <div class="cb" style="display:flex;align-items:center;gap:18px">${donutSVG(segs)}<div style="flex:1">${legend}</div></div>
   <div class="sgd" style="margin-top:10px">
-    ${statCard(birdieRate == null ? '-' : birdieRate, birdieRate == null ? '' : '%', '🕊️ 버디 (파 이하 중)')}
+    ${cntCard(birdie / n, birdieRate, '🕊️ 버디', n > 1)}
     ${statCard(nf(blowup), '', '블로업/R')}</div>
   <div style="font-size:10px;color:var(--t3);margin:6px 2px 4px">💡 블로업 = 트리플보기 이상 홀(라운드당 ${nf(blowup)}홀). 줄이면 스코어가 크게 떨어져요.</div>`;
 }
@@ -848,7 +864,7 @@ function playerAvgs(excludeId) {
   const f9s = rs.map(frontNineOf).filter(x => x != null), b9s = rs.map(backNineOf).filter(x => x != null);
   return {
     n, score: m('score'), putts: m('putts'), gir: m('gir'), fir: m('fir'), vs: m('vs'), mulligan: m('mulligan'),
-    loss: mf(lossStrokesOf), blowup: mf(blowupCountOf),
+    loss: mf(lossStrokesOf), blowup: mf(blowupCountOf), girN: mf(girCountOf), firN: mf(firCountOf),
     f9: f9s.length ? f9s.reduce((a, b) => a + b, 0) / f9s.length : null,
     b9: b9s.length ? b9s.reduce((a, b) => a + b, 0) / b9s.length : null,
   };
