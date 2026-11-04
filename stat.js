@@ -120,6 +120,7 @@ function analyze(rounds) {
       const ironPen = holePenalty + (par === 3 ? teePen : 0);   // 아이언 몫 벌타: 티샷 외 벌타 + 파3 티샷 벌타(파3 티샷은 아이언 샷, v12.72.0)
       if (ironPen > 0) ironPenHoles++;
       holes.push({ ex, putt, onReg, cat, ap: onReg ? '' : ap[i], pen: ironPen,
+        teeOn: par > 3 && og === 1,                                  // 파4·5 티샷 원온(온그린까지 1타) → 그 이득은 드라이버 몫(v12.78.0)
         extra: onReg ? 0 : ex - teePen - holePenalty - 1 });   // 그린 놓친 홀: 벌타·세컨샷·칩 1번을 넘게 친 타수(칩을 더 친 것으로 봄, v12.77.0)
 
       // ── 4) 숏게임(업앤다운): 그린 놓친 홀 중 "마지막 온그린 샷 + 1퍼트 이하"로 마무리한 비율 ──
@@ -159,7 +160,7 @@ function analyze(rounds) {
     const realPct = Math.round(w / (w + DRIVE_K) * 100);            // 1회당 손실 중 본인 기록(실측)이 차지하는 비중
     return { k, l, n: c.n, cost, realPct, exact: false, approx: w < DRIVE_K, lossRound: f1(cost * c.n, n) };
   });
-  const driveLossRound = driveCats.reduce((t, c) => t + c.lossRound, 0);
+  const driveCatLossRound = driveCats.reduce((t, c) => t + c.lossRound, 0);   // 티샷 결과별 손실 합(원온 이득은 타수 분해 뒤에 더함)
   const driveApprox = driveCats.some(c => c.n && c.approx);
   const driveKnown = dc.fw.n + driveCats.reduce((t, c) => t + c.n, 0);   // 티샷 결과를 선택한 파4·5 홀 수
 
@@ -171,12 +172,14 @@ function analyze(rounds) {
   //     퍼팅   = 퍼트 − 2(칩인이면 0) · 아이언 = 나머지(그린을 놓친 1타 + 티샷 외 벌타 − 러프 등 D 추정분)
   //   → 홀마다 D + 아이언 + 숏게임 + 퍼팅 = 스코어 − 파. 값이 음수면 그 구간에서 번 타수(예: 1퍼트, 칩인).
   const costOf = {}; driveCats.forEach(c => { costOf[c.k] = c.cost; });
+  let teeOnSum = 0, teeOnN = 0;   // 파4·5 티샷 원온 홀: 아이언으로 가던 값(이득)을 드라이버로 옮긴 합 · 홀 수
   let ironSum = 0, ironPenaltySum = 0, shortSum = 0, puttNetSum = 0, vsSum = 0;
   holes.forEach(h => {
     const D = costOf[h.cat] || 0;
     const holed = h.onReg && h.putt === 0;   // 레귤러온 안에서 그린 밖 샷이 바로 홀인(예: 파4 세컨샷 이글, 파3 홀인원) → 퍼팅 −2 가 아니라 아이언 이득(v12.72.0)
     const iron = h.onReg ? h.ex - D - (holed ? 2 : 0) : h.ex - D - h.extra;
-    ironSum += iron;
+    if (h.teeOn) { teeOnSum += iron; teeOnN++; }                    // 티샷으로 그린에 올림 → 아이언 0, 그 값(이득)은 드라이버 몫. 퍼팅은 아래에서 그대로 셈
+    else ironSum += iron;
     if (h.pen > 0) ironPenaltySum += Math.min(Math.max(0, iron), h.pen);   // 아이언 몫 중 "티샷 외 벌타" 부분(아이언 몫을 넘지 않게)
     if (h.onReg) puttNetSum += holed ? 0 : h.putt - 2;
     else {
@@ -191,6 +194,8 @@ function analyze(rounds) {
   // 3) 아이언 + 어프로치 낭비
   const girPct = pct(girHit, girHoles);
   const ironLossRound = f1(ironSum, n);
+  const teeOnRound = f1(teeOnSum, n);                       // 파4·5 티샷 원온 이득(보통 음수) — 드라이버 손실에 더한다
+  const driveLossRound = driveCatLossRound + teeOnRound;
   const ironPenaltyLossRound = f1(ironPenaltySum, n);     // 아이언 손실 중 벌타(파3 티샷 + 티샷 외) 몫(입력한 홀이 있을 때만 의미 있음)
   const ironOtherLossRound = ironLossRound - ironPenaltyLossRound;   // 나머지(거리감·클럽 선택 등)
 
@@ -214,7 +219,7 @@ function analyze(rounds) {
 
   return { n, played,
     obCount, hzCount, mullCount, mulFirst, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teeUnsel, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
-    par45, fwHit, girHit, scrSave, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
+    par45, fwHit, girHit, scrSave, firPct, fwN: dc.fw.n, driveCats, driveLossRound, teeOnRound, teeOnN, driveApprox, driveKnown,
     girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles, ironPenHoles,
     missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound, xPenStrokesRound, xHzCnt, xObCnt,
     puttAvg, puttPerHole, threeAvg, threePct, onePuttPct, girPuttAvg, puttLossRound, vsRound, p1, p2, p3, p4 };
@@ -226,7 +231,7 @@ function lossSummaryHTML(a) {
   if (!a.n) return '';
   // [이름, 값(라운드당 타수), 색, 고정값 추정 여부, 무엇을 센 타수인지]
   const items = [
-    ['🚗 드라이버', a.driveLossRound, 'var(--r)', a.driveApprox, '티샷이 러프·벙커·해저드·OB로 가서 잃은 타수'],   // 드라이버 카드와 같은 값(analyze 단일 소스)
+    ['🚗 드라이버', a.driveLossRound, 'var(--r)', a.driveApprox, '티샷이 러프·벙커·해저드·OB로 가서 잃은 타수(원온은 이득)'],   // 드라이버 카드와 같은 값(analyze 단일 소스)
     ['🎯 아이언·웨지', a.ironLossRound, 'var(--a)', false, '그린에 올리기까지 더 친 타수'],
     ['⛳ 숏게임', a.shortLossRound, 'var(--b)', false, '그린을 놓친 뒤 칩을 1번보다 더 친 타수'],
     ['🍩 퍼팅', a.puttLossRound, 'var(--p)', false, '그린에 올린 뒤 2퍼트보다 더 친 타수'],
@@ -287,7 +292,11 @@ function driverHTML(a) {
     <span style="color:var(--t);min-width:52px">${c.l}${c.approx ? '*' : ''}</span>
     <span style="flex:1;font-size:10.5px;color:var(--t3);overflow:hidden;text-overflow:ellipsis">${c.n}회 × 1회당 ${nf(c.cost)}타 · ${c.exact ? '벌타 그대로' : `내 기록 ${c.realPct}%`}</span>
     <b style="color:${c.lossRound > 0 ? 'var(--r)' : 'var(--t2)'}">${nf(c.lossRound)}타</b></div>`).join('');
-  const breakdown = used.length ? `<div class="cb"><div class="cbt" style="margin-bottom:6px">어떤 미스가 몇 타를 먹었나 (라운드 평균)</div>${rows}
+  const teeOnRow = a.teeOnN ? `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--bg3);font-size:13px;white-space:nowrap">
+    <span style="color:var(--t);min-width:52px">⛳ 원온</span>
+    <span style="flex:1;font-size:10.5px;color:var(--t3);overflow:hidden;text-overflow:ellipsis">${a.teeOnN}회 · 티샷으로 그린에 올린 이득</span>
+    <b style="color:var(--g)">${nfs(a.teeOnRound)}타</b></div>` : '';
+  const breakdown = (used.length || a.teeOnN) ? `<div class="cb"><div class="cbt" style="margin-bottom:6px">어떤 미스가 몇 타를 먹었나 (라운드 평균)</div>${rows}${teeOnRow}
     ${a.driveApprox ? `<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:4px">* 러프·벙커·멀리건은 아직 기록이 적어 1회당 손실의 절반 이상을 고정값(0타)으로 채웠어요. 라운드가 쌓일수록 내 기록 비중이 커져요.</div>` : ''}</div>` : '';
   return `<div class="lbl">🚗 드라이버 안정성 (Driver · 파4·5)</div><div class="sgd">
     ${cntCard(a.fwHit / a.n, a.firPct, 'FIR', a.n > 1, '홀')}
@@ -298,6 +307,7 @@ function driverHTML(a) {
     · 해저드 <b>1타</b> · OB <b>2타</b> (벌타 그대로)<br>
     · 러프·벙커·멀리건 — 페어웨이 홀보다 온그린까지 평균 몇 타 더 걸렸는지 (내 기록 기준 · 기록이 적으면 0타 쪽으로 보정)<br>
     <b>예</b>) 해저드 2번 + OB 1번 = 1×2 + 2×1 = <b>4타</b> · 러프 1회당 0.4타 × 4번 = <b>1.6타</b><br>
+    · 원온 — 파4·5에서 티샷으로 그린에 올리면(온그린까지 1타) 레귤러온보다 아낀 타수를 드라이버 이득(−)으로 세요. 예) 파4 원온 = <b>−1타</b>(아이언 0). 파5 2온은 세컨샷 이득이라 아이언으로 세요<br>
     <b>참고</b> — 퍼트는 안 섞여요. 멀리건 뒤 다시 친 샷이 OB·해저드면 그 벌타로 세요. 티샷 결과를 고르지 않은 홀은 빠지고, 러프·벙커 구분이 없던 옛 기록(v12.37 이전)의 티샷 미스는 러프로 봐요(현재 ${a.driveKnown}/${a.par45}홀 반영).`)}`;
 }
 function approachHTML(a) {

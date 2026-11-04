@@ -122,9 +122,9 @@ t('⑤ 파3 홀인원 → 아이언 −2', () => {
   const a = analyze([r]);
   assert(near(a.ironLossRound, -2) && near(a.puttLossRound, 0), JSON.stringify([a.ironLossRound, a.puttLossRound]));
 });
-t('⑤ 1온 1퍼트 이글은 그대로(아이언 −1 · 퍼팅 −1)', () => {
+t('⑤ 파4 1온 1퍼트 이글 → 원온이라 드라이버 −1 · 아이언 0 · 퍼팅 −1 (v12.78.0, 예전엔 아이언 −1)', () => {
   const a = analyze([R({ scores: 2, puttsArr: 1 })]);
-  assert(near(a.ironLossRound, -1) && near(a.puttLossRound, -1), JSON.stringify([a.ironLossRound, a.puttLossRound]));
+  assert(near(a.driveLossRound, -1) && near(a.ironLossRound, 0) && near(a.puttLossRound, -1), JSON.stringify([a.driveLossRound, a.ironLossRound, a.puttLossRound]));
 });
 t('⑥ 옛 기록(missArr 없음)의 티샷 미스는 러프로 드라이버 계산에 들어감', () => {
   const r = R({ scores: 5, girArr: 0, firArr: 0 }); delete r.missArr;
@@ -168,6 +168,26 @@ t('파4 페어웨이 → 4온 칩인(파) → 아이언 +1 · 숏게임 −1(칩
   const a = analyze([R({ scores: 4, puttsArr: 0, girArr: 0, apArr: 'ok' })]);
   assert(near(a.ironLossRound, 1) && near(a.shortLossRound, -1) && near(a.puttLossRound, 0), JSON.stringify([a.ironLossRound, a.shortLossRound, a.puttLossRound]));
   assert(near(a.apStats.find(x => x.k === 'ok').lossRound, -2));
+});
+// v12.78.0: 파4·5 티샷 원온(온그린까지 1타)의 이득은 드라이버 몫, 파5 2온은 아이언 그대로
+t('파4 원온 2퍼트(버디) → 드라이버 −1 · 아이언 0 · 퍼팅 0', () => {
+  const a = analyze([R({ scores: 3, puttsArr: 2 })]);
+  assert(near(a.driveLossRound, -1) && near(a.ironLossRound, 0) && near(a.puttLossRound, 0) && a.teeOnN === 1,
+    JSON.stringify([a.driveLossRound, a.ironLossRound, a.puttLossRound, a.teeOnN]));
+});
+t('파4 티샷 홀인원(알바트로스) → 드라이버 −3 · 아이언 0 · 퍼팅 0', () => {
+  const a = analyze([R({ scores: 1, puttsArr: 0 })]);
+  assert(near(a.driveLossRound, -3) && near(a.ironLossRound, 0) && near(a.puttLossRound, 0), JSON.stringify([a.driveLossRound, a.ironLossRound, a.puttLossRound]));
+});
+t('파5 2온 2퍼트 → 아이언 −1 · 드라이버 0 (원온 아님)', () => {
+  const r = R({ scores: 4, puttsArr: 2 }); r.holePars[0] = 5;
+  const a = analyze([r]);
+  assert(near(a.driveLossRound, 0) && near(a.ironLossRound, -1) && a.teeOnN === 0, JSON.stringify([a.driveLossRound, a.ironLossRound, a.teeOnN]));
+});
+t('파3 1온(레귤러온)은 원온 이득 없음 — 그대로 아이언 0', () => {
+  const r = R({ scores: 3, puttsArr: 2 }); r.holePars[0] = 3;
+  const a = analyze([r]);
+  assert(near(a.driveLossRound, 0) && near(a.ironLossRound, 0) && a.teeOnN === 0, JSON.stringify([a.driveLossRound, a.ironLossRound, a.teeOnN]));
 });
 t('여러 조합에서 네 구간 합 = 라운드 오버파', () => {
   let n = 0;
