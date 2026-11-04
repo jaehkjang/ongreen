@@ -58,12 +58,19 @@ t('트리플 미만(더블보기)은 블로업이 아님', () => {
 t('미입력 홀은 null', () => {
   assert(blowupPartsOf(H(4, { s: 0, putt: 0 }), 0) === null);
 });
-t('파4 8타 · 티샷 OB · 칩 후 3퍼트 → 티샷 +2 · 온그린까지 0 · 숏게임 +2', () => {
+t('파4 8타 · 티샷 OB · 5온 3퍼트 → 티샷 +2 · 온그린까지 +1 · 숏게임 0 · 퍼팅 +1', () => {
   const b = blowupPartsOf(H(4, { s: 8, putt: 3, tp: 2 }), 0);
-  assert(b.v.tee === 2 && b.v.iron === 0 && b.v.short === 2 && b.v.putt === 0, JSON.stringify(b.v));
-  assert(b.main === 'tee' || b.main === 'short');
-  assert(b.main === 'tee', '동률이면 벌타가 주원인');
+  assert(b.v.tee === 2 && b.v.iron === 1 && b.v.short === 0 && b.v.putt === 1, JSON.stringify(b.v));
+  assert(b.main === 'tee');
 });
+// v12.77.0 새 규칙: 그린 놓친 홀 = 온그린까지 +1 · 칩 1번 넘게 친 타수 = 숏게임 · 퍼트 − 2 = 퍼팅
+for (const [og, putt, iron, short, pt] of [[5, 2, 1, 0, 0], [6, 2, 1, 1, 0], [6, 3, 1, 1, 1], [7, 2, 1, 2, 0]]) {
+  t(`파4 티샷 OB · ${og}온 ${putt}퍼트 → 티샷 +2 · 온그린까지 +${iron} · 숏게임 +${short} · 퍼팅 +${pt}`, () => {
+    const b = blowupPartsOf(H(4, { s: og + putt, putt, tp: 2 }), 0);
+    assert(b.v.tee === 2 && b.v.iron === iron && b.v.short === short && b.v.putt === pt, JSON.stringify(b.v));
+    assert(b.chips === short + 1, '칩 횟수 ' + b.chips);
+  });
+}
 t('파3 6타 · 레귤러온 후 5퍼트 → 퍼팅 +3', () => {
   const b = blowupPartsOf(H(3, { s: 6, putt: 5, gir: true }), 0);
   assert(b.v.putt === 3 && b.v.iron === 0 && b.v.short === 0, JSON.stringify(b.v));
@@ -71,9 +78,9 @@ t('파3 6타 · 레귤러온 후 5퍼트 → 퍼팅 +3', () => {
 });
 t('파5 9타 · 세컨드 해저드 1회 · 온그린 7타 · 2퍼트', () => {
   const b = blowupPartsOf(H(5, { s: 9, putt: 2, xh: 1, fir: true }), 0);
-  // 7 − 3 − 1(칩) − 1(해저드) = 2
-  assert(b.v.xpen === 1 && b.v.iron === 2 && b.v.short === 1, JSON.stringify(b.v));
-  assert(b.main === 'iron');
+  // 숏게임 = 7 − 3 − 1(해저드) − 1(칩) = 2 · 온그린까지 +1 · 퍼팅 0
+  assert(b.v.xpen === 1 && b.v.iron === 1 && b.v.short === 2 && b.v.putt === 0, JSON.stringify(b.v));
+  assert(b.main === 'short');
 });
 t('파4 7타 · 티샷 OB → 4온(칩 안 침) · 3퍼트 → 티샷 +2 · 온그린까지 0 · 퍼팅 +1 (칩 1타 중복 공제 없음)', () => {
   const b = blowupPartsOf(H(4, { s: 7, putt: 3, tp: 2 }), 0);
@@ -83,9 +90,9 @@ t('파5 8타 · 티샷 OB + 티샷 외 OB 2번 → 바로 홀인: 벌타 빼면 
   const b = blowupPartsOf(H(5, { s: 8, putt: 0, tp: 2, xo: 2 }), 0);   // 파5 OB 티샷 + 티샷 외 OB 2번 → 8타 만에 홀인
   assert(sumOf(b) === 3 && b.v.putt === 0, JSON.stringify(b.v));
 });
-t('칩인은 숏게임 −1(만회)', () => {
-  const b = blowupPartsOf(H(4, { s: 7, putt: 0 }), 0);
-  assert(b.v.short === -1 && b.v.iron === 4, JSON.stringify(b.v));
+t('칩인은 숏게임 −2(만회) · 퍼팅 0', () => {
+  const b = blowupPartsOf(H(4, { s: 7, putt: 0 }), 0);   // 7타 만에 그린 밖에서 홀인 = 칩 5번째에 칩인
+  assert(b.v.iron === 1 && b.v.short === 2 && b.v.putt === 0, JSON.stringify(b.v));   // 칩 1번 넘게 4타 − 칩인 2 = 2
 });
 t('모든 조합에서 원인별 합 = 오버파', () => {
   let n = 0;
