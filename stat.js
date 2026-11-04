@@ -263,10 +263,10 @@ function teeStabilityHTML(a) {
     ${statCard(a.mullCount, '', '멀리건')}</div>
   ${pie}
   ${a.mullCount ? `<div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;margin-top:8px"><div class="cbt" style="margin-bottom:6px">🔄 멀리건 받고 다시 친 샷 (${a.mullCount}회)</div>
-    ${a.mulSavePct == null ? '' : `<div style="display:flex;gap:16px;margin-bottom:6px"><div>멀리건 살림률 <b style="font-size:16px;color:${a.mulSavePct >= 70 ? 'var(--g)' : a.mulSavePct >= 40 ? 'var(--a)' : 'var(--r)'}">${a.mulSavePct}%</b></div><div>페어웨이(온그린) <b style="font-size:16px;color:var(--t)">${a.mulFwPct}%</b></div></div>`}
+    ${a.mulKnown ? `<div class="sgd" style="margin-bottom:8px">${cntCard(a.mulR.fw, a.mulFwPct, '멀리건 티샷 성공<br><span style="font-size:10px;color:var(--t3)">페어웨이 · 파3 온그린</span>', false, '개')}${cntCard(a.mulR.fw + a.mulR.safe, a.mulSavePct, `<span style="color:${a.mulSavePct >= 70 ? 'var(--g)' : a.mulSavePct >= 40 ? 'var(--a)' : 'var(--r)'}">●</span> 멀리건 살림<br><span style="font-size:10px;color:var(--t3)">러프·벙커 포함</span>`, false, '개')}</div>` : ''}
     <div style="margin-bottom:4px">첫 샷: OB <b style="color:var(--r)">${a.mulFirst.ob}</b> · 해저드 <b style="color:var(--r)">${a.mulFirst.hz}</b>${a.mulFirst.unk ? ` · 종류 모름 ${a.mulFirst.unk}` : ''}</div>
     다시 친 샷: 페어웨이(온그린) <b style="color:var(--t)">${a.mulR.fw}</b> · 러프·벙커 <b style="color:var(--t)">${a.mulR.safe}</b> · 또 페널티 <b style="color:var(--r)">${a.mulR.pen}</b>${a.mulR.unk ? ` · 결과 미선택 ${a.mulR.unk}` : ''}
-    <div class="tx-note">멀리건 = 첫 티샷이 OB·해저드였다는 뜻이라 위 페널티율·FIR은 첫 샷 기준으로 세요. 살림률 = 다시 친 샷이 페널티 없이 살아난 비율(결과를 고른 ${a.mulKnown}회 기준).</div></div>` : ''}
+    <div class="tx-note">멀리건 = 첫 티샷이 OB·해저드였다는 뜻이라 위 페널티율·FIR은 첫 샷 기준으로 세요. 성공 = 다시 친 샷이 페어웨이(파3는 온그린)에 간 경우 · 살림 = 페널티 없이 살아난 경우(러프·벙커 포함). 비율은 결과를 고른 ${a.mulKnown}회 기준이고, 개수는 ${a.n > 1 ? `${a.n}라운드 합계` : '이 라운드'}예요.</div></div>` : ''}
   <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
 }
 function driverHTML(a) {

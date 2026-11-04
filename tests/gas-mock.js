@@ -87,7 +87,7 @@ function makeBackend() {
       getUuid: () => crypto.randomUUID(),
       DigestAlgorithm: { SHA_256: 'sha256' }, Charset: { UTF_8: 'utf8' },
       computeDigest: (alg, str) => Array.from(crypto.createHash('sha256').update(str, 'utf8').digest()).map(b => (b > 127 ? b - 256 : b)),
-      formatDate: () => '2026-10-13 12:00',
+      formatDate: d => new Date(+d + 9 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' '),   // Asia/Seoul 'yyyy-MM-dd HH:mm'
     },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => ({ body: JSON.parse(s) }) }) },
     Logger: { log: () => {} },
