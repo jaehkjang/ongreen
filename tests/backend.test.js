@@ -439,5 +439,58 @@ t('관리자 계정은 회원 삭제로 지울 수 없다(일반 회원 삭제�
   assert(b.g.findUserRow_('오지훈') === -1, '일반 회원은 지워짐');
 });
 
+console.log('\n[마지막 접속] 관리자 회원 목록의 마지막 접속이 실제로 바뀌는가 (v16)');
+
+const lastOf = (b, name) => (b.api.get('관리자', 'getUsers').users.find(x => x.username === name) || {}).last;
+
+t('PIN 없이 저장된 토큰으로만 들어와도(자동 로그인) 마지막 접속이 갱신된다', () => {
+  const b = setup();
+  const first = lastOf(b, '박유림');
+  assert(first, `로그인하면 기록이 생겨야 함: ${first}`);
+  b.tick(3 * 3600 * 1000);                                          // 3시간 뒤 앱을 다시 엶 → 기록 받아오기만 함
+  b.api.get('박유림', 'getRounds');
+  const second = lastOf(b, '박유림');
+  assert(second && second !== first, `시각이 바뀌어야 함: ${first} → ${second}`);
+  assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(second), `형식 yyyy-MM-dd HH:mm: ${second}`);
+});
+
+t('가입일은 마지막 접속과 따로 보내고, 가입일은 바뀌지 않는다', () => {
+  const b = setup();
+  const u0 = b.api.get('관리자', 'getUsers').users.find(x => x.username === '오지훈');
+  b.tick(3 * 3600 * 1000); b.api.post('오지훈', { action: 'saveRounds', rounds: [R(1, 90)] });
+  const u1 = b.api.get('관리자', 'getUsers').users.find(x => x.username === '오지훈');
+  assert(u0.joined && u0.joined === u1.joined, `가입일 그대로: ${u0.joined} / ${u1.joined}`);
+  assert(u1.last !== u0.last, `저장도 접속으로 침: ${u0.last} → ${u1.last}`);
+});
+
+t('5분 안의 잦은 요청은 시트에 다시 쓰지 않는다', () => {
+  const b = setup();
+  const sh = b.main.getSheetByName('사용자');
+  const row = b.g.findUserRow_('장재혁');
+  const v0 = sh.getRange(row, 4).getValue();
+  b.tick(60 * 1000); b.api.get('장재혁', 'getRounds');
+  assert(sh.getRange(row, 4).getValue() === v0, '1분 뒤엔 그대로');
+  b.tick(5 * 60 * 1000); b.api.get('장재혁', 'getRounds');
+  assert(sh.getRange(row, 4).getValue() > v0, '6분 뒤엔 갱신');
+  assert(sh.getRange(1, 4).getValue() === '마지막접속', '머리글 칸이 생김');
+});
+
+t('예전 회원(마지막접속 칸이 빈 줄)은 기록 없음 → 다음 요청 때 채워진다', () => {
+  const b = makeBackend();                                          // 관리자 줄은 3칸만 있는 예전 형식
+  assert(b.api.get('관리자', 'getUsers').users.find(x => x.username === '관리자1').last === '', '빈 값');
+  b.api.get('관리자1', 'getRounds');
+  assert(lastOf(b, '관리자1'), '요청 후엔 채워짐');
+});
+
+t('잠금을 못 잡아도 기록 받아오기는 그대로 된다(접속 기록만 건너뜀)', () => {
+  const b = setup(); b.tick(10 * 60 * 1000);
+  const before = lastOf(b, '장재혁');
+  b.setLockHeld(true);
+  const r = b.api.get('장재혁', 'getRounds');
+  b.setLockHeld(false);
+  assert(r.ok && Array.isArray(r.rounds), `getRounds 정상: ${JSON.stringify(r)}`);
+  assert(lastOf(b, '장재혁') === before, '잠금을 못 잡았으면 접속 기록은 이번엔 건너뜀');
+});
+
 console.log(`\n${fail === 0 ? '✅' : '❌'} 통과 ${pass} · 실패 ${fail}\n`);
 process.exit(fail === 0 ? 0 : 1);

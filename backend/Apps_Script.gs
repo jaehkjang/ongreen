@@ -34,10 +34,10 @@
 // ============================================================
 
 // ── ① 설정/공용 ─────────────────────────────────────────────
-const VERSION = 'v15-2026.10.19';   // ← 프론트(api.js)와 반드시 동일하게 유지
+const VERSION = 'v16-2026.11.04';   // ← 프론트(api.js)와 반드시 동일하게 유지
 
 const SHEETS = {
-  users:   ['이름', 'PIN해시', '가입일'],
+  users:   ['이름', 'PIN해시', '가입일', '마지막접속'],   // 마지막접속 = 마지막으로 앱을 쓴 시각(ms, v16)
   rounds:  ['이름','날짜','골프장','코스','날씨','동반자','메모','스코어','파대비','파','퍼팅','GIR%','FIR%','멀리건','상세','삭제시각'],
   courses: ['JSON', '등록자', '날짜'],          // ★ 기존 공식코스 시트 형식 — 절대 초기화 안 함
   notes:   ['시간', '사용자', '동작', '골프장', '확인'],
@@ -113,6 +113,7 @@ function doGet(e) {
   if (a === 'getCourses') return ok_({ courses: readCourses_() });        // 공개
 
   if (!verify_(u, token)) return err_('인증실패');
+  touch_(u, false);                                                        // 마지막 접속 시각 기록(v16)
   if (a === 'getRounds')        return ok_(getRounds_(u));               // { rounds, deleted }
   if (a === 'getNotifications') { if (!isAdmin_(u)) return err_('권한없음'); return ok_({ notes: getNotes_() }); }
   if (a === 'getUsers')         { if (!isAdmin_(u)) return err_('권한없음'); return ok_({ users: getUsers_() }); }
@@ -129,6 +130,7 @@ function doPost(e) {
 
       // 인증 필요
       if (!verify_(u, token)) return err_('인증실패');
+      touch_(u, true);                                                     // 마지막 접속 시각 기록(v16)
       if (d.action === 'saveRounds')  return saveRounds_(u, d.rounds || [], d.dels || []);
       if (d.action === 'saveCourse')  return saveCourse_(u, d.course, !!d.isEdit, d.oldName || '', d.base || null);
       if (d.action === 'reportPar')   { addNote_(u, '홀파수정', d.detail || d.course); return ok_({}); }   // 마스터는 안 건드림, 알림만
@@ -186,13 +188,13 @@ function login_(username, pin) {
 
   if (row === -1) {                                   // 처음 보는 이름 → 자동 가입 (관리자 이름은 제외)
     if (isAdmin) return err_('관리자 이름은 새로 가입할 수 없어요 — 관리자에게 문의해주세요');
-    SH_USERS().appendRow([username, hash, new Date().toLocaleDateString('ko-KR')]);
+    SH_USERS().appendRow([username, hash, new Date().toLocaleDateString('ko-KR'), Date.now()]);
     return ok_({ token: makeToken_(username, hash), isAdmin, isNew: true });
   }
   const f = failGet_(username);
   if (f.until > Date.now()) return lockedErr_(f.until);   // 잠긴 동안엔 맞는 PIN 이어도 거절(그래야 대입이 안 됨)
   const stored = String(SH_USERS().getRange(row, 2).getValue());
-  if (stored === hash) { if (f.n || f.until) failClear_(username); return ok_({ token: makeToken_(username, stored), isAdmin }); }
+  if (stored === hash) { if (f.n || f.until) failClear_(username); touch_(username, true); return ok_({ token: makeToken_(username, stored), isAdmin }); }
   const n = f.n + 1;
   if (n >= PIN_MAX_FAIL) { const until = Date.now() + PIN_LOCK_MS; failSet_(username, { n: 0, until }); return lockedErr_(until); }
   failSet_(username, { n, until: 0 });
@@ -207,6 +209,37 @@ function verify_(username, token) {
   return makeToken_(username, stored) === token;
 }
 function isAdmin_(username) { return admins_().includes(username); }
+
+// ── 마지막 접속 (v16) ── 사용자 시트 4번째 칸에 마지막으로 앱을 쓴 시각(ms)을 남긴다.
+// 앱은 PIN 을 다시 넣지 않고 저장된 토큰으로 바로 들어오므로(자동 로그인) 로그인 때만 적으면 안 바뀐다 →
+// 인증된 요청(기록 받아오기·저장 등)마다 갱신하되, 시트 쓰기를 줄이려고 TOUCH_MS(5분)에 한 번만 쓴다.
+// 실패해도 원래 요청은 그대로 진행한다(접속 기록은 부가 정보).
+const C_LAST = 4, TOUCH_MS = 5 * 60 * 1000;
+function touch_(username, locked) {
+  try {
+    const sh = SH_USERS();
+    let row = findUserRow_(username);
+    if (row === -1) return;
+    const now = Date.now();
+    if (now - (Number(sh.getRange(row, C_LAST).getValue()) || 0) < TOUCH_MS) return;
+    let lock = null;
+    if (!locked) {                                   // 읽기(doGet)는 잠금 밖 → 쓰는 순간만 잠깐 잡는다(못 잡으면 다음 기회에)
+      lock = LockService.getScriptLock();
+      if (!lock.tryLock(2000)) return;
+    }
+    try {
+      row = findUserRow_(username);                  // 그 사이 회원 삭제로 줄이 밀렸을 수 있어 다시 찾는다
+      if (row === -1) return;
+      if (sh.getMaxColumns() < C_LAST) sh.insertColumnsAfter(sh.getMaxColumns(), C_LAST - sh.getMaxColumns());
+      if (String(sh.getRange(1, C_LAST).getValue()) !== SHEETS.users[C_LAST - 1]) sh.getRange(1, C_LAST).setValue(SHEETS.users[C_LAST - 1]);
+      sh.getRange(row, C_LAST).setValue(now);
+    } finally { if (lock) lock.releaseLock(); }
+  } catch (e) {}
+}
+function fmtTime_(ms) {
+  const n = Number(ms);
+  return n > 0 ? Utilities.formatDate(new Date(n), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : '';
+}
 
 function updatePin_(u, pin) {
   if (!/^\d{4}$/.test(String(pin))) return err_('비번4자');
@@ -435,10 +468,10 @@ function clearNotes_() {
 function getUsers_() {
   const sh = SH_USERS();
   if (sh.getLastRow() < 2) return [];
-  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues();
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, C_LAST).getValues();
   const rdata = readRoundRows_(SH_ROUNDS()).filter(x => !x[C_DEL]);
   return rows.filter(r => r[0]).map(r => ({
-    username: r[0], at: r[2],
+    username: r[0], joined: r[2], last: fmtTime_(r[C_LAST - 1]),   // v16: 예전엔 가입일(r[2])을 '마지막 접속'으로 보냈음
     rounds: rdata.filter(x => x[0] === r[0]).length
   }));
 }
