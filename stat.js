@@ -60,6 +60,7 @@ function analyze(rounds) {
   const dc = {}; ['fw', ...DRIVE_CATS.map(c => c[0])].forEach(k => { dc[k] = { n: 0, ex: 0 }; });   // 드라이버: 티샷 결과별 홀 수·온그린까지 초과 타수 합
   let played = 0,
       obCount = 0, hzCount = 0, mullCount = 0, safeMissCount = 0, fwCount = 0,  // 1) 티샷 안정성(전체, 파3~5 · 첫 샷 기준)
+      teeUnsel = 0,                                                   //    티샷 결과를 안 고른 홀(v12.76.0 — 안전 미스로 세지 않음)
       roughCount = 0, bunkerCount = 0,                                // 러프/벙커 구분(v12.37+ 저장분만)
       par45 = 0, fwHit = 0,                                           // 2) 드라이버(파4·5) — 결과별 집계는 아래 dc
       girHit = 0, girHoles = 0,                                       // 3) 아이언(GIR) — 손실 타수는 루프 뒤 타수 분해에서 계산
@@ -92,10 +93,11 @@ function analyze(rounds) {
       else {
         const success = par === 3 ? gi[i] : fi[i];        // 파3=온그린(GIR), 파4·5=페어웨이
         if (success) fwCount++;
-        else {
+        else if (missT === 'rough' || missT === 'bunker' || oldMiss) {   // 러프·벙커를 고른 홀만 안전 미스. 옛 기록(구분 없음)은 지금처럼 미상으로
           safeMissCount++;
           if (missT === 'rough') roughCount++; else if (missT === 'bunker') bunkerCount++;
         }
+        else teeUnsel++;                                   // 아무것도 안 고름(파3는 그린 놓쳤는데 러프·벙커 안 고름) → 미선택(v12.76.0)
       }
 
       // ── 2) 드라이버(파4·5만): 티샷 결과별로 "온그린까지 타수 − 레귤러온 타수(파−2)"를 모아, 페어웨이 홀 대비 몇 타 더 걸렸는지로 손실 추정
@@ -203,7 +205,7 @@ function analyze(rounds) {
   const vsRound = f1(vsSum, n);                            // 네 구간 합계와 같아야 하는 라운드 평균 오버파
 
   return { n, played,
-    obCount, hzCount, mullCount, mulFirst, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
+    obCount, hzCount, mullCount, mulFirst, mulR, mulKnown, mulSavePct, mulFwPct, safeMissCount, safeMissPct, teeUnsel, teePenaltyPct, roughCount, bunkerCount, missKnownCount, fwCount,
     par45, fwHit, girHit, scrSave, firPct, fwN: dc.fw.n, driveCats, driveLossRound, driveApprox, driveKnown,
     girPct, ironLossRound, ironPenaltyLossRound, ironOtherLossRound, xPenHoles, ironPenHoles,
     missGreen, scrPct, shortLossRound, apN, apNearPct, apStats, xPenRound, xPenStrokesRound, xHzCnt, xObCnt,
@@ -267,7 +269,7 @@ function teeStabilityHTML(a) {
     <div style="margin-bottom:4px">첫 샷: OB <b style="color:var(--r)">${a.mulFirst.ob}</b> · 해저드 <b style="color:var(--r)">${a.mulFirst.hz}</b>${a.mulFirst.unk ? ` · 종류 모름 ${a.mulFirst.unk}` : ''}</div>
     다시 친 샷: 페어웨이(온그린) <b style="color:var(--t)">${a.mulR.fw}</b> · 러프·벙커 <b style="color:var(--t)">${a.mulR.safe}</b> · 또 페널티 <b style="color:var(--r)">${a.mulR.pen}</b>${a.mulR.unk ? ` · 결과 미선택 ${a.mulR.unk}` : ''}
     <div class="tx-note">멀리건 = 첫 티샷이 OB·해저드였다는 뜻이라 위 페널티율·FIR은 첫 샷 기준으로 세요. 성공 = 다시 친 샷이 페어웨이(파3는 온그린)에 간 경우 · 살림 = 페널티 없이 살아난 경우(러프·벙커 포함). 비율은 결과를 고른 ${a.mulKnown}회 기준이고, 개수는 ${a.n > 1 ? `${a.n}라운드 합계` : '이 라운드'}예요.</div></div>` : ''}
-  <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}</div>`;
+  <div class="cb" style="font-size:12px;color:var(--t2);line-height:1.6;${pie ? 'margin-top:8px' : ''}">안전 미스(러프·벙커, 페널티 없음) <b style="color:var(--t)">${a.safeMissCount}개 (${a.safeMissPct}%)</b>${breakdown ? `<br><span style="font-size:11px;color:var(--t3)">${breakdown}</span>` : ''}${a.teeUnsel ? `<br><span style="font-size:11px;color:var(--t3)">티샷 결과 미선택 ${a.teeUnsel}홀 (안전 미스·그래프에서 뺐어요)</span>` : ''}</div>`;
 }
 function driverHTML(a) {
   if (!a.n || !a.par45) return '';

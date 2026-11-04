@@ -136,6 +136,24 @@ t('⑥ 새 기록에서 결과를 안 고른 티샷은 그대로 제외', () => 
   const a = analyze([R({ scores: 5, girArr: 0, firArr: 0 })]);
   assert(a.driveCats.find(c => c.k === 'rough').n === 0 && a.driveKnown === 17);
 });
+t('티샷 안정성: 결과를 안 고른 홀은 안전 미스가 아니라 미선택으로 센다 (v12.76.0)', () => {
+  const r = R({ firArr: 0 });                                         // 파4 · 아무것도 안 고름
+  r.firArr[1] = 0; r.missArr[1] = 'rough';                            // 러프 고름
+  r.firArr[2] = 0; r.missArr[2] = 'bunker';                           // 벙커 고름
+  r.holePars[3] = 3; r.scores[3] = 4; r.girArr[3] = 0; r.firArr[3] = 0;   // 파3 그린 놓침 · 러프·벙커 안 고름
+  r.holePars[4] = 3; r.scores[4] = 3; r.girArr[4] = 1; r.firArr[4] = 0;   // 파3 온그린(칩 없어도 GIR 이면 성공)
+  const a = analyze([r]);
+  assert(a.safeMissCount === 2 && a.roughCount === 1 && a.bunkerCount === 1, `안전 미스 2(러프1·벙커1): ${a.safeMissCount}/${a.roughCount}/${a.bunkerCount}`);
+  assert(a.teeUnsel === 2, `미선택 2홀: ${a.teeUnsel}`);
+  assert(a.fwCount === 14, `성공 14홀(파4 페어웨이 13 + 파3 온그린 1): ${a.fwCount}`);
+});
+
+t('티샷 안정성: 옛 기록(missArr 없음)의 미스는 지금처럼 안전 미스(미상)', () => {
+  const r = R({ firArr: 0 }); delete r.missArr;
+  const a = analyze([r]);
+  assert(a.safeMissCount === 1 && a.teeUnsel === 0, `옛 기록: 안전 미스 ${a.safeMissCount} · 미선택 ${a.teeUnsel}`);
+});
+
 t('그린 미스 후 칩 온 2퍼트(페어웨이) → 아이언 0 · 숏게임 +1 (기존 규칙 유지)', () => {
   const a = analyze([R({ scores: 5, girArr: 0 })]);
   assert(near(a.ironLossRound, 0) && near(a.shortLossRound, 1), JSON.stringify([a.ironLossRound, a.shortLossRound]));
